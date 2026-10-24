@@ -1,0 +1,274 @@
+/* AG Grid — must precede @tailwind */
+@import 'ag-grid-community/styles/ag-grid.css';
+@import 'ag-grid-community/styles/ag-theme-alpine.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Default theme (Blue) ─────────────────────────────────────────────────── */
+:root, [data-theme="blue"] {
+  --color-primary:       #1e40af;
+  --color-primary-dark:  #1e3a8a;
+  --color-primary-mid:   #3b82f6;
+  --color-primary-light: #dbeafe;
+  --color-primary-50:    #eff6ff;
+  --color-accent:        #3b82f6;
+  --color-header-bg:     #1e40af;
+  --color-header-text:   #ffffff;
+  --color-scrollbar-thumb:      #93c5fd;
+  --color-scrollbar-thumb-hov:  #3b82f6;
+  --color-scrollbar-track:      #f1f5f9;
+  --color-row-hover:     #dbeafe;
+  --color-row-even:      #f8fafc;
+  --color-row-odd:       #ffffff;
+  --color-border-soft:   #dbeafe;
+  --color-sidebar-bg:    #eff6ff;
+}
+
+[data-theme="beige"] {
+  --color-primary:       #92400e;
+  --color-primary-dark:  #78350f;
+  --color-primary-mid:   #d97706;
+  --color-primary-light: #fef3c7;
+  --color-primary-50:    #fffbeb;
+  --color-accent:        #d97706;
+  --color-header-bg:     #92400e;
+  --color-header-text:   #ffffff;
+  --color-scrollbar-thumb:      #fcd34d;
+  --color-scrollbar-thumb-hov:  #d97706;
+  --color-scrollbar-track:      #fef3c7;
+  --color-row-hover:     #fef3c7;
+  --color-row-even:      #fffbeb;
+  --color-row-odd:       #ffffff;
+  --color-border-soft:   #fde68a;
+  --color-sidebar-bg:    #fffbeb;
+}
+
+[data-theme="green"] {
+  --color-primary:       #166534;
+  --color-primary-dark:  #14532d;
+  --color-primary-mid:   #16a34a;
+  --color-primary-light: #dcfce7;
+  --color-primary-50:    #f0fdf4;
+  --color-accent:        #16a34a;
+  --color-header-bg:     #166534;
+  --color-header-text:   #ffffff;
+  --color-scrollbar-thumb:      #86efac;
+  --color-scrollbar-thumb-hov:  #16a34a;
+  --color-scrollbar-track:      #dcfce7;
+  --color-row-hover:     #dcfce7;
+  --color-row-even:      #f7fef9;
+  --color-row-odd:       #ffffff;
+  --color-border-soft:   #bbf7d0;
+  --color-sidebar-bg:    #f0fdf4;
+}
+
+[data-theme="pink"] {
+  --color-primary:       #9d174d;
+  --color-primary-dark:  #831843;
+  --color-primary-mid:   #db2777;
+  --color-primary-light: #fce7f3;
+  --color-primary-50:    #fdf2f8;
+  --color-accent:        #db2777;
+  --color-header-bg:     #9d174d;
+  --color-header-text:   #ffffff;
+  --color-scrollbar-thumb:      #f9a8d4;
+  --color-scrollbar-thumb-hov:  #db2777;
+  --color-scrollbar-track:      #fce7f3;
+  --color-row-hover:     #fce7f3;
+  --color-row-even:      #fdf2f8;
+  --color-row-odd:       #ffffff;
+  --color-border-soft:   #fbcfe8;
+  --color-sidebar-bg:    #fdf2f8;
+}
+
+:root {
+  /* keep legacy vars for existing references */
+  --blue-primary: var(--color-primary);
+  --blue-light:   var(--color-primary-light);
+  --blue-mid:     var(--color-primary-mid);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ── Global form element resets (Tailwind base wipes browser defaults) ── */
+input, select, textarea {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+}
+input::placeholder { color: #9ca3af !important; }
+
+/* ── Scrollbars ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--color-scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--color-scrollbar-thumb); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-scrollbar-thumb-hov); }
+
+/* ── AG Grid customisation (theme-driven) ──────────────────────────────── */
+.ag-theme-alpine .ag-header { background: var(--color-header-bg) !important; color: var(--color-header-text) !important; }
+.ag-theme-alpine .ag-header-cell-label { color: var(--color-header-text) !important; font-weight: 600; }
+.ag-theme-alpine .ag-header-icon { color: var(--color-primary-light) !important; }
+.ag-theme-alpine .ag-row-even { background: var(--color-row-even); }
+.ag-theme-alpine .ag-row-odd  { background: var(--color-row-odd); }
+.ag-theme-alpine .ag-row-hover { background: var(--color-row-hover) !important; }
+.ag-theme-alpine .ag-cell-focus { border: 1px solid var(--color-primary-mid) !important; }
+.ag-theme-alpine .ag-paging-panel { background: var(--color-row-even); border-top: 1px solid var(--color-border-soft); }
+
+/* ── Status badge colours ────────────────────────────────────────────────── */
+.badge-high     { @apply bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full font-medium; }
+.badge-medium   { @apply bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 rounded-full font-medium; }
+.badge-low      { @apply bg-orange-100 text-orange-800 text-xs px-2 py-0.5 rounded-full font-medium; }
+.badge-unmapped { @apply bg-red-100 text-red-800 text-xs px-2 py-0.5 rounded-full font-medium; }
+.badge-approved { @apply bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium; }
+
+/* ── Row highlight by confidence ─────────────────────────────────────────── */
+.row-high     { background: #f0fdf4 !important; }
+.row-medium   { background: #fefce8 !important; }
+.row-low      { background: #fff7ed !important; }
+.row-unmapped      { background: #fef2f2 !important; }
+.row-discrepancy   { background: #fffbeb !important; }
+.row-approved      { background: #eff6ff !important; }
+
+/* ── Nav tab active ──────────────────────────────────────────────────────── */
+.tab-active {
+  border-bottom: 2px solid var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.tab-inactive {
+  border-bottom: 2px solid transparent;
+  color: #4b5563;
+}
+.tab-inactive:hover {
+  color: var(--color-primary);
+  border-bottom: 2px solid var(--color-primary-light);
+}
+
+/* ── Summary card ────────────────────────────────────────────────────────── */
+.summary-card {
+  background: #ffffff;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* ── Specify Nature placeholder ──────────────────────────────────────────── */
+.specify-nature {
+  color: #9ca3af;
+  font-style: italic;
+}
+.specify-nature:focus { color: #111827; font-style: normal; }
+
+/* ── Modal backdrop ──────────────────────────────────────────────────────── */
+.modal-backdrop {
+  @apply fixed inset-0 bg-black/40 flex items-center justify-center z-50;
+}
+.modal-box {
+  @apply bg-white rounded-xl shadow-2xl p-6 w-full max-w-lg;
+}
+
+/* ── Themed tag utilities ────────────────────────────────────────────────── */
+.themed-primary-bg { background: var(--color-primary); color: var(--color-header-text); }
+.themed-primary-text { color: var(--color-primary); }
+.themed-border-soft { border-color: var(--color-border-soft); }
+.themed-sidebar-bg { background: var(--color-sidebar-bg); }
+
+/* ── Print styles for Financial Statements PDF ──────────────────────────── */
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm 15mm 18mm 15mm;
+  }
+  body { background: white !important; }
+  .print-page {
+    page-break-after: always;
+    page-break-inside: avoid;
+  }
+  .print-note {
+    page-break-inside: avoid;
+  }
+  .no-print { display: none !important; }
+}
+
+/* ── Print view container (when rendering for PDF export) ──────────────── */
+.print-view {
+  font-family: 'Times New Roman', Georgia, serif;
+  font-size: 10pt;
+  color: #000;
+  background: #fff;
+}
+.print-view h1, .print-view h2, .print-view h3 {
+  text-align: center;
+  margin: 0;
+}
+.print-view .entity-name {
+  font-size: 14pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  margin-bottom: 2mm;
+}
+.print-view .statement-title {
+  font-size: 12pt;
+  font-weight: bold;
+  margin-top: 2mm;
+  margin-bottom: 4mm;
+}
+.print-view table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+.print-view table th {
+  border-bottom: 1.5pt solid #000;
+  padding: 3pt 4pt;
+  font-weight: bold;
+  text-align: left;
+}
+.print-view table td {
+  padding: 2pt 4pt;
+  border-bottom: 0.25pt solid #e5e7eb;
+}
+.print-view .total-row td {
+  border-top: 1pt solid #000;
+  border-bottom: 1.5pt solid #000;
+  font-weight: bold;
+}
+.print-view .section-header {
+  font-weight: bold;
+  background: #f3f4f6;
+  padding: 3pt 4pt;
+  border-bottom: 0.5pt solid #000;
+}
+.print-view .right { text-align: right; font-family: 'Consolas', monospace; }
+.print-view .center { text-align: center; }
+.print-view .carryfwd {
+  font-style: italic;
+  font-size: 8pt;
+  color: #6b7280;
+  text-align: right;
+  padding: 4pt 0;
+}
+
+/* ── TipTap rich-text editor (General Notes) ──────────────────────────────── */
+.tiptap-editor .ProseMirror { outline: none; min-height: 100px; font-size: 13px; line-height: 1.6; color: #1f2937; }
+.tiptap-editor .ProseMirror p { margin: 0 0 8px; }
+.tiptap-editor .ProseMirror ul { list-style: disc; padding-left: 22px; margin: 0 0 8px; }
+.tiptap-editor .ProseMirror ol { list-style: decimal; padding-left: 22px; margin: 0 0 8px; }
+.tiptap-editor .ProseMirror table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.tiptap-editor .ProseMirror table td, .tiptap-editor .ProseMirror table th {
+  border: 1px solid #d1d5db; padding: 4px 8px; vertical-align: top; position: relative;
+}
+.tiptap-editor .ProseMirror table th { background: #f3f4f6; font-weight: 600; text-align: left; }
+.tiptap-editor .ProseMirror .selectedCell { background: #dbeafe; }
+
+/* "Previous Year figures: Not required - column left out" (PYModeSelect): every Previous Year cell, header and <col> of a statement screen carries .py-col */
+.hide-py .py-col { display: none; }

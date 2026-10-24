@@ -1,0 +1,42 @@
+# ── Build output — never commit, always reproducible from source ──────────
+node_modules/
+out/
+dist/
+dist_new/
+dist-final/
+*.exe
+*.nsis.7z
+builder-debug.yml
+builder-effective-config.yaml
+
+# ── Local machine state ───────────────────────────────────────────────────
+.env
+.env.local
+db-config.json
+tally-config.json
+*.log
+npm-debug.log*
+
+# ── Editor / OS noise ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# ── Claude worktrees (isolated copies, not source) ────────────────────────
+.claude/worktrees/
+
+# ── Database dumps — may contain live client data, keep out of git ────────
+*.backup
+*.dump
+vera_financial*.sql
+
+# NOTE: the following ARE build inputs and MUST stay tracked. Do not add
+# them here — the exe cannot be rebuilt without them:
+#   Mapping_v2.xlsx
+#   Prescribed_Format_Reference.html
+#   itr-templates/
+build-vite.log
+build-package.log
+dist-release/

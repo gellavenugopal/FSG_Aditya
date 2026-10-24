@@ -1,0 +1,845 @@
+<title>VERA — Prescribed Format Reference</title>
+<style>
+  :root {
+    --paper: #faf7ee;
+    --paper-raised: #f3efe1;
+    --ink: #23291f;
+    --ink-soft: #4a5040;
+    --muted: #6b6f5e;
+    --ledger-line: #c7cbb8;
+    --ledger-line-strong: #a9b89e;
+    --accent: #2f4a37;
+    --accent-soft: #dfe6d6;
+    --accent-2: #8b3a2b;
+    --accent-2-soft: #ecdcd3;
+    --card-bg: #ffffff;
+    --shadow: 0 1px 2px rgba(35,41,31,0.06), 0 4px 14px rgba(35,41,31,0.05);
+    --font-display: Georgia, "Times New Roman", "Noto Serif", serif;
+    --font-body: -apple-system, "Segoe UI", "Noto Sans", system-ui, sans-serif;
+    --font-mono: "Cascadia Mono", "SF Mono", Consolas, "Roboto Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #12150e;
+      --paper-raised: #191d13;
+      --ink: #e9e4d3;
+      --ink-soft: #c3bfa9;
+      --muted: #8b9179;
+      --ledger-line: #33392a;
+      --ledger-line-strong: #4a5638;
+      --accent: #8fbf95;
+      --accent-soft: #223327;
+      --accent-2: #d68a72;
+      --accent-2-soft: #382420;
+      --card-bg: #171a11;
+      --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 6px 20px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #12150e; --paper-raised: #191d13; --ink: #e9e4d3; --ink-soft: #c3bfa9; --muted: #8b9179;
+    --ledger-line: #33392a; --ledger-line-strong: #4a5638; --accent: #8fbf95; --accent-soft: #223327;
+    --accent-2: #d68a72; --accent-2-soft: #382420; --card-bg: #171a11;
+    --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 6px 20px rgba(0,0,0,0.35);
+  }
+  :root[data-theme="light"] {
+    --paper: #faf7ee; --paper-raised: #f3efe1; --ink: #23291f; --ink-soft: #4a5040; --muted: #6b6f5e;
+    --ledger-line: #c7cbb8; --ledger-line-strong: #a9b89e; --accent: #2f4a37; --accent-soft: #dfe6d6;
+    --accent-2: #8b3a2b; --accent-2-soft: #ecdcd3; --card-bg: #ffffff;
+    --shadow: 0 1px 2px rgba(35,41,31,0.06), 0 4px 14px rgba(35,41,31,0.05);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent-soft); }
+
+  .shell { display: flex; min-height: 100vh; }
+
+  /* ── Sidebar / TOC ─────────────────────────────────────────── */
+  .toc {
+    width: 236px; flex: 0 0 236px;
+    background: var(--paper-raised);
+    border-right: 1px solid var(--ledger-line);
+    padding: 28px 18px 40px;
+    position: sticky; top: 0; align-self: flex-start;
+    height: 100vh; overflow-y: auto;
+  }
+  .toc-brand { font-family: var(--font-display); font-size: 17px; font-weight: 700; letter-spacing: 0.01em; color: var(--accent); margin: 0 0 2px; }
+  .toc-sub { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 22px; }
+  .toc-group { margin-bottom: 18px; }
+  .toc-group h4 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin: 0 0 6px; font-weight: 600; }
+  .toc a {
+    display: block; font-size: 12.5px; color: var(--ink-soft); text-decoration: none;
+    padding: 3px 0 3px 10px; border-left: 2px solid transparent;
+  }
+  .toc a:hover, .toc a:focus-visible { color: var(--accent); border-left-color: var(--ledger-line-strong); outline: none; }
+
+  /* ── Main column ───────────────────────────────────────────── */
+  main { flex: 1 1 auto; min-width: 0; padding: 44px clamp(20px, 5vw, 64px) 100px; max-width: 980px; }
+
+  .doc-head { margin-bottom: 8px; }
+  .doc-head .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent-2); font-weight: 600; }
+  .doc-head h1 {
+    font-family: var(--font-display); font-weight: 700; font-size: clamp(28px, 3.4vw, 38px);
+    margin: 6px 0 10px; text-wrap: balance; letter-spacing: -0.01em;
+  }
+  .doc-head p.lede { max-width: 62ch; color: var(--ink-soft); font-size: 14.5px; margin: 0 0 6px; }
+  .stamp-box {
+    margin: 20px 0 36px; padding: 14px 16px; border: 1px solid var(--ledger-line-strong);
+    background: var(--accent-2-soft); border-radius: 3px; font-size: 12.5px; color: var(--ink-soft);
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .stamp-box .mark {
+    font-family: var(--font-display); font-weight: 700; color: var(--accent-2); border: 1.5px solid var(--accent-2);
+    border-radius: 50%; width: 34px; height: 34px; flex: 0 0 34px; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; letter-spacing: -0.02em; transform: rotate(-6deg);
+  }
+
+  /* Constitution toggle */
+  .const-toggle {
+    display: inline-flex; gap: 2px; background: var(--paper-raised); border: 1px solid var(--ledger-line);
+    border-radius: 6px; padding: 3px; margin: 4px 0 40px;
+  }
+  .const-toggle button {
+    font: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); background: transparent;
+    border: none; padding: 7px 14px; border-radius: 4px; cursor: pointer; transition: background 0.15s, color 0.15s;
+  }
+  .const-toggle button[aria-pressed="true"] { background: var(--accent); color: var(--paper); }
+  .const-toggle button:hover:not([aria-pressed="true"]) { background: var(--accent-soft); }
+
+  [data-const] { display: none; }
+  [data-const].is-active { display: block; }
+
+  /* ── Section / Note cards ──────────────────────────────────── */
+  section.part { margin: 56px 0 0; padding-top: 8px; }
+  section.part > h2 {
+    font-family: var(--font-display); font-size: 22px; font-weight: 700; margin: 0 0 4px;
+    padding-bottom: 10px; border-bottom: 2px solid var(--accent); color: var(--accent);
+  }
+  section.part > p.desc { color: var(--muted); font-size: 12.5px; margin: 8px 0 22px; max-width: 68ch; }
+
+  .card {
+    background: var(--card-bg); border: 1px solid var(--ledger-line); border-radius: 5px;
+    box-shadow: var(--shadow); margin: 0 0 22px; overflow: hidden; scroll-margin-top: 20px;
+  }
+  .card-head {
+    display: flex; align-items: baseline; gap: 10px; padding: 12px 16px;
+    background: var(--paper-raised); border-bottom: 1px solid var(--ledger-line);
+  }
+  .note-badge {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--paper);
+    background: var(--accent); border-radius: 3px; padding: 2px 7px; letter-spacing: 0.02em; flex-shrink: 0;
+  }
+  .card-head h3 { font-family: var(--font-display); font-size: 15px; font-weight: 700; margin: 0; flex: 1 1 auto; }
+  .card-head .tag {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-2);
+    border: 1px solid var(--accent-2); border-radius: 10px; padding: 1px 8px; flex-shrink: 0;
+  }
+  .card-body { padding: 4px 0; }
+  .card-foot { padding: 8px 16px 12px; font-size: 11.5px; color: var(--muted); border-top: 1px dashed var(--ledger-line); }
+
+  .tbl-wrap { overflow-x: auto; }
+  table.ledger { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 480px; }
+  table.ledger th, table.ledger td { padding: 6px 14px; border-bottom: 1px solid var(--ledger-line); text-align: left; white-space: nowrap; }
+  table.ledger th:last-child, table.ledger td:last-child { white-space: normal; }
+  table.ledger thead th {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
+    font-weight: 600; border-bottom: 1.5px solid var(--ledger-line-strong); background: var(--paper-raised);
+    position: sticky; top: 0;
+  }
+  table.ledger td.num, table.ledger th.num { font-family: var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+  table.ledger tr.sub td:first-child { padding-left: 30px; color: var(--ink-soft); }
+  table.ledger tr.head td { font-weight: 700; background: var(--paper-raised); }
+  table.ledger tr.total td { font-weight: 700; border-top: 1.5px solid var(--ledger-line-strong); }
+  table.ledger tr.italic td:first-child { font-style: italic; color: var(--muted); padding-left: 30px; }
+  table.ledger tbody tr:hover { background: var(--accent-soft); }
+  .blank { color: var(--muted); }
+
+  .roman { font-family: var(--font-mono); color: var(--muted); font-size: 11px; width: 28px; display: inline-block; }
+  .alpha { font-family: var(--font-mono); color: var(--muted); font-size: 11px; width: 18px; display: inline-block; }
+
+  .field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px 16px; padding: 14px 16px; }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .field label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .field .box { border-bottom: 1px solid var(--ledger-line-strong); padding: 4px 2px; color: var(--muted); font-size: 12.5px; min-height: 18px; }
+
+  .textarea-box {
+    margin: 4px 16px 14px; border: 1px dashed var(--ledger-line-strong); border-radius: 3px;
+    padding: 10px 12px; color: var(--muted); font-size: 12px; min-height: 46px;
+  }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+
+  .checklist { list-style: none; margin: 0; padding: 10px 16px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .checklist li { font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
+  .checklist li::before { content: "☐"; color: var(--ledger-line-strong); }
+
+  footer.colophon {
+    margin-top: 70px; padding-top: 20px; border-top: 1px solid var(--ledger-line);
+    font-size: 11.5px; color: var(--muted); max-width: 68ch;
+  }
+
+  a { color: var(--accent); }
+  code { font-family: var(--font-mono); background: var(--paper-raised); padding: 1px 5px; border-radius: 3px; font-size: 11.5px; }
+
+  @media (max-width: 860px) {
+    .toc { position: static; height: auto; width: 100%; flex: none; border-right: none; border-bottom: 1px solid var(--ledger-line); }
+    .shell { flex-direction: column; }
+  }
+</style>
+
+<div class="shell">
+  <nav class="toc" aria-label="Table of contents">
+    <p class="toc-brand">VERA — Format Reference</p>
+    <p class="toc-sub">Blank &amp; Structural Only</p>
+
+    <div class="toc-group">
+      <h4>Balance Sheet</h4>
+      <a href="#bs-cl">Company / LLP</a>
+      <a href="#bs-nc">Individual · Proprietorship · Partnership</a>
+    </div>
+    <div class="toc-group">
+      <h4>Statement of P&amp;L</h4>
+      <a href="#pl-cl">Company / LLP</a>
+      <a href="#pl-nc">Individual · Proprietorship · Partnership</a>
+    </div>
+    <div class="toc-group">
+      <h4>Notes — Standard Shape</h4>
+      <a href="#notes-standard">Particulars · CY · PY</a>
+      <a href="#note-ppe">PPE Reconciliation</a>
+      <a href="#note-fa-schedule">Fixed Assets Schedule</a>
+      <a href="#note-it-wdv">IT Act Block-wise WDV</a>
+    </div>
+    <div class="toc-group">
+      <h4>Fill-Details Forms</h4>
+      <a href="#form-share-capital">Share Capital</a>
+      <a href="#form-owners-capital">Owners' / Partners' Capital</a>
+      <a href="#form-ltb">Long-term Borrowings</a>
+      <a href="#form-stb">Short-term Borrowings</a>
+      <a href="#form-tp">Trade Payables (Ageing + MSME)</a>
+      <a href="#form-tr">Trade Receivables Ageing</a>
+      <a href="#form-cash">Cash &amp; Bank Details</a>
+    </div>
+    <div class="toc-group">
+      <h4>Verification</h4>
+      <a href="#checklist">Sign-off Checklist</a>
+    </div>
+  </nav>
+
+  <main>
+    <div class="doc-head">
+      <p class="eyebrow">Structural Reference — Not a Filing</p>
+      <h1>Prescribed Format, Emptied Out</h1>
+      <p class="lede">
+        Every caption, column and sub-table VERA can place on a Balance Sheet, Statement of Profit &amp; Loss or Note —
+        assembled directly from the app's own Schedule III templates and Fill-Details form definitions, with every
+        figure struck blank. Use it to check completeness and wording against the prescribed format before trusting a
+        real filing.
+      </p>
+    </div>
+
+    <div class="stamp-box">
+      <span class="mark">REF</span>
+      <span>
+        This document is <strong>compiled from source code</strong> (<code>bsStructure.js</code>,
+        <code>plStructureCorp.js</code>, <code>plStructureNonCorp.js</code>, <code>useFinancials.js</code>, and each
+        Fill-Details form component), not rendered through the live app. It shows what a completed filing's structure
+        looks like — captions, columns, sub-heads — not real figures. For an authoritative, guaranteed-in-sync copy,
+        generate BS/PL/Notes from <strong>Generate Financials</strong> against a real (even near-empty) entity of each
+        constitution, per the earlier note on the PL zero-line fix.
+      </span>
+    </div>
+
+    <div class="const-toggle" role="tablist" aria-label="Constitution">
+      <button type="button" role="tab" aria-pressed="true" data-show="all">All Constitutions</button>
+      <button type="button" role="tab" aria-pressed="false" data-show="cl">Company / LLP</button>
+      <button type="button" role="tab" aria-pressed="false" data-show="nc">Individual · Prop. · Partnership</button>
+    </div>
+
+    <!-- ══════════════════════════ BALANCE SHEET ══════════════════════════ -->
+
+    <section class="part" id="bs-cl" data-const="cl">
+      <h2>Balance Sheet — Company &amp; LLP</h2>
+      <p class="desc">Constitution 2 (LLP) &amp; 3 (Company). Fixed Schedule III face — every line always appears, even at nil.</p>
+
+      <div class="card">
+        <div class="card-head"><h3>Equity and Liabilities</h3></div>
+        <div class="card-body tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>No.</th><th>Particulars</th><th>Note</th><th class="num">Current Year</th><th class="num">Previous Year</th></tr></thead>
+            <tbody id="bsEL"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Assets</h3></div>
+        <div class="card-body tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>No.</th><th>Particulars</th><th>Note</th><th class="num">Current Year</th><th class="num">Previous Year</th></tr></thead>
+            <tbody id="bsAssets"></tbody>
+          </table>
+        </div>
+        <div class="card-foot">Total Assets = Total Equity and Liabilities, both struck blank here by design.</div>
+      </div>
+    </section>
+
+    <section class="part" id="bs-nc" data-const="nc">
+      <h2>Balance Sheet — Individual · Proprietorship · Partnership</h2>
+      <p class="desc">
+        Constitution 1 (and LLP shares this Company-style face per code comments where applicable). No fixed template —
+        driven by whatever the Trial Balance maps to, with the equity head swapped and zero-value lines injected from
+        Level Format so the full pro-forma still shows. Shape below reflects the typical result.
+      </p>
+
+      <div class="card">
+        <div class="card-head"><h3>Equity and Liabilities</h3></div>
+        <div class="card-body tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>No.</th><th>Particulars</th><th>Note</th><th class="num">Current Year</th><th class="num">Previous Year</th></tr></thead>
+            <tbody id="bsELnc"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Assets</h3></div>
+        <div class="card-body tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>No.</th><th>Particulars</th><th>Note</th><th class="num">Current Year</th><th class="num">Previous Year</th></tr></thead>
+            <tbody id="bsAssetsNc"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════ P&L ══════════════════════════ -->
+
+    <section class="part" id="pl-cl" data-const="cl">
+      <h2>Statement of Profit &amp; Loss — Company &amp; LLP</h2>
+      <p class="desc">7 fixed expense face-lines, always shown at nil if unmapped — the gap fixed this session in <code>corpPLSectionOrder</code>.</p>
+      <div class="card">
+        <div class="card-body tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th class="num" style="width:30px">No.</th><th>Particulars</th><th>Note</th><th class="num">Current Year</th><th class="num">Previous Year</th></tr></thead>
+            <tbody id="plCorp"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="part" id="pl-nc" data-const="nc">
+      <h2>Statement of Profit &amp; Loss — Individual · Proprietorship · Partnership</h2>
+      <p class="desc">Roman-numeralled per the ICAI non-corporate illustrative format. Partners' remuneration lines drop out entirely for Individual/Proprietorship (single owner) — shown here for Partnership.</p>
+      <div class="card">
+        <div class="card-body tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th class="num" style="width:30px">No.</th><th>Particulars</th><th>Note</th><th class="num">Current Year</th><th class="num">Previous Year</th></tr></thead>
+            <tbody id="plNonCorp"></tbody>
+          </table>
+        </div>
+        <div class="card-foot">Individual / Proprietorship: rows IX–X (profit before remuneration, partners' remuneration) are omitted and the sequence renumbers with no gap.</div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════ NOTES — standard shape ══════════════════════════ -->
+
+    <section class="part" id="notes-standard" data-const="all">
+      <h2>Notes — Standard Shape</h2>
+      <p class="desc">Every auto-generated note (no Fill-Details form attached) renders through this identical 3-column shape, regardless of constitution — only the sub-heads differ per note.</p>
+
+      <div class="card">
+        <div class="card-head"><span class="note-badge">Note N</span><h3>Reserves and Surplus <span style="font-weight:400;color:var(--muted)">— example</span></h3></div>
+        <div class="card-body tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Particulars</th><th class="num">Current Year</th><th class="num">Previous Year</th></tr></thead>
+            <tbody>
+              <tr class="head"><td>Surplus in Statement of Profit and Loss</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="sub"><td>Opening balance</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="sub"><td>Add: Profit / (Loss) for the year</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="sub"><td>Closing balance</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>Total</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot">▸ any ledger row expands beneath its sub-head to show the source ledger, CY/PY, when clicked live.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><span class="note-badge">Note N</span><h3>Other Expenses <span style="font-weight:400;color:var(--muted)">— PL example, Level-2 lines</span></h3></div>
+        <div class="card-body tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Particulars</th><th class="num">Current Year</th><th class="num">Previous Year</th></tr></thead>
+            <tbody id="otherExpExample"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="part" id="note-ppe" data-const="all">
+      <h2>Property, Plant &amp; Equipment — Note Reconciliation</h2>
+      <p class="desc">Standard 3-column shape, one row per Asset Category, cross-checked against the Depreciation schedule.</p>
+      <div class="card">
+        <div class="card-head"><span class="note-badge">Note N</span><h3>Property, Plant and Equipment</h3></div>
+        <div class="card-body tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Particulars</th><th class="num">Current Year</th><th class="num">Previous Year</th></tr></thead>
+            <tbody>
+              <tr class="sub"><td>Category — <em>e.g. Plant &amp; Machinery</em></td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="sub"><td>Category — <em>e.g. Furniture &amp; Fixtures</em></td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>Total</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="italic"><td>WDV per Trial Balance</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="italic"><td>Difference (TB less Depreciation Schedule)</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot">Difference row highlights red live when non-zero — a reconciliation check, not a filing line.</div>
+      </div>
+    </section>
+
+    <section class="part" id="note-fa-schedule" data-const="all">
+      <h2>Fixed Assets Schedule</h2>
+      <p class="desc">A separate screen (Depreciation), not a Fill-Details note — full Gross/Depreciation/Net block movement.</p>
+      <div class="card">
+        <div class="card-body tbl-wrap">
+          <table class="ledger">
+            <thead>
+              <tr>
+                <th rowspan="2">Asset Category</th>
+                <th colspan="4">Gross Block (₹)</th>
+                <th colspan="4">Depreciation (₹)</th>
+                <th colspan="2">Net Block (₹)</th>
+                <th rowspan="2">Method</th>
+                <th rowspan="2" class="num">Rate %</th>
+              </tr>
+              <tr>
+                <th class="num">Opening</th><th class="num">Additions</th><th class="num">Deductions</th><th class="num">Closing</th>
+                <th class="num">Opening</th><th class="num">For Year</th><th class="num">On Disposal</th><th class="num">Closing</th>
+                <th class="num">Opening</th><th class="num">Closing</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td class="blank">— category —</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>TOTAL</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td></td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="part" id="note-it-wdv" data-const="all">
+      <h2>IT Act Block-wise WDV Summary</h2>
+      <p class="desc">Opt-in addendum to the PPE note, from Dep (IT) → Block Summary.</p>
+      <div class="card">
+        <div class="card-body tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Particulars</th><th class="num">Rate</th><th class="num">Opening WDV</th><th class="num">Additions</th><th class="num">Deduction</th><th class="num">Depreciation</th><th class="num">Closing WDV</th></tr></thead>
+            <tbody>
+              <tr><td class="blank">— IT block —</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>Total</td><td></td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════ FILL-DETAILS FORMS ══════════════════════════ -->
+
+    <section class="part" id="forms" data-const="all">
+      <h2>Fill-Details Forms — Full Structure</h2>
+      <p class="desc">Assuming every form below has been completed and is included in the filing, as requested — full field/column layout, blank.</p>
+
+      <div class="card" id="form-share-capital" data-const="cl">
+        <div class="card-head"><span class="note-badge">Note N</span><h3>Share Capital</h3><span class="tag">Company</span></div>
+        <div class="card-foot" style="border-top:none; padding-top:14px;">Repeats once per Share Class (Equity / Preference).</div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Particulars</th><th class="num">CY No. of Shares</th><th class="num">CY Amount</th><th class="num">PY No. of Shares</th><th class="num">PY Amount</th></tr></thead>
+            <tbody>
+              <tr><td>Authorised</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>Issued</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>Subscribed</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>Subscribed and paid-up</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot">Reconciliation of number of shares</div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Particulars</th><th class="num">CY Shares</th><th class="num">CY Amount</th><th class="num">PY Shares</th><th class="num">PY Amount</th></tr></thead>
+            <tbody>
+              <tr><td>Opening balance</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>Issued during the year</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>Deleted / Bought back</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>Closing balance</td><td class="num blank">— auto</td><td class="num blank">— auto</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="field-grid">
+          <div class="field"><label>Wtd. Avg. Shares — CY</label><div class="box">—</div></div>
+          <div class="field"><label>Wtd. Avg. Shares — PY</label><div class="box">—</div></div>
+          <div class="field"><label>Diluted EPS — CY</label><div class="box">—</div></div>
+          <div class="field"><label>Diluted EPS — PY</label><div class="box">—</div></div>
+        </div>
+        <div class="card-foot" style="border-top:none;">5% Shareholders &amp; Promoters (separate tables, Equity + Preference)</div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Shareholder Name</th><th class="num">CY Shares</th><th class="num">CY % Holding</th><th class="num">PY Shares</th><th class="num">PY % Holding</th></tr></thead>
+            <tbody><tr><td class="blank">— name —</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr></tbody>
+          </table>
+        </div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Promoter Name</th><th>Class</th><th class="num">No. of Shares</th><th class="num">% of Total</th><th class="num">% Change</th></tr></thead>
+            <tbody><tr><td class="blank">— name —</td><td class="blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr></tbody>
+          </table>
+        </div>
+        <div class="card-foot" style="border-top:none;">Rights, preferences and restrictions attached to each class</div>
+        <div class="textarea-box">— free text —</div>
+        <div class="card-foot" style="border-top:none;">Footnotes (up to 10 lines)</div>
+        <div class="textarea-box">— free text —</div>
+      </div>
+
+      <div class="card" id="form-owners-capital" data-const="nc">
+        <div class="card-head"><span class="note-badge">Note N</span><h3>Owners' / Partners' Capital Account</h3><span class="tag">Non-corp</span></div>
+        <div class="card-foot" style="border-top:none; padding-top:14px;">
+          Three variants by entity — Individual/Proprietorship (single owner, columns locked), Partnership (rows addable,
+          Share %/Remuneration/Interest shown), LLP (two separate tables: Contribution + Current Account).
+        </div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead>
+              <tr>
+                <th>Sr.</th><th>Partner / Owner Name</th><th class="num">Share %</th><th class="num">Opening Balance</th>
+                <th class="num">Introduced</th><th class="num">Remuneration</th><th class="num">Interest</th>
+                <th class="num">Withdrawals</th><th class="num">Share of Profit</th><th class="num">Closing Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td class="blank">1</td><td class="blank">— name —</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">— auto</td><td class="num blank">— auto</td></tr>
+              <tr class="total"><td colspan="2">Total — Current Year</td><td></td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td colspan="2" class="italic">Total — Previous Year</td><td></td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot">LLP variant additionally splits into 3(a) Partners' Contribution Account (adds "Agreed Contribution") and 3(b) Partners' Current Account, each with its own Total/PY rows.</div>
+      </div>
+
+      <div class="card" id="form-ltb" data-const="all">
+        <div class="card-head"><span class="note-badge">Note N</span><h3>Long-term Borrowings</h3></div>
+        <div class="card-foot" style="border-top:none; padding-top:14px;">A. Summary — by Nature of Loan × Secured/Unsecured</div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Nature of Loan</th><th class="num">CY Secured</th><th class="num">CY Unsecured</th><th class="num">PY Secured</th><th class="num">PY Unsecured</th></tr></thead>
+            <tbody>
+              <tr><td class="blank">— e.g. Term Loans from Banks —</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>Total</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot" style="border-top:none;">B. Loan Details — repeats per loan</div>
+        <div class="field-grid">
+          <div class="field"><label>TB Ledger</label><div class="box">— linked, read-only —</div></div>
+          <div class="field"><label>Lender Print Name</label><div class="box">—</div></div>
+          <div class="field"><label>Nature</label><div class="box">— dropdown, 8 options —</div></div>
+          <div class="field"><label>Secured / Unsecured</label><div class="box">—</div></div>
+        </div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Particulars</th><th class="num">CY Gross</th><th class="num">CY Current Maturity</th><th class="num">CY Net Long-Term</th><th class="num">PY Gross</th><th class="num">PY Current Maturity</th><th class="num">PY Net Long-Term</th></tr></thead>
+            <tbody><tr><td>Loan amount</td><td class="num blank">—</td><td class="num blank">— editable</td><td class="num blank">— auto</td><td class="num blank">—</td><td class="num blank">— editable</td><td class="num blank">— auto</td></tr></tbody>
+          </table>
+        </div>
+        <div class="card-foot" style="border-top:none;">Repayment Details (collapsible — tabular or paragraph)</div>
+        <div class="field-grid">
+          <div class="field"><label>ROI %</label><div class="box">—</div></div>
+          <div class="field"><label>EMI</label><div class="box">—</div></div>
+          <div class="field"><label>Frequency</label><div class="box">—</div></div>
+          <div class="field"><label>Remaining Instalments</label><div class="box">—</div></div>
+          <div class="field"><label>Final Maturity Date</label><div class="box">—</div></div>
+          <div class="field"><label>Remarks</label><div class="box">—</div></div>
+        </div>
+        <div class="card-foot" style="border-top:none;">Security Details (collapsible — tabular or paragraph)</div>
+        <div class="field-grid">
+          <div class="field"><label>Nature of Security</label><div class="box">—</div></div>
+          <div class="field"><label>Guarantee</label><div class="box">—</div></div>
+          <div class="field"><label>Charge Ranking</label><div class="box">—</div></div>
+        </div>
+        <div class="card-foot" style="border-top:none;">E. Reconciliation by Lender</div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Lender</th><th class="num">CY Gross Outstanding</th><th class="num">CY Current Maturity</th><th class="num">CY Net Long-Term</th><th class="num">PY Gross Outstanding</th><th class="num">PY Current Maturity</th><th class="num">PY Net Long-Term</th></tr></thead>
+            <tbody>
+              <tr><td class="blank">— lender —</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>Total</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="checklist"><li>Include Repayment Schedule in print</li><li>Include Security Details in print</li><li>Include Lender Reconciliation in print</li></ul>
+      </div>
+
+      <div class="card" id="form-stb" data-const="all">
+        <div class="card-head"><span class="note-badge">Note N</span><h3>Short-term Borrowings</h3></div>
+        <div class="card-foot" style="border-top:none; padding-top:14px;">Same shape as Long-term Borrowings' Summary, minus Current Maturity (no long-term/short-term split needed).</div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Nature of Loan</th><th class="num">CY Secured</th><th class="num">CY Unsecured</th><th class="num">PY Secured</th><th class="num">PY Unsecured</th></tr></thead>
+            <tbody><tr><td class="blank">— e.g. Cash Credit from Banks —</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr></tbody>
+          </table>
+        </div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Lender / Facility</th><th class="num">Current Year</th><th class="num">Previous Year</th></tr></thead>
+            <tbody><tr><td class="blank">— facility —</td><td class="num blank">—</td><td class="num blank">—</td></tr></tbody>
+          </table>
+        </div>
+        <div class="field-grid">
+          <div class="field"><label>ROI / Terms</label><div class="box">—</div></div>
+        </div>
+        <div class="card-foot" style="border-top:none;">Repayment &amp; Terms / Security (collapsible — tabular or paragraph, same fields as Long-term Borrowings)</div>
+        <ul class="checklist"><li>Include Repayment &amp; Terms in print</li><li>Include Security Details in print</li></ul>
+      </div>
+
+      <div class="card" id="form-tp" data-const="all">
+        <div class="card-head"><span class="note-badge">Note N</span><h3>Trade Payables — Ageing &amp; MSME</h3></div>
+        <div class="card-foot" style="border-top:none; padding-top:14px;">Ageing Schedule (Company only) — separate table for Current Year and Previous Year.</div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Particulars</th><th class="num">&lt; 1 yr</th><th class="num">1–2 yrs</th><th class="num">2–3 yrs</th><th class="num">&gt; 3 yrs</th><th class="num">Total</th></tr></thead>
+            <tbody>
+              <tr><td>(i) MSME</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>(ii) Others</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>(iii) Disputed dues — MSME</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>(iv) Disputed dues — Others</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>Total Due</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>MSME — Undue</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>Others — Undue</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>MSME — Unbilled dues</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>Others — Unbilled dues</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>Total</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot" style="border-top:none;">Check — As per Schedule vs. As per Trial Balance (per period)</div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Particulars</th><th class="num">MSME</th><th class="num">Others</th><th class="num">Total</th></tr></thead>
+            <tbody>
+              <tr><td>As per Ageing Schedule</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>As per Trial Balance</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>Difference</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot" style="border-top:none;">MSME Disclosure (Sections 16, 22 &amp; 23, MSMED Act, 2006) — all constitutions</div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Sl.</th><th>Particulars</th><th class="num">Current Year</th><th class="num">Previous Year</th></tr></thead>
+            <tbody>
+              <tr><td>(a)</td><td>Principal &amp; interest remaining unpaid at year-end</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="sub"><td></td><td>— Principal</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="sub"><td></td><td>— Interest</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="sub"><td></td><td>— Total</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>(b)</td><td>Interest paid under Sec. 16, beyond appointed day</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>(c)</td><td>Interest due &amp; payable for delay (not under Sec. 16)</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>(d)</td><td>Interest accrued and remaining unpaid</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>(e)</td><td>Interest due till actual payment (Sec. 23 disallowance)</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="checklist"><li>Always include Ageing tab in print</li><li>Always include MSME tab in print</li></ul>
+      </div>
+
+      <div class="card" id="form-tr" data-const="cl">
+        <div class="card-head"><span class="note-badge">Note N</span><h3>Trade Receivables — Ageing</h3><span class="tag">Company</span></div>
+        <div class="card-foot" style="border-top:none; padding-top:14px;">Separate table for Current Year and Previous Year.</div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Particulars</th><th class="num">&lt; 6 mo</th><th class="num">6 mo – 1 yr</th><th class="num">1–2 yrs</th><th class="num">2–3 yrs</th><th class="num">&gt; 3 yrs</th><th class="num">Total</th></tr></thead>
+            <tbody>
+              <tr><td>(i) Undisputed — Considered good</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>(ii) Undisputed — Considered doubtful</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>(iii) Disputed — Considered good</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>(iv) Disputed — Considered doubtful</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>Total Due</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>Unbilled Dues — good</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>Unbilled Dues — doubtful</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr><td>Less: Provision for doubtful debts</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+              <tr class="total"><td>Total Trade Receivable</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td><td class="num blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot" style="border-top:none;">Check — As per Schedule vs. Trial Balance vs. Difference (per period)</div>
+        <ul class="checklist"><li>Always include Ageing tab in print</li></ul>
+      </div>
+
+      <div class="card" id="form-cash" data-const="all">
+        <div class="card-head"><span class="note-badge">Note N</span><h3>Cash &amp; Bank Details</h3></div>
+        <div class="tbl-wrap">
+          <table class="ledger">
+            <thead><tr><th>Sl.</th><th>Particulars</th><th class="num">Amount (₹)</th><th>Remarks</th></tr></thead>
+            <tbody>
+              <tr><td>(a)</td><td>Earmarked balances with banks</td><td class="num blank">—</td><td class="blank">—</td></tr>
+              <tr><td>(b)</td><td>Balances held as margin money / security</td><td class="num blank">—</td><td class="blank">—</td></tr>
+              <tr><td>(c)</td><td>Repatriation restrictions</td><td class="num blank">—</td><td class="blank">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="checklist"><li>Always include this table in print</li></ul>
+      </div>
+    </section>
+
+    <section class="part" id="checklist" data-const="all">
+      <h2>Sign-off Checklist</h2>
+      <p class="desc">Walk this against a real Generate Financials export (BS + PL + Notes, both PDF and Excel) for one entity per constitution.</p>
+      <div class="card">
+        <ul class="checklist" style="padding:16px;">
+          <li>Every Equity &amp; Liabilities / Asset line above appears on the face, nil or not</li>
+          <li>Every P&amp;L fixed expense line appears, nil or not (Company/LLP fix applied this session — verify against a real TB too)</li>
+          <li>Note numbers run sequentially in face order, no gaps</li>
+          <li>Current Year and Previous Year both populate once a comparative TB is properly mapped</li>
+          <li>Fill-Details forms actually completed render their full structure in the PDF/Excel export, not just on screen</li>
+          <li>"Always include in print" toggles (MSME, Cash &amp; Bank, Ageing) are honoured in the export even at nil</li>
+          <li>Trade Payables/Receivables reconciliation Check rows tie to nil difference</li>
+        </ul>
+      </div>
+    </section>
+
+    <footer class="colophon">
+      Compiled from source, not the render pipeline — treat this as a structural checklist, not a substitute for the
+      real PDF/Excel export. Where this document and a live Generate Financials export disagree, the live export is
+      correct; tell me the discrepancy and I'll fix the source it came from.
+    </footer>
+  </main>
+</div>
+
+<script>
+  // ── Constitution toggle ──────────────────────────────────────
+  const toggleBtns = document.querySelectorAll('.const-toggle button');
+  const scoped = document.querySelectorAll('[data-const]');
+  function applyFilter(mode) {
+    scoped.forEach(el => {
+      const c = el.getAttribute('data-const');
+      const show = mode === 'all' || c === 'all' || c === mode;
+      el.classList.toggle('is-active', show);
+      el.style.display = show ? '' : 'none';
+    });
+    toggleBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.show === mode)));
+  }
+  toggleBtns.forEach(b => b.addEventListener('click', () => applyFilter(b.dataset.show)));
+  applyFilter('all');
+
+  // ── Data: Balance Sheet — Company/LLP ────────────────────────
+  const num = () => '<td class="num blank">—</td><td class="num blank">—</td>';
+  const row = (no, label, sub) => `<tr class="${sub ? 'sub' : ''}"><td>${no}</td><td>${label}</td><td class="blank">—</td>${num()}</tr>`;
+
+  const elCorp = [
+    ['1','Share capital'], ['2','Reserves and Surplus'], ['3','Money received against share warrants'],
+    ['4','Share application money pending allotment'], ['5','Long-term borrowings'],
+    ['6','Deferred tax liabilities (Net)'], ['7','Other long-term liabilities'], ['8','Long-term provisions'],
+    ['9','Short-term borrowings'], ['10','Trade Payables'], ['11','Other current liabilities'], ['12','Short-term provisions'],
+  ];
+  const assetsCorp = [
+    ['1','Property, Plant and Equipment (Tangible assets)'], ['2','Intangible assets'], ['3','Capital work-in-progress'],
+    ['4','Intangible assets under development'], ['5','Non-current investments'], ['6','Deferred tax assets (Net)'],
+    ['7','Long-term loans and advances'], ['8','Other non-current assets'], ['9','Current investments'],
+    ['10','Inventories'], ['11','Trade receivables'], ['12','Cash and cash equivalents'],
+    ['13','Short-term loans and advances'], ['14','Other current assets'],
+  ];
+  document.getElementById('bsEL').innerHTML = elCorp.map(([n,l]) => row(n,l)).join('') +
+    `<tr class="total"><td colspan="2">Total</td><td></td>${num()}</tr>`;
+  document.getElementById('bsAssets').innerHTML = assetsCorp.map(([n,l]) => row(n,l)).join('') +
+    `<tr class="total"><td colspan="2">Total</td><td></td>${num()}</tr>`;
+
+  const elNC = [
+    ['1',"Partners' / Owners' Capital"], ['2','Long-term borrowings'], ['3','Long-term provisions'],
+    ['4','Short-term borrowings'], ['5','Trade Payables'], ['6','Other current liabilities'], ['7','Short-term provisions'],
+  ];
+  const assetsNC = [
+    ['1','Property, Plant and Equipment'], ['2','Non-current investments'], ['3','Long-term loans and advances'],
+    ['4','Current investments'], ['5','Inventories'], ['6','Trade receivables'], ['7','Cash and cash equivalents'],
+    ['8','Short-term loans and advances'], ['9','Other current assets'],
+  ];
+  document.getElementById('bsELnc').innerHTML = elNC.map(([n,l]) => row(n,l)).join('') +
+    `<tr class="total"><td colspan="2">Total</td><td></td>${num()}</tr>`;
+  document.getElementById('bsAssetsNc').innerHTML = assetsNC.map(([n,l]) => row(n,l)).join('') +
+    `<tr class="total"><td colspan="2">Total</td><td></td>${num()}</tr>`;
+
+  // ── P&L — Company/LLP ─────────────────────────────────────────
+  const plCorpRows = [
+    ['I','Revenue from operations', false],
+    ['II','Other income', false],
+    ['III','Total Income (I + II)', 'total'],
+    ['','Expenses:', 'header'],
+    ['(a)','Cost of materials consumed', true],
+    ['(b)','Purchases of Stock-in-Trade', true],
+    ['(c)','Changes in inventories of finished goods, WIP and Stock-in-Trade', true],
+    ['(d)','Employee benefits expense', true],
+    ['(e)','Finance costs', true],
+    ['(f)','Depreciation and amortization expense', true],
+    ['(g)','Other expenses', true],
+    ['IV','Total expenses', 'total'],
+    ['V','Profit before exceptional and extraordinary items and tax (III − IV)', 'total'],
+    ['VI','Exceptional items', false],
+    ['VII','Profit before extraordinary items and tax (V − VI)', 'total'],
+    ['VIII','Extraordinary items', false],
+    ['IX','Profit before tax (VII − VIII)', 'total'],
+    ['','Tax expense:', 'header'],
+    ['(1)','Current tax', true],
+    ['(2)','Deferred tax', true],
+    ['X','Profit / (Loss) for the period', 'total'],
+    ['XI','Earnings per equity share — Basic / Diluted', false],
+  ];
+  document.getElementById('plCorp').innerHTML = plCorpRows.map(([no,label,kind]) => {
+    const cls = kind === 'total' ? 'total' : kind === 'header' ? 'head' : kind === true ? 'sub' : '';
+    return `<tr class="${cls}"><td>${no}</td><td>${label}</td><td class="blank">—</td>${num()}</tr>`;
+  }).join('');
+
+  const plNCRows = [
+    ['I','Revenue from operations', false],
+    ['II','Other income', false],
+    ['III','Total Income (I + II)', 'total'],
+    ['','Expenses:', 'header'],
+    ['(a)','Cost of materials consumed', true],
+    ['(b)','Purchases of Stock-in-Trade', true],
+    ['(c)','Changes in inventories of finished goods, work in progress and stock-in-trade', true],
+    ['(d)','Employee benefits expense', true],
+    ['(e)','Finance costs', true],
+    ['(f)','Depreciation and amortization expense', true],
+    ['(g)','Other expenses', true],
+    ['IV','Total expenses', 'total'],
+    ['V',"Profit before partners' remuneration and tax (III − IV)", 'total'],
+    ['VI',"Partners' remuneration", false],
+    ['VII','Profit before exceptional and extraordinary items and tax (V − VI)', 'total'],
+    ['VIII','Exceptional items', false],
+    ['IX','Profit before extraordinary items and tax', 'total'],
+    ['X','Extraordinary items', false],
+    ['XI','Profit before tax', 'total'],
+    ['','Tax expense:', 'header'],
+    ['(1)','Current tax', true],
+    ['(2)','Excess / Short provision relating to earlier years', true],
+    ['(3)','Deferred tax charge / (benefit)', true],
+    ['XII','Profit / (Loss) from continuing operations', 'total'],
+    ['XIII','Profit / (Loss) from discontinuing operations', false],
+    ['XIV','Tax expense of discontinuing operations', false],
+    ['XV','Profit / (Loss) from discontinuing operations (after tax)', 'total'],
+    ['XVI','Profit / (Loss) for the year', 'total'],
+  ];
+  document.getElementById('plNonCorp').innerHTML = plNCRows.map(([no,label,kind]) => {
+    const cls = kind === 'total' ? 'total' : kind === 'header' ? 'head' : kind === true ? 'sub' : '';
+    return `<tr class="${cls}"><td>${no}</td><td>${label}</td><td class="blank">—</td>${num()}</tr>`;
+  }).join('');
+
+  // ── Other Expenses example note ─────────────────────────────
+  const oe = ['Rent','Rates and taxes','Insurance','Repairs and maintenance','Legal and professional fees','Payments to auditor','Miscellaneous expenses'];
+  document.getElementById('otherExpExample').innerHTML = oe.map(l => `<tr class="sub"><td>${l}</td><td class="num blank">—</td><td class="num blank">—</td></tr>`).join('') +
+    `<tr class="total"><td>Total</td>${num()}</tr>`;
+</script>

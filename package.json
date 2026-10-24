@@ -1,0 +1,85 @@
+{
+  "name": "fsg-bharat",
+  "version": "0.1.137",
+  "description": "FSG Bharat Financial Statement Generator",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win"
+  },
+  "dependencies": {
+    "@tiptap/extension-table": "^2.27.2",
+    "@tiptap/extension-table-cell": "^2.27.2",
+    "@tiptap/extension-table-header": "^2.27.2",
+    "@tiptap/extension-table-row": "^2.27.2",
+    "@tiptap/extension-text-align": "^2.27.2",
+    "@tiptap/extension-underline": "^2.27.2",
+    "@tiptap/react": "^2.27.2",
+    "@tiptap/starter-kit": "^2.27.2",
+    "ag-grid-community": "^31.3.2",
+    "ag-grid-react": "^31.3.2",
+    "exceljs": "^4.4.0",
+    "pg": "^8.13.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "xlsx": "^0.18.5",
+    "xlsx-js-style": "^1.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "electron": "^31.1.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
+    "pdf-lib": "^1.17.1",
+    "postcss": "^8.4.40",
+    "tailwindcss": "^3.4.9",
+    "vite": "^5.3.5"
+  },
+  "build": {
+    "appId": "com.fsg.bharat",
+    "productName": "FSG Bharat",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "Mapping_v2.xlsx",
+      "Prescribed_Format_Reference.html",
+      "itr-templates/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "Mapping_v2.xlsx",
+        "to": "Mapping_v2.xlsx"
+      },
+      {
+        "from": "itr-templates",
+        "to": "itr-templates"
+      },
+      {
+        "from": "Prescribed_Format_Reference.html",
+        "to": "Prescribed_Format_Reference.html"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.ico"
+    }
+  }
+}
