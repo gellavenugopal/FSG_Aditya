@@ -15,7 +15,7 @@ const THEMES = [
   { key: 'pink',  label: 'Soft Pink',     swatch: '#9d174d' },
 ]
 
-export default function TopBar({ onNewWindow, entity, onOpenMaster, onManageFinancialPeriods, onSettings, dbOk, theme, onThemeChange, entityPeriods, currentEntityPeriodId, onEntityPeriodChange }) {
+export default function TopBar({ onNewWindow, onQuit, entity, onOpenMaster, onManageFinancialPeriods, onSettings, dbOk, theme, onThemeChange, entityPeriods, currentEntityPeriodId, onEntityPeriodChange }) {
   const [showMastersModal, setShowMastersModal] = useState(false)
   const [showThemeMenu, setShowThemeMenu]     = useState(false)
   const [appVersion, setAppVersion]           = useState('')
@@ -92,6 +92,17 @@ export default function TopBar({ onNewWindow, entity, onOpenMaster, onManageFina
             ⧉ New window
           </button>
         )}
+
+        <button
+          onClick={onQuit}
+          className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium hover:bg-red-600/90 transition border border-white/30"
+          title="Exit FSG Bharat (Alt+X)"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 7L7 17M7 7l10 10" />
+          </svg>
+          Exit
+        </button>
 
         {/* Masters (Auditor / Signatories) — always visible */}
         <button

@@ -108,6 +108,7 @@ app.whenReady().then(async () => {
   // The running exe's own version (package.json at build time), shown beside
   // the app name so it's obvious which build a server or client PC is on.
   ipcMain.handle('app:getVersion', () => app.getVersion())
+  ipcMain.handle('app:quit', () => app.quit())
 
   // "New window": another window of the app, opened where this one is (client, Financial Year, Trial Balance, tab)
   ipcMain.handle('window:openNew', async (e, payload) => {

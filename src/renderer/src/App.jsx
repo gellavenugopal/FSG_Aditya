@@ -199,12 +199,18 @@ export default function App() {
   const [menuRequest, setMenuRequest] = useState(null)
   const [consKey, setConsKey] = useState(0)   // bumped when the Trial Balances ticked for the Consolidated view change
   const openWinRef = useRef(null)   // the "New window" action (defined below), reachable from the key handler
+  const quitAppRef = useRef(null)
   const TAB_OF_KEY = {}
   for (const [tab, k] of Object.entries(TOP_SHORTCUTS)) TAB_OF_KEY[k] = tab
 
   useEffect(() => {
     const handler = (e) => {
       if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+      if ((e.key || '').toUpperCase() === 'X') {
+        e.preventDefault()
+        quitAppRef.current?.()
+        return
+      }
       // Don't trigger while the user is typing or editing content.
       const tag = (document.activeElement?.tagName || '').toLowerCase()
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || document.activeElement?.isContentEditable) return
@@ -351,6 +357,7 @@ export default function App() {
   }, [activeTab, entity?.id, currentEntityPeriodId, activeTB?.id, prevTB?.id, fsMode, selectedBranchTBId, activeRsId])
 
   openWinRef.current = openInNewWindow
+  quitAppRef.current = () => window.api?.quitApp?.()
 
   const refreshThisWindow = useCallback(async () => {
     try {
@@ -940,6 +947,7 @@ export default function App() {
     <div className="flex flex-col h-screen bg-white overflow-hidden">
       <TopBar
         onNewWindow={openInNewWindow}
+        onQuit={() => window.api?.quitApp?.()}
         entity={entity}
         onEntityChange={handleEntityChange}
         onOpenMaster={() => setActiveTab('Auditee Details')}

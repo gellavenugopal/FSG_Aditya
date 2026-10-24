@@ -18,6 +18,7 @@ const inv = async (channel, ...args) => {
 contextBridge.exposeInMainWorld('api', {
   // More than one window
   openNewWindow:     (payload) => ipcRenderer.invoke('window:openNew', payload),
+  quitApp:           ()       => ipcRenderer.invoke('app:quit'),
   onDataChanged:     (cb)      => { const h = (_e, info) => cb(info); ipcRenderer.on('data:changed', h); return () => ipcRenderer.removeListener('data:changed', h) },
   // Settings / DB connection
   getSettings:       ()       => inv('settings:get'),

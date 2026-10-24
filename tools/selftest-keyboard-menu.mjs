@@ -47,6 +47,7 @@ ok('App.jsx routes Alt+key to the tab, or opens its dropdown', app.includes('e.a
 ok('Escape goes back through the screens visited, but not out of a field, a dropdown or a dialog', app.includes('histRef') && app.includes("key !== 'Escape'") && app.includes('[role="menu"], [role="dialog"]') && app.includes('h.skip = true'))
 ok('the old letter map is gone', !app.includes('SHORTCUT_MAP'))
 ok('Alt+W opens a new window, and W is not a tab key', app.includes("=== 'W'") && app.includes('openWinRef.current()') && !Object.values(TOP).includes('W'))
+ok('Alt+X exits the application through the visible TopBar button and app IPC', app.includes("=== 'X'") && app.includes('quitAppRef.current?.()') && app.includes('onQuit={() => window.api?.quitApp?.()}') && rd('src/renderer/src/components/Layout/TopBar.jsx').includes('title="Exit FSG Bharat (Alt+X)"') && rd('src/preload/index.js').includes("ipcRenderer.invoke('app:quit')") && rd('src/main/index.js').includes("ipcMain.handle('app:quit', () => app.quit())"))
 
 console.log(fails ? `\n${fails} FAILURE(S) - release aborted\n` : '\nAll checks passed\n')
 process.exit(fails ? 1 : 0)
