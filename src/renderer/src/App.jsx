@@ -30,7 +30,7 @@ import Format from './components/Format'
 import PPE from './components/PPE'
 import GeneralNotes from './components/GeneralNotes'
 import GenerateFinancials from './components/GenerateFinancials'
-import { AuthGate, PasswordChange } from './components/Engagements/EngagementHub'
+import EngagementHub, { AuthGate, PasswordChange } from './components/Engagements/EngagementHub'
 import SettingsModal from './components/shared/SettingsModal'
 import DBBanner from './components/shared/DBBanner'
 import BranchModeBar from './components/shared/BranchModeBar'
@@ -1055,7 +1055,7 @@ function ApplicationWorkspace({ user, onSignOut, signingOut }) {
 }
 
 export default function App() {
-  const [auth, setAuth] = useState({ loading: true, setupRequired: false, localDevelopment: false, localSetupAvailable: false, user: null, error: '' })
+  const [auth, setAuth] = useState({ loading: true, setupRequired: false, localDevelopment: false, serviceOnlyMode: false, localSetupAvailable: false, user: null, error: '' })
   const [signingOut, setSigningOut] = useState(false)
   const [showDatabaseSetup, setShowDatabaseSetup] = useState(false)
 
@@ -1064,7 +1064,15 @@ export default function App() {
     try {
       localSetupAvailable = await window.api.canConfigureLocalEngagement()
       const result = await window.api.engagementAuthStatus()
-      setAuth({ loading: false, setupRequired: result.setupRequired, localDevelopment: !!result.localDevelopment, localSetupAvailable, user: result.user, error: '' })
+      setAuth({
+        loading: false,
+        setupRequired: result.setupRequired,
+        localDevelopment: !!result.localDevelopment,
+        serviceOnlyMode: !!result.serviceOnlyMode,
+        localSetupAvailable,
+        user: result.user,
+        error: '',
+      })
     } catch (error) {
       setAuth(current => ({ ...current, loading: false, localSetupAvailable, user: null, error: error.message || 'Unable to connect to the firm sign-in service.' }))
     }
@@ -1133,5 +1141,24 @@ export default function App() {
     return <div className="h-screen overflow-y-auto bg-gray-50"><PasswordChange user={auth.user} onChanged={user => setAuth(current => ({ ...current, user }))} /></div>
   }
 
+  if (auth.serviceOnlyMode) {
+    return (
+      <div className="flex h-screen min-h-0 flex-col bg-gray-50">
+        <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-5 py-3">
+          <div>
+            <p className="text-sm font-bold text-gray-900">FSG Bharat · Firm service</p>
+            <p className="text-xs text-gray-500">Signed in as {auth.user.displayName} · Protected engagement mode</p>
+          </div>
+          <button disabled={signingOut} onClick={signOut} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out'}</button>
+        </header>
+        <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-5 py-2 text-xs text-blue-900">
+          Service-connected desktop: no local PostgreSQL connection is opened. Trial Balance import and inspection are available; mapping, journals, notes and reporting are disabled until migrated to the trusted service.
+        </div>
+        <main className="min-h-0 flex-1">
+          <EngagementHub key={auth.user.id} user={auth.user} serviceOnlyMode />
+        </main>
+      </div>
+    )
+  }
   return <ApplicationWorkspace key={auth.user.id} user={auth.user} onSignOut={signOut} signingOut={signingOut} />
 }

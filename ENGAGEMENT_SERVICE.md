@@ -60,7 +60,26 @@ npm run dev
 
 For a packaged client, configure the same variable in the approved Windows machine/user environment before launching FSG. The URL must be HTTPS and match the service certificate. The desktop stores the opaque service session token in the Electron main process, not renderer storage.
 
-This setting only routes engagement IPC through the trusted service. The existing desktop still opens its legacy PostgreSQL connection for Trial Balance, mapping, statements, notes, and other operations. Therefore it still requires its legacy DB configuration and retains the existing permission bypasses. Do not distribute a new unrestricted DB credential to clients to make this feature work; this implementation has not migrated or isolated those legacy operations. A service-only client/UI mode that can run without the legacy DB connection is not included.
+With an explicitly configured non-loopback service URL, the desktop enters **service-only mode**. It does not initialize the legacy PostgreSQL client and does not register the legacy financial IPC handlers. The screen provides engagement list/create/open and the protected Trial Balance import/inspection flow. Mapping, journals, notes and financial reports are unavailable in this mode; they must not silently fall back to direct database access. The same mode is selected in packaged clients when `ENGAGEMENT_SERVICE_URL` is configured, including a deliberate loopback URL.
+
+For a second desktop, configure only `ENGAGEMENT_SERVICE_URL` and the service certificate trust. No PostgreSQL credentials or local database settings are needed on that client. In development, an unset or loopback URL normally selects the embedded single-machine service and therefore still needs local PostgreSQL configuration; use the firm server's non-loopback HTTPS hostname to exercise service-only mode. To explicitly use a trusted service bound to loopback during development, set `ENGAGEMENT_SERVICE_ONLY=true` as well.
+
+Legacy mode remains available when the service-only mode is not selected. It still registers direct PostgreSQL handlers with no engagement-level permission checks. Important remaining bypasses include:
+
+- `src/main/ipc/tb.js`: entity read/write/delete, Tally and Excel imports, trial-balance list/read/edit/delete, stock and journal operations.
+- `src/main/ipc/mapping.js` and `src/main/ipc/mapped-tb.js`: mapping-rule access, mapping, approval/override and adjustments.
+- `src/main/ipc/financials.js`, `src/main/ipc/notes.js`, `src/main/ipc/fs-snapshot.js`: statements/PDFs, supporting disclosures and published snapshots.
+- `src/main/ipc/financial-periods.js` and other legacy master/report IPC handlers: period locking/finalisation and firm master operations.
+
+Those handlers can operate on entity-period or TB identifiers without proving access to a specific engagement. Sign-in alone does not make legacy mode engagement-isolated. Do not distribute a new unrestricted DB credential to clients or claim whole-application multi-user isolation.
+
+### Protected Trial Balance workflow
+
+Open an engagement from the service-connected engagement list. The overview shows only TBs explicitly linked to that engagement and its reporting period. Owners and users with edit membership can select **Import Excel**; readers and visibility-only partners/administrators can inspect linked rows but cannot import. Imports are limited to 8 MB and 100,000 ledger rows, require the standard `Name`, `OpeningBalance`, `Debit`, `Credit`, and `ClosingBalance` columns, and are parsed on the trusted server. The desktop's native picker sends the selected bytes and a basename; no local file path is sent to the server.
+
+Each successful import creates a new `trial_balances` record and ledger rows. The source filename, SHA-256, size, importing user and timestamp are retained in `engagement_trial_balance_imports`. Re-importing byte-identical content into the same engagement is rejected without changing the existing import. Distinct concurrent uploads remain separate. Trial balance, rows, source metadata and the audit event are committed atomically. Locked or finalised periods reject imports. Imported rows are read-only in this first slice; existing mapping, journal and report calculations are not invoked.
+
+Legacy TBs can be inspected only after the owner/admin explicitly links them to this engagement through the existing confirmation workflow. Merely sharing a client entity or period does not grant an engagement access path. Cross-engagement TB IDs are rejected by the protected read API.
 
 ## First administrator on a development laptop
 
@@ -84,7 +103,7 @@ From the repository root on Windows, with Node.js, PostgreSQL binaries under `C:
 npm run engagement:test
 ```
 
-The test creates a uniquely named temporary PostgreSQL cluster, starts the local-development HTTPS service against that disposable database, exercises it with synthetic fixtures, stops the cluster, and removes its temporary files. It never reads the configured application DB settings or connects to the live database. It covers migration/repeated startup, persistence, password setup/change, read/edit and partner/admin/substitute permissions, revocation/disabled users, privacy-safe duplicate checks, legacy trial-balance linking, activation/finalisation/reopening, duplicate races, separate reasons, and rollback when audit insertion fails.
+The test creates a temporary PostgreSQL cluster, starts the local-development HTTPS service against that disposable database, exercises it with synthetic fixtures/workbooks, stops the cluster, and removes its temporary files. It never reads the configured application DB settings or connects to the live database. It covers migration/repeated startup, persistence, password setup/change, read/edit and partner/admin/substitute permissions, revocation/disabled users, privacy-safe duplicate checks, legacy trial-balance linking, activation/finalisation/reopening, validated Excel import, TB identifier isolation, read/edit permission checks, locked/finalised rejection, concurrent and repeated-import handling, source metadata, restart persistence, and rollback when either import or engagement audit insertion fails.
 
 The service uses in-memory bearer sessions: restart logs all clients out. Deploy a process supervisor and monitor service/DB health before firm use. `/health` reports process availability, not database readiness.
 
@@ -98,7 +117,8 @@ Run only against a disposable database restored from an approved backup or a ded
 4. As an admin, create a synthetic client/engagement with an owner, partner, substitute, and read/edit participants. Try to spoof `userId` or `role` in request data; access must remain tied to the authenticated account.
 5. Verify an invited reader can view but not edit; an editor can edit; an owner can grant/revoke; partners/admins can see all but do not gain edit/finalisation from visibility alone; only the assigned partner/substitute can finalise or reopen.
 6. Create a second engagement for the same client/period without a reason and verify the generic duplicate warning; repeat with a reason and verify the reason is recorded. Repeat simultaneous creates and confirm exactly one succeeds without a reason.
-7. Link a synthetic unlinked legacy trial balance explicitly and compare its amounts/mappings/notes/signing selections before and after. Confirm legacy setup before activating. Verify the legacy financial entry remains unavailable from the engagement screen.
-8. Disable a test user and verify their active session is rejected. Restart the service, sign in again, and confirm the engagement remains saved.
+7. Link a synthetic unlinked legacy trial balance explicitly and compare its amounts/mappings/notes/signing selections before and after. Confirm legacy setup before activating. In service-only mode, import a synthetic Excel TB, inspect rows as a reader, verify import is refused for that reader, and verify the legacy mapping/journal/reporting tabs are unavailable.
+8. Disable a test user and verify their active session is rejected. Revoke an editor and verify their next TB list/read/import request is denied. Restart the service, sign in again, and confirm engagements and TB imports remain saved.
+9. On a second physical desktop, configure only the HTTPS service URL and certificate trust, sign in as the synthetic reader/editor, and repeat the import/inspection checks. Record this separately from the automated API tests.
 
-Do not perform this UAT against the live firm database. Before multi-user production use, all legacy DB and IPC operations need to be migrated behind permission-enforced server APIs, and a desktop mode that no longer distributes unrestricted DB access must be completed.
+Do not perform this UAT against the live firm database. Automated HTTPS tests do not establish physical two-client UAT. Before whole-application multi-user production use, all legacy DB and IPC operations must be migrated behind permission-enforced server APIs.

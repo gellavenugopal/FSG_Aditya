@@ -1,5 +1,7 @@
-import { randomBytes, pbkdf2, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, pbkdf2, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
+import * as XLSX from 'xlsx'
+import { parseTBExcel } from '../services/tb-template.js'
 import {
   canEditEngagement, canFinaliseEngagement, canViewEngagement,
   isValidDateOnly, validateActivation, validateEngagementDraft,
@@ -118,6 +120,71 @@ async function assertCanView(user, engagement) {
   const membership = await membershipFor(engagement.id, user.id)
   if (!canViewEngagement(user, engagement, membership)) throw new Error('Engagement not found or access is not permitted.')
   return membership
+}
+
+async function assertEngagementTBContext(user, engagementId) {
+  const id = Number(engagementId)
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Engagement not found or access is not permitted.')
+  const engagement = await fetchEngagement(user.firmId, id)
+  const membership = await assertCanView(user, engagement)
+  const { rows: [period] } = await query(
+    `SELECT ep.id,ep.entity_id,ep.locked,ep.is_final,fp.year_label
+     FROM engagement_reporting_sets rs
+     JOIN entity_periods ep ON ep.id=rs.entity_period_id
+     JOIN financial_periods fp ON fp.id=ep.financial_period_id
+     WHERE rs.engagement_id=$1 AND rs.id=$2`,
+    [engagement.id, engagement.reporting_set_id]
+  )
+  if (!period || Number(period.entity_id) !== Number(engagement.entity_id)) {
+    throw new Error('The engagement reporting period is not linked to its client.')
+  }
+  return { engagement, membership, period }
+}
+
+function validateTBUpload(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0 || buffer.length > 8 * 1024 * 1024) {
+    throw new Error('Trial Balance uploads must be a non-empty Excel file no larger than 8 MB.')
+  }
+  let workbook
+  try {
+    workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false })
+  } catch {
+    throw new Error('The selected file could not be read as an Excel workbook.')
+  }
+  const worksheet = workbook.Sheets['Trial Balance'] || workbook.Sheets[workbook.SheetNames[0]]
+  if (!worksheet) throw new Error('The Excel workbook does not contain a worksheet.')
+  const sourceRows = XLSX.utils.sheet_to_json(worksheet, { defval: null })
+  const normalizedRows = sourceRows.map(row =>
+    Object.fromEntries(Object.entries(row).map(([key, value]) => [String(key).trim().replace(/\s*\*$/, ''), value]))
+  )
+  const required = ['Name', 'OpeningBalance', 'Debit', 'Credit', 'ClosingBalance']
+  const headerCells = worksheet['!ref'] ? XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null })[0] || [] : []
+  const normalizedHeaders = new Set(headerCells.map(value => String(value ?? '').trim().replace(/\s*\*$/, '')))
+  if (required.some(header => !normalizedHeaders.has(header))) {
+    throw new Error('The Excel workbook must include Name, OpeningBalance, Debit, Credit and ClosingBalance columns.')
+  }
+  const populatedRows = normalizedRows.filter(row => Object.values(row).some(value => value !== null && value !== ''))
+  if (!populatedRows.length || populatedRows.length > 100000) {
+    throw new Error('The Excel file must contain between 1 and 100,000 ledger rows.')
+  }
+  for (let index = 0; index < populatedRows.length; index++) {
+    const row = populatedRows[index]
+    if (typeof row.Name !== 'string' || !row.Name.trim()) {
+      throw new Error(`Ledger row ${index + 2} must have a Name.`)
+    }
+    for (const field of ['OpeningBalance', 'Debit', 'Credit', 'ClosingBalance']) {
+      const value = row[field]
+      if ((typeof value !== 'number' && typeof value !== 'string')
+        || String(value).trim() === '' || !Number.isFinite(Number(value))) {
+        throw new Error(`Ledger row ${index + 2} has an invalid ${field} amount.`)
+      }
+    }
+  }
+  const rows = parseTBExcel(buffer)
+  if (rows.length !== populatedRows.length) {
+    throw new Error('The Excel file contains rows that could not be imported.')
+  }
+  return rows
 }
 
 async function assertCanEdit(user, engagement) {
@@ -753,6 +820,10 @@ export function registerEngagementHandlers(ipcMain, database) {
         `SELECT user_id,access_level FROM engagement_memberships WHERE engagement_id=$1`,
         [id]
       )
+      const actorMembership = existingMembers.find(member => Number(member.user_id) === actor.id)
+      if (actorMembership && ![ownerId, partnerId, substituteId].includes(actor.id)) {
+        desiredParticipants.set(actor.id, actorMembership.access_level)
+      }
       for (const member of existingMembers) {
         const memberId = Number(member.user_id)
         if (![ownerId, partnerId, substituteId].includes(memberId) && !desiredParticipants.has(memberId)) {
@@ -831,6 +902,161 @@ export function registerEngagementHandlers(ipcMain, database) {
       history,
       legacyLink: legacy || null,
       unlinkedTrialBalances: canManageAccess ? unlinkedTrialBalances : [],
+    }
+  })
+
+  ipcMain.handle('engagement:trialBalances', async (event, engagementId) => {
+    const user = await authenticated(event)
+    const { engagement, period } = await assertEngagementTBContext(user, engagementId)
+    const { rows } = await query(
+      `SELECT tb.id,tb.period,tb.filename,tb.row_count,tb.uploaded_at,tb.branch_name,
+              i.source_filename,i.source_sha256,i.source_size_bytes,i.imported_at,i.imported_by,
+              uploader.display_name AS imported_by_name,'service_import' AS source_type
+       FROM engagement_trial_balance_imports i
+       JOIN trial_balances tb ON tb.id=i.trial_balance_id
+       JOIN firm_users uploader ON uploader.id=i.imported_by
+       WHERE i.engagement_id=$1 AND tb.entity_id=$2 AND tb.entity_period_id=$3
+       UNION ALL
+       SELECT tb.id,tb.period,tb.filename,tb.row_count,tb.uploaded_at,tb.branch_name,
+              tb.filename AS source_filename,NULL::text AS source_sha256,NULL::bigint AS source_size_bytes,
+              l.linked_at AS imported_at,l.linked_by AS imported_by,linker.display_name AS imported_by_name,
+              'legacy_link' AS source_type
+       FROM engagement_legacy_tb_links l
+       JOIN trial_balances tb ON tb.id=l.trial_balance_id
+       JOIN firm_users linker ON linker.id=l.linked_by
+       WHERE l.engagement_id=$1 AND l.entity_period_id=$3
+         AND tb.entity_id=$2 AND tb.entity_period_id=$3
+       ORDER BY uploaded_at DESC,id DESC`,
+      [engagement.id, engagement.entity_id, period.id]
+    )
+    return rows.map(row => ({ ...row, id: Number(row.id), row_count: Number(row.row_count) }))
+  })
+
+  ipcMain.handle('engagement:trialBalanceRows', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const engagementId = Number(input.engagementId)
+    const tbId = Number(input.trialBalanceId)
+    const offset = Number(input.offset ?? 0)
+    const limit = Number(input.limit ?? 500)
+    if (!Number.isInteger(tbId) || tbId <= 0 || !Number.isInteger(offset) || offset < 0
+      || !Number.isInteger(limit) || limit < 1 || limit > 1000) {
+      throw new Error('Select a valid trial balance and row range.')
+    }
+    const { engagement, period } = await assertEngagementTBContext(user, engagementId)
+    const { rows: [authorizedTB] } = await query(
+      `SELECT tb.id FROM trial_balances tb
+       WHERE tb.id=$1 AND tb.entity_id=$2 AND tb.entity_period_id=$3
+         AND (
+           EXISTS (SELECT 1 FROM engagement_trial_balance_imports i
+                   WHERE i.engagement_id=$4 AND i.trial_balance_id=tb.id)
+           OR EXISTS (SELECT 1 FROM engagement_legacy_tb_links l
+                      WHERE l.engagement_id=$4 AND l.trial_balance_id=tb.id AND l.entity_period_id=$3)
+         )`,
+      [tbId, engagement.entity_id, period.id, engagement.id]
+    )
+    if (!authorizedTB) throw new Error('Trial balance not found in this engagement.')
+    const { rows } = await query(
+      `SELECT id,period,branch,ledger_code,name,opening_balance,debit,credit,closing_balance,
+              is_revenue,is_deemed_positive,trail_balance,parent,group_parent,group_parent_1,
+              group_parent_2,group_parent_3,group_parent_4,group_parent_5,group_parent_6,
+              group_parent_7,group_parent_8,trial_balance_type,upload_nature
+       FROM tb_rows WHERE tb_id=$1 ORDER BY id OFFSET $2 LIMIT $3`,
+      [tbId, offset, limit]
+    )
+    return { rows, offset, limit, totalRows: Number((await query(
+      `SELECT COUNT(*)::integer AS count FROM tb_rows WHERE tb_id=$1`, [tbId]
+    )).rows[0].count) }
+  })
+
+  ipcMain.handle('engagement:importTrialBalance', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const { engagement, period } = await assertEngagementTBContext(user, input.engagementId)
+    if (engagement.status === 'finalised' || engagement.status === 'archived' || period.locked || period.is_final) {
+      throw new Error('This engagement reporting period is locked or finalised and cannot accept a Trial Balance import.')
+    }
+    await assertCanEdit(user, engagement)
+    const fileName = String(input.fileName || '').replace(/[\u0000-\u001f\\/]/g, '').trim().slice(0, 255)
+    const encoded = input.fileContentBase64
+    if (!/\.(?:xlsx|xls|xlsm)$/i.test(fileName) || typeof encoded !== 'string' || encoded.length > 11_184_812
+      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+      throw new Error('Select a valid Excel file no larger than 8 MB.')
+    }
+    const buffer = Buffer.from(encoded, 'base64')
+    if (buffer.toString('base64') !== encoded) throw new Error('The uploaded Excel file data is invalid.')
+    const rows = validateTBUpload(buffer)
+    const sourceHash = createHash('sha256').update(buffer).digest('hex')
+
+    try {
+      return await runInTransaction(async () => {
+        const { rows: [lockedContext] } = await query(
+          `SELECT e.status,ep.locked,ep.is_final
+           FROM engagements e
+           JOIN engagement_reporting_sets rs ON rs.engagement_id=e.id
+           JOIN entity_periods ep ON ep.id=rs.entity_period_id
+           WHERE e.id=$1 AND e.firm_id=$2 AND rs.id=$3
+           FOR UPDATE OF e,ep`,
+          [engagement.id, user.firmId, engagement.reporting_set_id]
+        )
+        if (!lockedContext) throw new Error('Engagement reporting context is unavailable.')
+        if (lockedContext.status === 'finalised' || lockedContext.status === 'archived'
+          || lockedContext.locked || lockedContext.is_final) {
+          throw new Error('This engagement reporting period is locked or finalised and cannot accept a Trial Balance import.')
+        }
+        const currentEngagement = await fetchEngagement(user.firmId, engagement.id)
+        await assertCanEdit(user, currentEngagement)
+
+        const { rows: [tb] } = await query(
+          `INSERT INTO trial_balances
+             (entity_id,period,filename,row_count,branch_name,entity_period_id)
+           VALUES ($1,$2,$3,$4,'',$5) RETURNING id,period,filename,row_count,uploaded_at,branch_name`,
+          [engagement.entity_id, period.year_label || '', fileName, rows.length, period.id]
+        )
+        const columns = [
+          'tb_id','period','branch','ledger_code','name','opening_balance','debit','credit','closing_balance',
+          'is_revenue','is_deemed_positive','trail_balance','parent','group_parent','group_parent_1',
+          'group_parent_2','group_parent_3','group_parent_4','group_parent_5','group_parent_6','group_parent_7',
+          'group_parent_8','trial_balance_type',
+        ]
+        const chunkSize = 400
+        for (let start = 0; start < rows.length; start += chunkSize) {
+          const chunk = rows.slice(start, start + chunkSize)
+          const values = []
+          const parameters = []
+          chunk.forEach((row, index) => {
+            const base = index * columns.length
+            values.push(`(${columns.map((_, column) => `$${base + column + 1}`).join(',')})`)
+            parameters.push(
+              tb.id,row.period ?? null,row.branch ?? null,row.ledger_code ?? null,row.name,
+              row.opening_balance,row.debit,row.credit,row.closing_balance,row.is_revenue,
+              row.is_deemed_positive,row.trail_balance,row.parent ?? null,row.group_parent ?? null,
+              row.group_parent_1 ?? null,row.group_parent_2 ?? null,row.group_parent_3 ?? null,
+              row.group_parent_4 ?? null,row.group_parent_5 ?? null,row.group_parent_6 ?? null,
+              row.group_parent_7 ?? null,row.group_parent_8 ?? null,row.trial_balance_type ?? null
+            )
+          })
+          await query(`INSERT INTO tb_rows (${columns.join(',')}) VALUES ${values.join(',')}`, parameters)
+        }
+        await query(
+          `INSERT INTO engagement_trial_balance_imports
+             (engagement_id,trial_balance_id,source_filename,source_sha256,source_size_bytes,imported_by)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [engagement.id, tb.id, fileName, sourceHash, buffer.length, user.id]
+        )
+        await logAudit(user, 'trial_balance.imported', engagement.id, {
+          trialBalanceId: Number(tb.id), fileName, sourceSha256: sourceHash,
+          sourceSizeBytes: buffer.length, rowCount: rows.length,
+        })
+        return {
+          trialBalance: { ...tb, id: Number(tb.id), row_count: Number(tb.row_count) },
+          source: { fileName, sha256: sourceHash, sizeBytes: buffer.length },
+          rowCount: rows.length,
+        }
+      })
+    } catch (error) {
+      if (error.code === '23505') {
+        throw new Error('This exact Excel file has already been imported into this engagement. Existing imports were not changed.')
+      }
+      throw error
     }
   })
 

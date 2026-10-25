@@ -616,7 +616,7 @@ function Summary({ label, value }) {
   return <div><p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</p><p className="mt-1 text-sm font-medium text-gray-900">{value}</p></div>
 }
 
-function EngagementOverview({ user, id, onBack, onEdit }) {
+function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false }) {
   const [data, setData] = useState(null)
   const [options, setOptions] = useState({ users: [] })
   const [error, setError] = useState('')
@@ -732,6 +732,8 @@ function EngagementOverview({ user, id, onBack, onEdit }) {
             </section>
           </div>
 
+          {serviceOnlyMode && <ProtectedTrialBalancePanel engagement={engagement} />}
+
           <section className="mt-5 rounded-xl border border-gray-200 bg-white p-5">
             <h3 className="font-semibold text-gray-900">Engagement history</h3>
             {data.history.length ? <ol className="mt-3 divide-y divide-gray-100">{data.history.map((entry, index) => {
@@ -746,7 +748,129 @@ function EngagementOverview({ user, id, onBack, onEdit }) {
   )
 }
 
-export default function EngagementHub({ user, initialView = 'engagements' }) {
+function ProtectedTrialBalancePanel({ engagement }) {
+  const [trialBalances, setTrialBalances] = useState([])
+  const [selectedId, setSelectedId] = useState('')
+  const [page, setPage] = useState(0)
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const pageSize = 500
+  const canImport = engagement.canEdit && engagement.status !== 'finalised' && engagement.status !== 'archived'
+    && !engagement.locked && !engagement.is_final
+
+  const loadTrialBalances = useCallback(async () => {
+    setLoading(true)
+    try {
+      const rows = await window.api.listEngagementTrialBalances(engagement.id)
+      setTrialBalances(rows)
+      setSelectedId(current => rows.some(row => String(row.id) === current) ? current : String(rows[0]?.id || ''))
+      setError('')
+    } catch (loadError) {
+      setError(loadError.message || 'Unable to load this engagement’s trial balances.')
+    } finally {
+      setLoading(false)
+    }
+  }, [engagement.id])
+
+  useEffect(() => { loadTrialBalances() }, [loadTrialBalances])
+
+  const loadRows = useCallback(async () => {
+    if (!selectedId) { setResult(null); return }
+    setLoading(true)
+    try {
+      const data = await window.api.getEngagementTrialBalanceRows({
+        engagementId: engagement.id,
+        trialBalanceId: Number(selectedId),
+        offset: page * pageSize,
+        limit: pageSize,
+      })
+      setResult(data)
+      setError('')
+    } catch (loadError) {
+      setResult(null)
+      setError(loadError.message || 'Unable to load trial-balance rows.')
+    } finally {
+      setLoading(false)
+    }
+  }, [engagement.id, page, pageSize, selectedId])
+
+  useEffect(() => { loadRows() }, [loadRows])
+
+  const importFile = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const imported = await window.api.importEngagementTrialBalance({ engagementId: engagement.id })
+      if (imported?.cancelled) return
+      await loadTrialBalances()
+      setSelectedId(String(imported.trialBalance.id))
+      setPage(0)
+    } catch (importError) {
+      setError(importError.message || 'Trial Balance import failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const number = value => value == null ? '' : Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const activeTB = trialBalances.find(row => String(row.id) === selectedId)
+
+  return (
+    <section className="mt-5 rounded-xl border border-blue-200 bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-gray-900">Trial Balance</h3>
+          <p className="mt-1 text-sm text-gray-500">Protected engagement import and read-only inspection. Mapping, journals and reporting remain disabled in service-only mode.</p>
+        </div>
+        {canImport && <button disabled={busy} onClick={importFile} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{busy ? 'Importing…' : '+ Import Excel'}</button>}
+      </div>
+      {error && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <label className="text-sm font-medium text-gray-700" htmlFor="engagement-tb-select">Imported trial balances</label>
+        <select id="engagement-tb-select" value={selectedId} onChange={event => { setSelectedId(event.target.value); setPage(0) }} disabled={loading || trialBalances.length === 0} className="min-w-[260px] rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          {!trialBalances.length && <option value="">No trial balance imported or linked</option>}
+          {trialBalances.map(tb => <option key={tb.id} value={tb.id}>{tb.source_filename || tb.filename} · {tb.row_count} rows</option>)}
+        </select>
+        {activeTB && <span className="text-xs text-gray-500">{activeTB.source_type === 'service_import' ? 'Service import' : 'Explicit legacy link'} · {activeTB.imported_at ? new Date(activeTB.imported_at).toLocaleString() : ''}</span>}
+      </div>
+      {activeTB?.source_sha256 && <p className="mt-2 break-all text-xs text-gray-500">Source SHA-256: {activeTB.source_sha256}</p>}
+      {activeTB && <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+        <span>{result?.totalRows ?? activeTB.row_count} ledger rows{result?.totalRows > 0 ? ` · ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, result.totalRows)}` : ''}</span>
+        <div className="flex gap-2">
+          <button disabled={page === 0 || loading} onClick={() => setPage(value => Math.max(0, value - 1))} className="rounded border px-2 py-1 disabled:opacity-40">Previous</button>
+          <button disabled={loading || !result || (page + 1) * pageSize >= result.totalRows} onClick={() => setPage(value => value + 1)} className="rounded border px-2 py-1 disabled:opacity-40">Next</button>
+        </div>
+      </div>}
+      {activeTB && <div className="mt-2 max-h-[420px] overflow-auto rounded-lg border border-gray-200">
+        <table className="min-w-full border-collapse text-left text-xs">
+          <thead className="sticky top-0 bg-gray-50 text-gray-600"><tr>
+            <th className="px-3 py-2">Period</th><th className="px-3 py-2">Ledger code</th><th className="px-3 py-2">Ledger</th>
+            <th className="px-3 py-2 text-right">Opening</th><th className="px-3 py-2 text-right">Debit</th>
+            <th className="px-3 py-2 text-right">Credit</th><th className="px-3 py-2 text-right">Closing</th>
+            <th className="px-3 py-2">Parent</th>
+          </tr></thead>
+          <tbody className="divide-y divide-gray-100">
+            {(result?.rows || []).map(row => <tr key={row.id} className="text-gray-700">
+              <td className="whitespace-nowrap px-3 py-2">{row.period}</td><td className="px-3 py-2">{row.ledger_code}</td>
+              <td className="min-w-[220px] px-3 py-2">{row.name}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right">{number(row.opening_balance)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right">{number(row.debit)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right">{number(row.credit)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right">{number(row.closing_balance)}</td>
+              <td className="min-w-[160px] px-3 py-2">{row.parent || row.group_parent}</td>
+            </tr>)}
+            {!loading && result?.rows.length === 0 && <tr><td colSpan="8" className="px-3 py-6 text-center text-gray-500">No ledger rows in this trial balance.</td></tr>}
+          </tbody>
+        </table>
+        {loading && <p className="p-4 text-center text-xs text-gray-500">Loading trial-balance rows…</p>}
+      </div>}
+    </section>
+  )
+}
+
+export default function EngagementHub({ user, initialView = 'engagements', serviceOnlyMode = false }) {
   const [screen, setScreen] = useState({ type: 'list' })
   const [error, setError] = useState('')
   if (!user) return <div role="alert" className="p-6 text-sm text-red-700">Sign in to access firm settings.</div>
@@ -766,6 +890,7 @@ export default function EngagementHub({ user, initialView = 'engagements' }) {
       {screen.type === 'overview' && <EngagementOverview
         user={user}
         id={screen.id}
+        serviceOnlyMode={serviceOnlyMode}
         onBack={() => setScreen({ type: 'list' })}
         onEdit={data => setScreen({ type: 'edit', initialEngagement: data })}
       />}

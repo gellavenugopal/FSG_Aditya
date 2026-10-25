@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import https from 'node:https'
 import net from 'node:net'
+import * as XLSX from 'xlsx'
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -131,6 +132,15 @@ function newDraft(entityId, periodStart, periodEnd, additions = {}) {
   }
 }
 
+function syntheticTBFile(closingBalance = -80) {
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Period', 'Ledger Code', 'Name', 'OpeningBalance', 'Debit', 'Credit', 'ClosingBalance', 'Parent', 'Group.$Parent'],
+    ['2025-26', '1001', 'Synthetic Cash', -100, 20, 0, closingBalance, 'Current Assets', 'Current Assets'],
+  ]), 'Trial Balance')
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+}
+
 try {
   run(path.join(pgBin, 'initdb.exe'), ['-D', dataDirectory, '-U', 'selftest', '-A', 'trust', '-E', 'UTF8', '-N'])
   postgresStarted = true
@@ -160,12 +170,19 @@ try {
     CREATE TABLE trial_balances (
       id SERIAL PRIMARY KEY, entity_id INTEGER NOT NULL REFERENCES entities(id),
       entity_period_id INTEGER REFERENCES entity_periods(id), period TEXT NOT NULL,
-      filename TEXT NOT NULL, row_count INTEGER NOT NULL, uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      filename TEXT NOT NULL, row_count INTEGER NOT NULL, uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      branch_name TEXT NOT NULL DEFAULT ''
     );
     CREATE TABLE tb_rows (
       id SERIAL PRIMARY KEY, tb_id INTEGER NOT NULL REFERENCES trial_balances(id),
-      ledger_name TEXT NOT NULL, alie TEXT NOT NULL, level1 TEXT, level2 TEXT, level3 TEXT,
-      closing_balance NUMERIC NOT NULL, opening_balance NUMERIC NOT NULL
+      ledger_name TEXT, alie TEXT, level1 TEXT, level2 TEXT, level3 TEXT,
+      closing_balance NUMERIC NOT NULL, opening_balance NUMERIC NOT NULL,
+      period TEXT, branch TEXT, ledger_code TEXT, name TEXT, debit NUMERIC NOT NULL DEFAULT 0,
+      credit NUMERIC NOT NULL DEFAULT 0, is_revenue BOOLEAN, is_deemed_positive BOOLEAN,
+      trail_balance NUMERIC NOT NULL DEFAULT 0, parent TEXT, group_parent TEXT, group_parent_1 TEXT,
+      group_parent_2 TEXT, group_parent_3 TEXT, group_parent_4 TEXT, group_parent_5 TEXT,
+      group_parent_6 TEXT, group_parent_7 TEXT, group_parent_8 TEXT, trial_balance_type TEXT,
+      upload_nature TEXT
     );
     CREATE TABLE mapped_tb (
       id SERIAL PRIMARY KEY, tb_id INTEGER NOT NULL REFERENCES trial_balances(id),
@@ -268,12 +285,14 @@ try {
   const reader = await createUser('reader@example.test', 'staff')
   const editor = await createUser('editor@example.test', 'staff')
   const stranger = await createUser('stranger@example.test', 'staff')
+  const outsider = await createUser('outsider@example.test', 'staff')
   const partner = await createUser('partner@example.test', 'partner')
   const substitute = await createUser('substitute@example.test', 'partner')
   const ownerToken = owner.sessionToken
   const readerToken = reader.sessionToken
   const editorToken = editor.sessionToken
   const strangerToken = stranger.sessionToken
+  const outsiderToken = outsider.sessionToken
   const partnerToken = partner.sessionToken
   const substituteToken = substitute.sessionToken
   await fails('admin/users/create', {
@@ -408,9 +427,124 @@ try {
     'confirmed draft transitions to active')
   await fails('activate', { engagementId }, ownerToken, /only a Draft/i)
 
+  const originalFile = syntheticTBFile()
+  const originalUpload = {
+    engagementId,
+    fileName: 'synthetic-protected.xlsx',
+    fileContentBase64: originalFile.toString('base64'),
+  }
+  await fails('trial-balance/import', originalUpload, readerToken, /edit access/i)
+  await fails('trial-balance/import', originalUpload, partnerToken, /edit access/i)
+  await fails('trial-balance/import', originalUpload, adminToken, /edit access/i)
+  await fails('trial-balances', { engagementId }, outsiderToken, /not found|access/i)
+  const invalidBefore = await pool.query(`SELECT COUNT(*)::int AS count FROM trial_balances`)
+  await fails('trial-balance/import', {
+    ...originalUpload, fileName: 'broken.xlsx', fileContentBase64: Buffer.from('not an Excel workbook').toString('base64'),
+  }, ownerToken, /Excel workbook/i)
+  const invalidAfter = await pool.query(`SELECT COUNT(*)::int AS count FROM trial_balances`)
+  check(invalidAfter.rows[0].count === invalidBefore.rows[0].count, 'invalid workbook creates no trial balance records')
+
+  const imported = await ok('trial-balance/import', originalUpload, ownerToken)
+  const importedTBId = Number(imported.data.trialBalance.id)
+  check(imported.data.rowCount === 1 && imported.data.source.fileName === originalUpload.fileName
+    && imported.data.source.sha256.length === 64, 'owner imports validated Excel rows with retained source metadata')
+  const listedTBs = await ok('trial-balances', { engagementId }, readerToken)
+  check(listedTBs.data.some(tb => Number(tb.id) === importedTBId && tb.source_type === 'service_import'
+    && tb.source_filename === originalUpload.fileName), 'reader can inspect only trial balances linked to the engagement')
+  const inspectedRows = await ok('trial-balance/rows', {
+    engagementId, trialBalanceId: importedTBId, offset: 0, limit: 10,
+  }, readerToken)
+  check(inspectedRows.data.totalRows === 1 && inspectedRows.data.rows[0].name === 'Synthetic Cash'
+    && Number(inspectedRows.data.rows[0].closing_balance) === -80,
+  'reader can inspect imported ledger values through the protected paginated API')
+  await fails('trial-balance/import', originalUpload, editorToken, /already been imported/i)
+  const unrelatedEngagement = await ok('create', newDraft(1, '2024-04-01', '2025-03-31', {
+    ownerUserId: owner.user.id,
+    partnerUserId: partner.user.id,
+  }), adminToken)
+  await fails('trial-balance/rows', {
+    engagementId: unrelatedEngagement.data.id, trialBalanceId: importedTBId, offset: 0, limit: 10,
+  }, ownerToken, /not found in this engagement/i)
+
+  const concurrentUploads = [
+    { ...originalUpload, fileName: 'concurrent-a.xlsx', fileContentBase64: syntheticTBFile(-81).toString('base64') },
+    { ...originalUpload, fileName: 'concurrent-b.xlsx', fileContentBase64: syntheticTBFile(-82).toString('base64') },
+  ]
+  const concurrentImports = await Promise.all([
+    api('trial-balance/import', concurrentUploads[0], ownerToken),
+    api('trial-balance/import', concurrentUploads[1], editorToken),
+  ])
+  check(concurrentImports.every(response => response.status >= 200 && response.status < 300),
+    'concurrent different imports both complete without overwriting each other')
+  const parallelImports = await pool.query(
+    `SELECT i.trial_balance_id,t.filename,r.closing_balance::text
+     FROM engagement_trial_balance_imports i
+     JOIN trial_balances t ON t.id=i.trial_balance_id
+     JOIN tb_rows r ON r.tb_id=t.id
+     WHERE i.engagement_id=$1 AND i.source_filename IN ('concurrent-a.xlsx','concurrent-b.xlsx')
+     ORDER BY i.source_filename`,
+    [engagementId]
+  )
+  check(parallelImports.rowCount === 2
+    && parallelImports.rows[0].trial_balance_id !== parallelImports.rows[1].trial_balance_id
+    && new Set(parallelImports.rows.map(row => row.closing_balance)).size === 2,
+  'concurrent imports persist distinct trial balances and ledger values')
+
+  const duplicateRaceFile = syntheticTBFile(-83).toString('base64')
+  const duplicateRace = await Promise.all([
+    api('trial-balance/import', { ...originalUpload, fileName: 'race-a.xlsx', fileContentBase64: duplicateRaceFile }, ownerToken),
+    api('trial-balance/import', { ...originalUpload, fileName: 'race-b.xlsx', fileContentBase64: duplicateRaceFile }, editorToken),
+  ])
+  check(duplicateRace.filter(response => response.status >= 200 && response.status < 300).length === 1
+    && duplicateRace.filter(response => response.status >= 400).length === 1,
+  'concurrent duplicate source uploads create exactly one import and reject the other')
+
+  await pool.query(`UPDATE entity_periods SET locked=TRUE WHERE id=(
+    SELECT entity_period_id FROM engagement_reporting_sets WHERE engagement_id=$1 LIMIT 1
+  )`, [engagementId])
+  await fails('trial-balance/import', {
+    ...originalUpload, fileName: 'locked-period.xlsx', fileContentBase64: syntheticTBFile(-84).toString('base64'),
+  }, ownerToken, /locked or finalised/i)
+  await pool.query(`UPDATE entity_periods SET locked=FALSE WHERE id=(
+    SELECT entity_period_id FROM engagement_reporting_sets WHERE engagement_id=$1 LIMIT 1
+  )`, [engagementId])
+
+  await pool.query(`
+    CREATE FUNCTION reject_trial_balance_import_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.action='trial_balance.imported' THEN RAISE EXCEPTION 'synthetic TB audit failure'; END IF;
+      RETURN NEW;
+    END
+    $$;
+    CREATE TRIGGER reject_trial_balance_import_audit
+      BEFORE INSERT ON engagement_audit_log FOR EACH ROW EXECUTE FUNCTION reject_trial_balance_import_audit();
+  `)
+  const beforeTBRollback = await pool.query(`
+    SELECT (SELECT COUNT(*)::int FROM trial_balances) AS tb_count,
+           (SELECT COUNT(*)::int FROM tb_rows) AS row_count,
+           (SELECT COUNT(*)::int FROM engagement_trial_balance_imports) AS import_count,
+           (SELECT COUNT(*)::int FROM engagement_audit_log WHERE action='trial_balance.imported') AS audit_count
+  `)
+  const failedAuditImport = await api('trial-balance/import', {
+    ...originalUpload, fileName: 'audit-failure.xlsx', fileContentBase64: syntheticTBFile(-85).toString('base64'),
+  }, ownerToken)
+  check(failedAuditImport.status >= 500, 'trial-balance audit insertion failure is reported as a server failure')
+  const afterTBRollback = await pool.query(`
+    SELECT (SELECT COUNT(*)::int FROM trial_balances) AS tb_count,
+           (SELECT COUNT(*)::int FROM tb_rows) AS row_count,
+           (SELECT COUNT(*)::int FROM engagement_trial_balance_imports) AS import_count,
+           (SELECT COUNT(*)::int FROM engagement_audit_log WHERE action='trial_balance.imported') AS audit_count
+  `)
+  assert.deepEqual(afterTBRollback.rows, beforeTBRollback.rows)
+  check(true, 'trial balance, ledger rows, source metadata and audit record roll back atomically')
+  await pool.query('DROP TRIGGER reject_trial_balance_import_audit ON engagement_audit_log; DROP FUNCTION reject_trial_balance_import_audit()')
+
   await fails('finalise', { engagementId, place: 'Test City', date: '2026-03-31' }, adminToken, /assigned engagement partner/i)
   await fails('finalise', { engagementId, place: 'Test City', date: '2026-03-31' }, ownerToken, /assigned engagement partner/i)
   await ok('finalise', { engagementId, place: 'Test City', date: '2026-03-31' }, substituteToken)
+  await fails('trial-balance/import', {
+    ...originalUpload, fileName: 'finalised.xlsx', fileContentBase64: syntheticTBFile(-86).toString('base64'),
+  }, ownerToken, /locked or finalised/i)
   const finalised = await pool.query(`SELECT status FROM engagements WHERE id=$1`, [engagementId])
   check(finalised.rows[0].status === 'finalised', 'authorised substitute finalises the active engagement')
   await ok('reopen', { engagementId }, partnerToken)
@@ -419,6 +553,7 @@ try {
 
   await ok('access/update', { engagementId, userId: editor.user.id, remove: true }, ownerToken)
   await fails('overview', { engagementId }, editorToken, /not found|access/i)
+  await fails('trial-balances', { engagementId }, editorToken, /not found|access/i)
   await fails('access/update', { engagementId, userId: stranger.user.id, accessLevel: 'administrator' }, ownerToken, /valid user and access level/i)
   await ok('access/update', { engagementId, userId: stranger.user.id, remove: true }, ownerToken)
   await fails('overview', { engagementId }, strangerToken, /not found|access/i)
@@ -494,6 +629,13 @@ try {
   const loggedBackIn = await login('admin@example.test', 'Synthetic-Admin-Password!')
   const persistent = await ok('list', { scope: 'all' }, loggedBackIn.sessionToken)
   check(persistent.data.some(item => Number(item.id) === engagementId), 'saved engagement survives service restart and schema migration is repeatable')
+  const persistedImports = await ok('trial-balances', { engagementId }, loggedBackIn.sessionToken)
+  const persistedRows = await ok('trial-balance/rows', {
+    engagementId, trialBalanceId: importedTBId, offset: 0, limit: 10,
+  }, loggedBackIn.sessionToken)
+  check(persistedImports.data.some(tb => Number(tb.id) === importedTBId)
+    && persistedRows.data.rows[0]?.name === 'Synthetic Cash',
+  'import source metadata and ledger rows survive service restart')
   const migratedPositions = (await pool.query(`SELECT role,job_title FROM firm_users WHERE id=ANY($1::int[])`, [[adminLogin.user.id, partner.user.id, owner.user.id]])).rows
   check(migratedPositions.length === 3
     && migratedPositions.filter(row => row.role === 'partner').every(row => row.job_title === 'partner')

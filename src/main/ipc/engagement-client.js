@@ -1,5 +1,8 @@
 import { ipcMain } from 'electron'
 import { request } from 'node:https'
+import { dialog } from 'electron'
+import { readFile, stat } from 'node:fs/promises'
+import { basename } from 'node:path'
 
 const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
 const sessions = new Map()
@@ -34,6 +37,9 @@ const OPERATIONS = {
   'engagement:activate': { path: 'activate', args: input => [input] },
   'engagement:finalise': { path: 'finalise', args: input => [input] },
   'engagement:reopen': { path: 'reopen', args: id => [{ engagementId: id }] },
+  'engagement:trialBalances': { path: 'trial-balances', args: id => [{ engagementId: id }] },
+  'engagement:trialBalanceRows': { path: 'trial-balance/rows', args: input => [input] },
+  'engagement:importTrialBalance': { path: 'trial-balance/import', args: input => [input], selectFile: true },
 }
 
 function serviceUrl(path, configured = process.env.ENGAGEMENT_SERVICE_URL) {
@@ -100,6 +106,25 @@ export function registerEngagementClientHandlers(handlerRegistry = ipcMain, opti
           sessions.delete(event.sender.id)
         })
       }
+      if (operation.selectFile) {
+        const selection = await dialog.showOpenDialog({
+          title: 'Import Trial Balance',
+          properties: ['openFile'],
+          filters: [{ name: 'Excel workbooks', extensions: ['xlsx', 'xls', 'xlsm'] }],
+        })
+        if (selection.canceled || !selection.filePaths[0]) return { cancelled: true }
+        const filePath = selection.filePaths[0]
+        const fileInfo = await stat(filePath)
+        if (!fileInfo.isFile() || fileInfo.size < 1 || fileInfo.size > 8 * 1024 * 1024) {
+          throw new Error('Select a non-empty Excel file no larger than 8 MB.')
+        }
+        const content = await readFile(filePath)
+        input = {
+          engagementId: input?.engagementId,
+          fileName: basename(filePath),
+          fileContentBase64: content.toString('base64'),
+        }
+      }
       const [payload, setupToken] = operation.args(input)
       const session = sessions.get(event.sender.id)
       const response = await post(
@@ -118,9 +143,14 @@ export function registerEngagementClientHandlers(handlerRegistry = ipcMain, opti
       if (channel === 'engagementAuth:logout') sessions.delete(event.sender.id)
       if (channel === 'engagementAuth:status' && !response.data?.user) sessions.delete(event.sender.id)
       if (session) session.expiresAt = Date.now() + SESSION_MAX_AGE
-      return channel === 'engagementAuth:status' && options.localDevelopment
-        ? { ...response.data, localDevelopment: true }
-        : response.data
+      if (channel === 'engagementAuth:status' && response.data) {
+        return {
+          ...response.data,
+          ...(options.localDevelopment ? { localDevelopment: true } : {}),
+          ...(options.serviceOnlyMode ? { serviceOnlyMode: true } : {}),
+        }
+      }
+      return response.data
     })
   }
 }

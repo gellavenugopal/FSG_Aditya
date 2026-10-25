@@ -173,6 +173,21 @@ export async function ensureEngagementSchema(query) {
   `)
 
   await query(`
+    CREATE TABLE IF NOT EXISTS engagement_trial_balance_imports (
+      id BIGSERIAL PRIMARY KEY,
+      engagement_id BIGINT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+      trial_balance_id INTEGER NOT NULL UNIQUE REFERENCES trial_balances(id) ON DELETE RESTRICT,
+      source_filename TEXT NOT NULL,
+      source_sha256 TEXT NOT NULL CHECK (source_sha256 ~ '^[a-f0-9]{64}$'),
+      source_size_bytes BIGINT NOT NULL CHECK (source_size_bytes > 0),
+      imported_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
+      imported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (engagement_id, source_sha256)
+    )
+  `)
+  await query(`CREATE INDEX IF NOT EXISTS idx_engagement_tb_imports_engagement ON engagement_trial_balance_imports(engagement_id, imported_at DESC)`)
+
+  await query(`
     CREATE TABLE IF NOT EXISTS engagement_audit_log (
       id BIGSERIAL PRIMARY KEY,
       firm_id INTEGER NOT NULL REFERENCES firms(id) ON DELETE CASCADE,

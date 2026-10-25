@@ -41,6 +41,9 @@ contextBridge.exposeInMainWorld('api', {
   activateEngagement:         (data) => inv('engagement:activate', data),
   finaliseEngagement:         (data) => inv('engagement:finalise', data),
   reopenEngagement:           (id) => inv('engagement:reopen', id),
+  listEngagementTrialBalances: (id) => inv('engagement:trialBalances', id),
+  getEngagementTrialBalanceRows: (data) => inv('engagement:trialBalanceRows', data),
+  importEngagementTrialBalance: (data) => inv('engagement:importTrialBalance', data),
 
   // More than one window
   openNewWindow:     (payload) => ipcRenderer.invoke('window:openNew', payload),

@@ -43,8 +43,14 @@ function isLoopbackServiceUrl(value) {
 function shouldUseLocalDevelopmentService() {
   const isDevelopment = !app.isPackaged
     && (process.env.NODE_ENV_ELECTRON_VITE === 'development' || process.env.NODE_ENV === 'development')
-  return isDevelopment && (!process.env.ENGAGEMENT_SERVICE_URL || isLoopbackServiceUrl(process.env.ENGAGEMENT_SERVICE_URL))
+  const forceServiceOnly = String(process.env.ENGAGEMENT_SERVICE_ONLY || '').toLowerCase() === 'true'
+  return isDevelopment && !forceServiceOnly
+    && (!process.env.ENGAGEMENT_SERVICE_URL || isLoopbackServiceUrl(process.env.ENGAGEMENT_SERVICE_URL))
 }
+
+const serviceOnlyMode = String(process.env.ENGAGEMENT_SERVICE_ONLY || '').toLowerCase() === 'true'
+  || Boolean(process.env.ENGAGEMENT_SERVICE_URL && !shouldUseLocalDevelopmentService())
+if (serviceOnlyMode) engagementClientOptions.serviceOnlyMode = true
 
 // More than one window: every window is the whole app, on the same database. A window opened with "New window" is told (in the page
 // address) the client, Financial Year, Trial Balance and tab it was opened from - see App.jsx (POPOUT).
@@ -92,26 +98,28 @@ async function createWindow(popoutPayload = null, fromWindow = null) {
 
 app.whenReady().then(async () => {
   let legacyDatabaseReady = false
-  try {
-    await initDB()
-    legacyDatabaseReady = true
-    // Serialize one-time/shared schema+seed setup across every Electron
-    // client connected to this Postgres DB — otherwise 15 PCs launching
-    // around the same time would race each other through table creation
-    // and the default-mapping reseed. See db/client.js's withStartupLock().
-    await withStartupLock(async () => {
-      await ensureSchema()
-      await seedDefaultMapping()
-      await ensureStockCategories()
-      await migrateMappingV3Captions()
-      await migrateMappingV3CaptionsPass2()
-      await applyMappingPatches()
-    })
-  } catch (err) {
-    console.error('DB init error:', err.message)
-    // Allow app to open even if DB not configured/reachable yet — the
-    // renderer's own getSettings()/testConnection() check (App.jsx) will
-    // show the Settings modal for the user to enter connection details.
+  if (!serviceOnlyMode) {
+    try {
+      await initDB()
+      legacyDatabaseReady = true
+      // Serialize one-time/shared schema+seed setup across every Electron
+      // client connected to this Postgres DB — otherwise 15 PCs launching
+      // around the same time would race each other through table creation
+      // and the default-mapping reseed. See db/client.js's withStartupLock().
+      await withStartupLock(async () => {
+        await ensureSchema()
+        await seedDefaultMapping()
+        await ensureStockCategories()
+        await migrateMappingV3Captions()
+        await migrateMappingV3CaptionsPass2()
+        await applyMappingPatches()
+      })
+    } catch (err) {
+      console.error('DB init error:', err.message)
+      // Allow app to open even if DB not configured/reachable yet — the
+      // renderer's own getSettings()/testConnection() check (App.jsx) will
+      // show the Settings modal for the user to enter connection details.
+    }
   }
 
   if (shouldUseLocalDevelopmentService()) {
@@ -127,10 +135,6 @@ app.whenReady().then(async () => {
     }
   }
 
-  registerTBHandlers()
-  registerMappingHandlers()
-  registerMappedTBHandlers()
-  registerSettingsHandlers()
   ipcMain.handle('engagementService:localSetupAvailable', () => shouldUseLocalDevelopmentService())
   ipcMain.handle('engagementService:restartLocal', async () => {
     if (!shouldUseLocalDevelopmentService()) {
@@ -151,17 +155,23 @@ app.whenReady().then(async () => {
       throw error
     }
   })
-  registerFinancialHandlers()
-  registerMastersHandlers()
-  registerDepreciationHandlers()
-  registerNotesHandlers()
-  registerFinancialPeriodHandlers()
-  registerForm3CDHandlers()
-  registerPPEHandlers()
-  registerRatioHandlers()
-  registerGeneralNotesHandlers()
-  registerCfsHandlers()
-  registerFsSnapshotHandlers()
+  if (!serviceOnlyMode) {
+    registerTBHandlers()
+    registerMappingHandlers()
+    registerMappedTBHandlers()
+    registerSettingsHandlers()
+    registerFinancialHandlers()
+    registerMastersHandlers()
+    registerDepreciationHandlers()
+    registerNotesHandlers()
+    registerFinancialPeriodHandlers()
+    registerForm3CDHandlers()
+    registerPPEHandlers()
+    registerRatioHandlers()
+    registerGeneralNotesHandlers()
+    registerCfsHandlers()
+    registerFsSnapshotHandlers()
+  }
   registerEngagementClientHandlers(ipcMain, engagementClientOptions)
   // The running exe's own version (package.json at build time), shown beside
   // the app name so it's obvious which build a server or client PC is on.

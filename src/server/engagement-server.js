@@ -9,6 +9,7 @@ import { registerEngagementHandlers } from '../main/ipc/engagements.js'
 
 const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
 const BODY_MAX_BYTES = 1024 * 1024
+const TB_IMPORT_MAX_BODY_BYTES = 12 * 1024 * 1024
 const SESSION_TOKEN_BYTES = 32
 
 const ROUTES = {
@@ -34,6 +35,13 @@ const ROUTES = {
   activate: { channel: 'engagement:activate', args: body => [body] },
   finalise: { channel: 'engagement:finalise', args: body => [body] },
   reopen: { channel: 'engagement:reopen', args: body => [body.engagementId] },
+  'trial-balances': { channel: 'engagement:trialBalances', args: body => [body.engagementId] },
+  'trial-balance/rows': { channel: 'engagement:trialBalanceRows', args: body => [body] },
+  'trial-balance/import': {
+    channel: 'engagement:importTrialBalance',
+    args: body => [body],
+    maxBodyBytes: TB_IMPORT_MAX_BODY_BYTES,
+  },
 }
 
 function getTlsOptions(options = {}) {
@@ -69,12 +77,12 @@ function sendJson(response, statusCode, value) {
   response.end(body)
 }
 
-async function readJsonBody(request) {
+async function readJsonBody(request, maximumBytes = BODY_MAX_BYTES) {
   const chunks = []
   let total = 0
   for await (const chunk of request) {
     total += chunk.length
-    if (total > BODY_MAX_BYTES) throw Object.assign(new Error('Request body is too large.'), { statusCode: 413 })
+    if (total > maximumBytes) throw Object.assign(new Error('Request body is too large.'), { statusCode: 413 })
     chunks.push(chunk)
   }
   if (!total) return {}
@@ -162,7 +170,6 @@ export async function createEngagementServer(options = {}) {
         sendJson(response, statusCode, { error: 'Route not found.' })
         return
       }
-      const body = await readJsonBody(request)
       const remoteAddress = request.socket.remoteAddress || 'unknown'
       const isLogin = routeName === 'auth/login' || routeName === 'auth/setup'
       if (isLogin) limiter.assertAllowed(remoteAddress)
@@ -194,6 +201,7 @@ export async function createEngagementServer(options = {}) {
         session.expiresAt = Date.now() + SESSION_MAX_AGE
       }
 
+      const body = await readJsonBody(request, route.maxBodyBytes)
       const handler = handlers.get(route.channel)
       if (!handler) throw new Error(`Engagement operation is not registered: ${route.channel}`)
       let result
