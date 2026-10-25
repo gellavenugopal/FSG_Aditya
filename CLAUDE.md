@@ -14,6 +14,8 @@
 
 ## Key architecture
 - IPC: all DB calls go through `src/main/ipc/` handlers, exposed via `src/preload/index.js`
+- Engagement foundation: `src/main/ipc/engagements.js` contains the new engagement authentication and permission-checked operations; `src/main/db/engagement-schema.js` adds the firm, user, engagement and reporting-set tables without replacing legacy client/period records.
+- The engagement login only gates engagement operations. Desktop nodes still connect directly to PostgreSQL and legacy financial IPC handlers are not engagement-authorized; this is not secure firm-wide isolation or production-ready multi-user deployment.
 - Mapping engine: `src/main/services/mapping-engine.js` — 3-stage: Map1→Map2→Map3
 - Sign convention: Dr-natured (assets/expenses) stored NEGATIVE, `is_deemed_positive=true`
 - Theme: CSS variable `var(--color-primary)` — never use hardcoded `bg-blue-700`
@@ -44,7 +46,7 @@
 - Depreciation level_format_id: added `lfByM1Terminal` index for terminal L1 LF rows (where level2 is null). Stage 3 no-hits path now resolves level_format_id, clears mapping2_resultant, and sets auto_high for categories like "Depreciation & Amortisation Expenses"
 
 ## Menu Structure (Current)
-- **Top-level tabs (13):** Master | Trial Balance | Stock | Mapping | Dep | BS | PL | Notes | General Notes | Annex & Reco | Features | Exception | Generate Financials
+- **Top-level tabs (15):** Engagements | Settings | Trial Balance | Stock | Mapping | Dep | BS | PL | CFS | Notes | General Notes | Annex & Reco | Features | Exception | Generate Financials
 - **Dep submenu:** Dep (Comp), Dep (IT), Dep (Old) — Alt+D opens the submenu; C, I or O selects the option
 - **Features submenu:** ITR, Tax Computation, Deferred Tax, PPE, Ratio — Alt+U opens the submenu; I, T, D, P or R selects an item. ITR's submenu then uses B, P, D or L.
 - Menu config: `src/renderer/src/App.jsx` (TABS, TAB_GROUPS, SHORTCUT_MAP arrays)

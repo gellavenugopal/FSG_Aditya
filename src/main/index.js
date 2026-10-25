@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu, dialog } from 'electron'
 import { join } from 'path'
 import { initDB, flushDB, withStartupLock } from './db/client.js'
 import { ensureSchema } from './db/schema.js'
+import { ensureEngagementSchema } from './db/engagement-schema.js'
 import { seedDefaultMapping, ensureStockCategories } from './services/excel.js'
 import { migrateMappingV3Captions, migrateMappingV3CaptionsPass2 } from './db/mapping-v3-migration.js'
 import { registerTBHandlers } from './ipc/tb.js'
@@ -19,6 +20,7 @@ import { registerRatioHandlers } from './ipc/ratio.js'
 import { registerGeneralNotesHandlers } from './ipc/general-notes.js'
 import { registerCfsHandlers } from './ipc/cfs.js'
 import { registerFsSnapshotHandlers } from './ipc/fs-snapshot.js'
+import { registerEngagementHandlers } from './ipc/engagements.js'
 import { guardScreen } from './screen-guard.js'
 
 let mainWindow
@@ -77,6 +79,7 @@ app.whenReady().then(async () => {
     // and the default-mapping reseed. See db/client.js's withStartupLock().
     await withStartupLock(async () => {
       await ensureSchema()
+      await ensureEngagementSchema()
       await seedDefaultMapping()
       await ensureStockCategories()
       await migrateMappingV3Captions()
@@ -105,6 +108,7 @@ app.whenReady().then(async () => {
   registerGeneralNotesHandlers()
   registerCfsHandlers()
   registerFsSnapshotHandlers()
+  registerEngagementHandlers()
   // The running exe's own version (package.json at build time), shown beside
   // the app name so it's obvious which build a server or client PC is on.
   ipcMain.handle('app:getVersion', () => app.getVersion())
