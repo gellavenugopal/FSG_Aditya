@@ -209,7 +209,7 @@ try {
   servicePort = Number(address.port)
   serviceCa = service.clientOptions.ca
   const boundAddress = service.service.server.address()
-  check(address.protocol === 'https:' && address.hostname === 'localhost' && boundAddress.address === '127.0.0.1',
+  check(address.protocol === 'https:' && address.hostname === '127.0.0.1' && boundAddress.address === '127.0.0.1',
     'local development service uses HTTPS and binds only to loopback')
   check(Buffer.isBuffer(serviceCa) && service.clientOptions.setupToken.length >= 64,
     'local development creates a private setup authorization and trusted local CA')

@@ -59,7 +59,7 @@ export async function startLocalEngagementService(databaseConfig) {
     return {
       service,
       clientOptions: {
-        serviceUrl: `https://localhost:${address.port}`,
+        serviceUrl: `https://127.0.0.1:${address.port}`,
         setupToken,
         ca: certificate,
         localDevelopment: true,
