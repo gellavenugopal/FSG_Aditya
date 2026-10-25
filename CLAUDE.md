@@ -14,8 +14,8 @@
 
 ## Key architecture
 - IPC: all DB calls go through `src/main/ipc/` handlers, exposed via `src/preload/index.js`
-- Engagement foundation: `src/main/ipc/engagements.js` contains the new engagement authentication and permission-checked operations; `src/main/db/engagement-schema.js` adds the firm, user, engagement and reporting-set tables without replacing legacy client/period records.
-- The engagement login only gates engagement operations. Desktop nodes still connect directly to PostgreSQL and legacy financial IPC handlers are not engagement-authorized; this is not secure firm-wide isolation or production-ready multi-user deployment.
+- Engagement service: `src/server/engagement-server.js` is the firm-hosted HTTPS entry point; its database credentials are supplied only to that service. Desktop engagement IPC calls proxy through `src/main/ipc/engagement-client.js`. The additive schema remains in `src/main/db/engagement-schema.js`.
+- The engagement login gates engagement operations, but legacy financial IPC handlers still connect directly to PostgreSQL and are not engagement-authorized. The desktop still needs its legacy database configuration; this is not whole-application isolation or production-ready multi-user deployment. See `ENGAGEMENT_SERVICE.md` for service setup and limitations.
 - Mapping engine: `src/main/services/mapping-engine.js` — 3-stage: Map1→Map2→Map3
 - Sign convention: Dr-natured (assets/expenses) stored NEGATIVE, `is_deemed_positive=true`
 - Theme: CSS variable `var(--color-primary)` — never use hardcoded `bg-blue-700`
