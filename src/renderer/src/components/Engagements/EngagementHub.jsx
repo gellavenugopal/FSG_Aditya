@@ -219,7 +219,7 @@ function EngagementList({ user, onCreate, onOpen }) {
   )
 }
 
-function FirmTeam({ user }) {
+export function FirmTeam({ user }) {
   const [users, setUsers] = useState([])
   const [form, setForm] = useState({ displayName: '', email: '', jobTitle: 'employee' })
   const [createdUser, setCreatedUser] = useState(null)

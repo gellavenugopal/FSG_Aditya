@@ -30,7 +30,7 @@ import Format from './components/Format'
 import PPE from './components/PPE'
 import GeneralNotes from './components/GeneralNotes'
 import GenerateFinancials from './components/GenerateFinancials'
-import EngagementHub, { AuthGate, PasswordChange } from './components/Engagements/EngagementHub'
+import { AuthGate, PasswordChange } from './components/Engagements/EngagementHub'
 import SettingsModal from './components/shared/SettingsModal'
 import DBBanner from './components/shared/DBBanner'
 import BranchModeBar from './components/shared/BranchModeBar'
@@ -546,9 +546,7 @@ function ApplicationWorkspace({ user, onSignOut, signingOut }) {
     if (!dbOk) return null
     switch (activeTab) {
       case 'Engagements':
-        return <EngagementHub user={user} />
       case 'Firm Team':
-        return <EngagementHub user={user} initialView="team" />
       case 'Auditee Details':
       case 'Financial Period':
       case 'Auditor':
@@ -560,6 +558,7 @@ function ApplicationWorkspace({ user, onSignOut, signingOut }) {
             onOpenMappingRules={() => setActiveTab('Mapping Rules')}
             activeLeaf={activeTab}
             onSelectSection={setActiveTab}
+            user={user}
           />
         )
       case 'Upload TB':

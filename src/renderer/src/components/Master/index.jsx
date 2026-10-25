@@ -5,6 +5,7 @@ import AuditeeReadModal from './AuditeeReadModal'
 import FinancialPeriodManageModal from './FinancialPeriodManageModal'
 import AuditorManageModal from './AuditorManageModal'
 import SignatoryManageModal from './SignatoryManageModal'
+import EngagementHub, { FirmTeam } from '../Engagements/EngagementHub'
 
 const SECTIONS = [
   { label: 'Auditee Details', description: 'Organization profile' },
@@ -12,6 +13,8 @@ const SECTIONS = [
   { label: 'Auditor', description: 'Audit appointments' },
   { label: 'Signatory', description: 'Signing authorities' },
   { label: 'Mapping Rules', description: 'Ledger classification' },
+  { label: 'Engagements', description: 'Client assignments' },
+  { label: 'Firm Team', description: 'People and access' },
 ]
 
 function AddButton({ label, onClick }) {
@@ -43,7 +46,7 @@ function SectionHeading({ eyebrow, title, description, onAdd, addLabel }) {
   )
 }
 
-export default function Master({ entity, onEntityChange, onOpenMappingRules, activeLeaf, onSelectSection }) {
+export default function Master({ entity, onEntityChange, onOpenMappingRules, activeLeaf, onSelectSection, user }) {
   const [modal, setModal] = useState(null)
   const section = SECTIONS.some(item => item.label === activeLeaf) ? activeLeaf : 'Auditee Details'
   const close = () => setModal(null)
@@ -58,6 +61,9 @@ export default function Master({ entity, onEntityChange, onOpenMappingRules, act
   const selectOrCreateEntity = () => setModal({ type: 'select' })
 
   const renderSection = () => {
+    if (section === 'Engagements') return <EngagementHub user={user} />
+    if (section === 'Firm Team') return <FirmTeam user={user} />
+
     if (section === 'Auditee Details') {
       return (
         <>
