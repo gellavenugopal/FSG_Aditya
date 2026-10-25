@@ -10,6 +10,7 @@ import { registerEngagementHandlers } from '../main/ipc/engagements.js'
 const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
 const BODY_MAX_BYTES = 1024 * 1024
 const TB_IMPORT_MAX_BODY_BYTES = 12 * 1024 * 1024
+const REPORT_OUTPUT_MAX_BODY_BYTES = 32 * 1024 * 1024
 const SESSION_TOKEN_BYTES = 32
 
 const ROUTES = {
@@ -37,6 +38,23 @@ const ROUTES = {
   reopen: { channel: 'engagement:reopen', args: body => [body.engagementId] },
   'trial-balances': { channel: 'engagement:trialBalances', args: body => [body.engagementId] },
   'trial-balance/rows': { channel: 'engagement:trialBalanceRows', args: body => [body] },
+  journals: { channel: 'engagement:journalList', args: body => [body.engagementId] },
+  'journal/post': { channel: 'engagement:journalPost', args: body => [body] },
+  'final-trial-balances': { channel: 'engagement:finalTrialBalances', args: body => [body.engagementId] },
+  'final-trial-balance/create': { channel: 'engagement:finalTrialBalanceCreate', args: body => [body] },
+  'final-trial-balance/rows': { channel: 'engagement:finalTrialBalanceRows', args: body => [body] },
+  'reporting/data': { channel: 'engagement:reportingData', args: body => [body] },
+  'reporting/settings/save': { channel: 'engagement:reportingSettingsSave', args: body => [body] },
+  'reporting/signatory/create': { channel: 'engagement:reportingSignatoryCreate', args: body => [body] },
+  'reporting/note-disclosure/save': { channel: 'engagement:noteDisclosureSave', args: body => [body] },
+  'reporting/outputs': { channel: 'engagement:reportOutputs', args: body => [body.engagementId] },
+  'reporting/output/save': {
+    channel: 'engagement:reportOutputSave',
+    args: body => [body],
+    maxBodyBytes: REPORT_OUTPUT_MAX_BODY_BYTES,
+  },
+  'reporting/output/read': { channel: 'engagement:reportOutputRead', args: body => [body.outputId] },
+  'reporting/output/finalise': { channel: 'engagement:reportOutputFinalise', args: body => [body.outputId] },
   'trial-balance/import': {
     channel: 'engagement:importTrialBalance',
     args: body => [body],

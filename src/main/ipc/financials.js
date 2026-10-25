@@ -1,5 +1,6 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain } from 'electron'
 import { query } from '../db/client.js'
+import { renderHtmlToPdf } from './pdf-rendering.js'
 
 export function registerFinancialHandlers() {
   ipcMain.handle('financials:getData', async (_, tbId) => {
@@ -167,50 +168,5 @@ export function registerFinancialHandlers() {
     return result
   })
 
-  // ── PDF generation via Electron's printToPDF (A4, print-quality) ────────
-  ipcMain.handle('financials:renderPDF', async (_, html) => {
-    // Create a hidden window to render the HTML
-    const pdfWindow = new BrowserWindow({
-      show: false,
-      width: 794,   // ~A4 width at 96dpi
-      height: 1123, // ~A4 height
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        offscreen: false,
-      },
-    })
-
-    // Load the HTML via data URL
-    const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(html)
-    await pdfWindow.loadURL(dataUrl)
-
-    // Wait a moment for rendering, then for the Notes / Annexures page layout
-    // (buildHTML.js's flowLayoutScript) to finish measuring and filling pages.
-    // Documents without flowing sections, or a script that never reports back,
-    // print after a short wait / the 20s cap exactly as before.
-    await new Promise(resolve => setTimeout(resolve, 300))
-    const layoutDeadline = Date.now() + 20000
-    while (Date.now() < layoutDeadline) {
-      const ready = await pdfWindow.webContents.executeJavaScript(
-        "!document.querySelector('.flow-section') || window.__flowDone === true"
-      ).catch(() => true)
-      if (ready) break
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
-
-    try {
-      const pdfBuffer = await pdfWindow.webContents.printToPDF({
-        pageSize: 'A4',
-        margins: { top: 0.6, bottom: 0.6, left: 0.6, right: 0.6 },
-        printBackground: true,
-        landscape: false,
-        preferCSSPageSize: true,
-        displayHeaderFooter: false,
-      })
-      return pdfBuffer
-    } finally {
-      pdfWindow.close()
-    }
-  })
+  ipcMain.handle('financials:renderPDF', async (_, html) => renderHtmlToPdf(html))
 }

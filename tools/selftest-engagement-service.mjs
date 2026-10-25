@@ -5,6 +5,7 @@ import path from 'node:path'
 import https from 'node:https'
 import net from 'node:net'
 import * as XLSX from 'xlsx'
+import { PDFDocument } from 'pdf-lib'
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -137,6 +138,8 @@ function syntheticTBFile(closingBalance = -80) {
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
     ['Period', 'Ledger Code', 'Name', 'OpeningBalance', 'Debit', 'Credit', 'ClosingBalance', 'Parent', 'Group.$Parent'],
     ['2025-26', '1001', 'Synthetic Cash', -100, 20, 0, closingBalance, 'Current Assets', 'Current Assets'],
+    ['2025-26', '2001', 'Synthetic Expense', -20, 0, 0, -20, 'Expenses', 'Expenses'],
+    ['2025-26', '3001', 'Synthetic Capital', 100, 0, 0, 100, 'Equity', 'Equity'],
   ]), 'Trial Balance')
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
 }
@@ -153,12 +156,36 @@ try {
   await pool.query(`
     CREATE TABLE entities (
       id SERIAL PRIMARY KEY, name TEXT NOT NULL, constitution INTEGER NOT NULL,
-      constitution_display TEXT, business_type TEXT
+      constitution_display TEXT, business_type TEXT, address TEXT, cin TEXT, pan TEXT,
+      jurisdiction TEXT, legal_form TEXT
     );
     CREATE TABLE global_signatories (id SERIAL PRIMARY KEY, name TEXT NOT NULL);
     CREATE TABLE financial_periods (
       id SERIAL PRIMARY KEY, year_label TEXT NOT NULL, date_from DATE NOT NULL, date_till DATE NOT NULL,
       UNIQUE (date_from, date_till)
+    );
+    CREATE TABLE mapping_rule_sets (
+      id SERIAL PRIMARY KEY, name TEXT NOT NULL, is_default BOOLEAN DEFAULT FALSE,
+      entity_id INTEGER REFERENCES entities(id), created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE level_format (
+      id SERIAL PRIMARY KEY, rule_set_id INTEGER NOT NULL REFERENCES mapping_rule_sets(id),
+      constitution INTEGER NOT NULL, alie TEXT, level1 TEXT, level2 TEXT, level3 TEXT,
+      level4 TEXT, level5 TEXT, level6 TEXT, level7 TEXT, sort_order INTEGER DEFAULT 0
+    );
+    CREATE TABLE map1 (
+      id SERIAL PRIMARY KEY, rule_set_id INTEGER NOT NULL REFERENCES mapping_rule_sets(id),
+      constitution INTEGER NOT NULL, tally_pre_primary TEXT, mapping1_resultant TEXT
+    );
+    CREATE TABLE map2 (
+      id SERIAL PRIMARY KEY, rule_set_id INTEGER NOT NULL REFERENCES mapping_rule_sets(id),
+      constitution INTEGER NOT NULL, keywords TEXT, mapping2_resultant TEXT,
+      mapping1_resultant TEXT, priority INTEGER DEFAULT 1, notes TEXT
+    );
+    CREATE TABLE map3 (
+      id SERIAL PRIMARY KEY, rule_set_id INTEGER NOT NULL REFERENCES mapping_rule_sets(id),
+      constitution INTEGER NOT NULL, keywords TEXT, mapping1_resultant TEXT,
+      mapping2_resultant TEXT, mapping3_resultant TEXT, priority INTEGER DEFAULT 1, notes TEXT
     );
     CREATE TABLE entity_periods (
       id SERIAL PRIMARY KEY, entity_id INTEGER NOT NULL REFERENCES entities(id),
@@ -182,20 +209,62 @@ try {
       trail_balance NUMERIC NOT NULL DEFAULT 0, parent TEXT, group_parent TEXT, group_parent_1 TEXT,
       group_parent_2 TEXT, group_parent_3 TEXT, group_parent_4 TEXT, group_parent_5 TEXT,
       group_parent_6 TEXT, group_parent_7 TEXT, group_parent_8 TEXT, trial_balance_type TEXT,
-      upload_nature TEXT
+      upload_nature TEXT, stock_head TEXT
     );
     CREATE TABLE mapped_tb (
       id SERIAL PRIMARY KEY, tb_id INTEGER NOT NULL REFERENCES trial_balances(id),
-      ledger_name TEXT NOT NULL, mapped_head TEXT NOT NULL, amount NUMERIC NOT NULL
+      tb_row_id INTEGER REFERENCES tb_rows(id), rule_set_id INTEGER REFERENCES mapping_rule_sets(id),
+      ledger_name TEXT, mapped_head TEXT, amount NUMERIC
+      ,mapping1_resultant TEXT, mapping2_resultant TEXT, mapping3_resultant TEXT,
+      level_format_id INTEGER REFERENCES level_format(id), level4_value TEXT, level5_value TEXT,
+      level6_value TEXT, level7_value TEXT, alie TEXT, status TEXT DEFAULT 'auto_high',
+      confidence TEXT DEFAULT 'high', conflict_candidates TEXT, conflict_stage INTEGER,
+      discrepancy_suggestion TEXT, override_note TEXT, mapped_at TIMESTAMPTZ DEFAULT now(),
+      UNIQUE(tb_id,tb_row_id)
     );
     CREATE TABLE note_details (
       id SERIAL PRIMARY KEY, tb_id INTEGER NOT NULL REFERENCES trial_balances(id),
-      note_num INTEGER NOT NULL, details JSONB NOT NULL
+      note_num INTEGER NOT NULL, note_title TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '{}',
+      details JSONB NOT NULL DEFAULT '{}', updated_at TIMESTAMPTZ DEFAULT now(),
+      UNIQUE(tb_id,note_num)
+    );
+    CREATE TABLE note_disclosures (
+      id SERIAL PRIMARY KEY, tb_id INTEGER NOT NULL REFERENCES trial_balances(id),
+      note_num INTEGER NOT NULL, note_title TEXT NOT NULL, text TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ DEFAULT now(), UNIQUE(tb_id,note_num)
+    );
+    CREATE TABLE general_notes (
+      id SERIAL PRIMARY KEY, entity_id INTEGER NOT NULL REFERENCES entities(id),
+      entity_period_id INTEGER NOT NULL REFERENCES entity_periods(id),
+      segments JSONB NOT NULL DEFAULT '[]', updated_at TIMESTAMPTZ DEFAULT now(),
+      UNIQUE(entity_id,entity_period_id)
+    );
+    CREATE TABLE auditors (
+      id SERIAL PRIMARY KEY, entity_id INTEGER NOT NULL REFERENCES entities(id),
+      firm_name TEXT, frn TEXT, name TEXT NOT NULL, designation TEXT, membership_number TEXT NOT NULL,
+      pan TEXT, membership_category TEXT, is_active BOOLEAN NOT NULL DEFAULT TRUE
     );
     CREATE TABLE signatories (
       id SERIAL PRIMARY KEY, entity_id INTEGER NOT NULL REFERENCES entities(id),
-      name TEXT NOT NULL, designation TEXT NOT NULL
+      name TEXT NOT NULL, designation TEXT NOT NULL, din TEXT, id_type TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE
     );
+    INSERT INTO mapping_rule_sets(name,is_default) VALUES ('Synthetic default',TRUE);
+    INSERT INTO level_format(rule_set_id,constitution,alie,level1,level2,sort_order)
+      VALUES
+        (1,3,'ASSETS','Current assets','Cash and cash equivalents',1),
+        (1,3,'EQUITY AND LIABILITIES','Equity','Share capital',2),
+        (1,3,'Expenses','Expenses','Other expenses',3);
+    INSERT INTO map1(rule_set_id,constitution,tally_pre_primary,mapping1_resultant)
+      VALUES
+        (1,3,'Current Assets','Current assets'),
+        (1,3,'Expenses','Expenses'),
+        (1,3,'Equity','Equity');
+    INSERT INTO map2(rule_set_id,constitution,keywords,mapping1_resultant,mapping2_resultant)
+      VALUES
+        (1,3,'Cash|Bank','Current assets','Cash and cash equivalents'),
+        (1,3,'Synthetic Expense','Expenses','Other expenses'),
+        (1,3,'Synthetic Capital','Equity','Share capital');
     INSERT INTO entities(name,constitution,constitution_display,business_type)
       VALUES ('Synthetic legacy client',3,'Company','Trader');
     INSERT INTO trial_balances(entity_id,period,filename,row_count)
@@ -204,7 +273,7 @@ try {
       VALUES (1,'Synthetic Sales','Income','Revenue from operations','Sale',NULL,125000,100000);
     INSERT INTO mapped_tb(tb_id,ledger_name,mapped_head,amount)
       VALUES (1,'Synthetic Sales','Revenue from operations',125000);
-    INSERT INTO note_details(tb_id,note_num,details) VALUES (1,4,'{"line":"synthetic disclosure"}');
+    INSERT INTO note_details(tb_id,note_num,note_title,data,details) VALUES (1,4,'Synthetic note','{"line":"synthetic disclosure"}','{"line":"synthetic disclosure"}');
     INSERT INTO global_signatories(name) VALUES ('Synthetic Auditor');
     INSERT INTO signatories(entity_id,name,designation) VALUES (1,'Synthetic Director','Director');
   `)
@@ -446,7 +515,7 @@ try {
 
   const imported = await ok('trial-balance/import', originalUpload, ownerToken)
   const importedTBId = Number(imported.data.trialBalance.id)
-  check(imported.data.rowCount === 1 && imported.data.source.fileName === originalUpload.fileName
+  check(imported.data.rowCount === 3 && imported.data.source.fileName === originalUpload.fileName
     && imported.data.source.sha256.length === 64, 'owner imports validated Excel rows with retained source metadata')
   const listedTBs = await ok('trial-balances', { engagementId }, readerToken)
   check(listedTBs.data.some(tb => Number(tb.id) === importedTBId && tb.source_type === 'service_import'
@@ -454,7 +523,7 @@ try {
   const inspectedRows = await ok('trial-balance/rows', {
     engagementId, trialBalanceId: importedTBId, offset: 0, limit: 10,
   }, readerToken)
-  check(inspectedRows.data.totalRows === 1 && inspectedRows.data.rows[0].name === 'Synthetic Cash'
+  check(inspectedRows.data.totalRows === 3 && inspectedRows.data.rows[0].name === 'Synthetic Cash'
     && Number(inspectedRows.data.rows[0].closing_balance) === -80,
   'reader can inspect imported ledger values through the protected paginated API')
   await fails('trial-balance/import', originalUpload, editorToken, /already been imported/i)
@@ -465,6 +534,133 @@ try {
   await fails('trial-balance/rows', {
     engagementId: unrelatedEngagement.data.id, trialBalanceId: importedTBId, offset: 0, limit: 10,
   }, ownerToken, /not found in this engagement/i)
+
+  const journalInput = {
+    engagementId,
+    sourceTrialBalanceId: importedTBId,
+    date: '2025-06-10',
+    narration: 'Synthetic year-end adjustment',
+    entries: [
+      { ledgerName: 'Synthetic Expense', side: 'Dr', amount: '15.00' },
+      { ledgerName: 'Synthetic Capital', side: 'Cr', amount: '15.00' },
+    ],
+  }
+  await fails('journal/post', journalInput, readerToken, /edit access/i)
+  await fails('journal/post', journalInput, partnerToken, /edit access/i)
+  await fails('journal/post', journalInput, adminToken, /edit access/i)
+  await fails('journal/post', journalInput, outsiderToken, /not found|access/i)
+  await fails('journal/post', { ...journalInput, entries: [{ ...journalInput.entries[0], amount: '15.00' }, { ...journalInput.entries[1], amount: '14.99' }] }, ownerToken, /balance exactly/i)
+  const postedJournal = await ok('journal/post', journalInput, ownerToken)
+  check(postedJournal.data.entryNumber === 1, 'engagement owner can post a balanced journal without approval')
+  const journalHistory = await ok('journals', { engagementId }, readerToken)
+  check(journalHistory.data.length === 1 && journalHistory.data[0].lines.length === 2,
+    'reader can inspect immutable posted journal history')
+  const sourceAfterJournal = await pool.query(
+    `SELECT COUNT(*)::integer AS count,
+            (SELECT closing_balance::text FROM tb_rows WHERE tb_id=$1 ORDER BY id LIMIT 1) AS closing_balance
+     FROM tb_rows WHERE tb_id=$1`,
+    [importedTBId]
+  )
+  check(sourceAfterJournal.rows[0].count === 3 && Number(sourceAfterJournal.rows[0].closing_balance) === -80,
+    'posting journals leaves the imported Trial Balance rows unchanged')
+  const finalSnapshot1 = await ok('final-trial-balance/create', {
+    engagementId, sourceTrialBalanceId: importedTBId,
+  }, ownerToken)
+  check(finalSnapshot1.data.version === 1 && finalSnapshot1.data.mappedRows === 3
+    && finalSnapshot1.data.balanceDifference === 0,
+  'final TB snapshot applies posted journals, records its balance difference, and reuses India mapping')
+  const finalRows1 = await ok('final-trial-balance/rows', {
+    engagementId, trialBalanceId: finalSnapshot1.data.trialBalance.id,
+  }, readerToken)
+  check(finalRows1.data.length === 3
+    && finalRows1.data.some(row => row.name === 'Synthetic Expense' && row.mapping1_resultant === 'Expenses')
+    && finalRows1.data.some(row => row.name === 'Synthetic Capital' && row.mapping1_resultant === 'Equity'),
+  'final TB rows include posted journals and India auto-mapping classifications')
+  await fails('final-trial-balance/rows', {
+    engagementId: unrelatedEngagement.data.id, trialBalanceId: finalSnapshot1.data.trialBalance.id,
+  }, ownerToken, /not found in this engagement/i)
+
+  const secondJournal = await ok('journal/post', {
+    ...journalInput,
+    date: '2025-06-11',
+    narration: 'Synthetic second adjustment',
+    entries: [
+      { ledgerName: 'Synthetic Expense', side: 'Dr', amount: '5.00' },
+      { ledgerName: 'Synthetic Capital', side: 'Cr', amount: '5.00' },
+    ],
+  }, editorToken)
+  check(secondJournal.data.entryNumber === 2, 'engagement editor can post without an approval queue')
+  const finalSnapshot2 = await ok('final-trial-balance/create', {
+    engagementId, sourceTrialBalanceId: importedTBId,
+  }, ownerToken)
+  const finalSnapshotList = await ok('final-trial-balances', { engagementId }, readerToken)
+  check(finalSnapshot2.data.version === 2 && finalSnapshotList.data.length === 2
+    && finalSnapshotList.data[0].journal_watermark > finalSnapshotList.data[1].journal_watermark,
+  'each journal cut produces a new immutable final TB version with a journal watermark')
+
+  const reportingData = await ok('reporting/data', {
+    engagementId, trialBalanceId: finalSnapshot2.data.trialBalance.id,
+  }, readerToken)
+  check(reportingData.data.financialRows.length === 3 && reportingData.data.levelFormat.length === 3,
+    'reader can view India statement inputs for an authorized final TB')
+  await fails('reporting/data', {
+    engagementId: unrelatedEngagement.data.id, trialBalanceId: finalSnapshot2.data.trialBalance.id,
+  }, ownerToken, /not found in this engagement/i)
+  const emptyOpinion = {
+    addressee: 'To the Members of Synthetic legacy client',
+    opinion: '',
+    basisForOpinion: 'Synthetic basis text',
+    managementResponsibilities: 'Synthetic management responsibility text',
+    auditorResponsibilities: 'Synthetic auditor responsibility text',
+    otherMatters: '',
+    reportDate: '2026-05-01',
+    reportPlace: 'Synthetic City',
+    firmName: 'Synthetic Audit LLP',
+    firmAddress: '1 Synthetic Street',
+    firmRegistrationNumber: 'FRN-0001',
+    auditorName: 'Synthetic Auditor',
+    auditorMembershipNumber: 'M-1001',
+    auditorDesignation: 'Partner',
+  }
+  await fails('reporting/settings/save', { engagementId, fields: emptyOpinion }, readerToken, /edit access/i)
+  await ok('reporting/settings/save', { engagementId, fields: emptyOpinion }, ownerToken)
+  const testPdf = await PDFDocument.create()
+  testPdf.addPage().drawText('Synthetic combined reporting pack')
+  const pdfBase64 = Buffer.from(await testPdf.save()).toString('base64')
+  const reportPayload = {
+    engagementId,
+    trialBalanceId: finalSnapshot2.data.trialBalance.id,
+    pdfContentBase64: pdfBase64,
+    signingDetails: { approvalDate: '2026-04-30', approvalPlace: 'Approval City', signatoryIds: [1] },
+  }
+  await fails('reporting/output/save', reportPayload, ownerToken, /auditor-entered opinion/i)
+  const completedFields = { ...emptyOpinion, opinion: 'Synthetic auditor-entered opinion text.' }
+  await ok('reporting/settings/save', { engagementId, fields: completedFields }, ownerToken)
+  const savedOutput = await ok('reporting/output/save', reportPayload, ownerToken)
+  check(savedOutput.data.version === 1 && savedOutput.data.template_revision === 2
+    && savedOutput.data.financial_data_sha256.length === 64,
+  'combined PDF output is versioned with the exact template revision and final-TB data hash')
+  const storedOutput = await ok('reporting/output/read', { outputId: savedOutput.data.id }, readerToken)
+  const storedPdf = Buffer.from(storedOutput.data.pdfContentBase64, 'base64')
+  const parsedPdf = await PDFDocument.load(storedPdf)
+  check(parsedPdf.getPageCount() === 1, 'saved report PDF bytes survive a protected read and remain a valid PDF')
+  const savedDetails = await pool.query(
+    `SELECT audit_report_fields->>'reportDate' AS report_date,
+            signing_details->>'approvalDate' AS approval_date,
+            signing_details->>'auditReportDate' AS retained_report_date,
+            signing_details->>'approvalPlace' AS approval_place
+     FROM engagement_report_outputs WHERE id=$1`,
+    [savedOutput.data.id]
+  )
+  check(savedDetails.rows[0].report_date === '2026-05-01'
+    && savedDetails.rows[0].approval_date === '2026-04-30'
+    && savedDetails.rows[0].retained_report_date === '2026-05-01'
+    && savedDetails.rows[0].approval_place === 'Approval City',
+  'audit report date/place are separately retained from financial-statement approval date/place')
+  await fails('reporting/output/finalise', { outputId: savedOutput.data.id }, ownerToken, /assigned engagement partner/i)
+  const finalisedOutput = await ok('reporting/output/finalise', { outputId: savedOutput.data.id }, substituteToken)
+  check(!!finalisedOutput.data.finalised_at, 'authorised substitute finalises an immutable report output')
+  await fails('reporting/output/finalise', { outputId: savedOutput.data.id }, partnerToken, /already finalised/i)
 
   const concurrentUploads = [
     { ...originalUpload, fileName: 'concurrent-a.xlsx', fileContentBase64: syntheticTBFile(-81).toString('base64') },
@@ -482,6 +678,7 @@ try {
      JOIN trial_balances t ON t.id=i.trial_balance_id
      JOIN tb_rows r ON r.tb_id=t.id
      WHERE i.engagement_id=$1 AND i.source_filename IN ('concurrent-a.xlsx','concurrent-b.xlsx')
+       AND r.name='Synthetic Cash'
      ORDER BY i.source_filename`,
     [engagementId]
   )

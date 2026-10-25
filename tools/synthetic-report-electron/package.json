@@ -1,0 +1,5 @@
+{
+  "name": "synthetic-report-renderer",
+  "private": true,
+  "main": "main.cjs"
+}

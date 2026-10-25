@@ -2,6 +2,7 @@ import { createHash, randomBytes, pbkdf2, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 import * as XLSX from 'xlsx'
 import { parseTBExcel } from '../services/tb-template.js'
+import { runMappingEngine, persistMappingResults } from '../services/mapping-engine.js'
 import {
   canEditEngagement, canFinaliseEngagement, canViewEngagement,
   isValidDateOnly, validateActivation, validateEngagementDraft,
@@ -81,7 +82,8 @@ async function authenticated(event, allowPasswordChange = false) {
 
 async function fetchEngagement(firmId, engagementId) {
   const { rows: [row] } = await query(
-    `SELECT e.*, en.name AS client_name, en.constitution_display, en.jurisdiction AS client_jurisdiction,
+    `SELECT e.*, en.name AS client_name, en.constitution, en.constitution_display,
+            en.business_type, en.jurisdiction AS client_jurisdiction,
             en.legal_form AS client_legal_form,
             owner.display_name AS owner_name, owner.email AS owner_email,
             partner.display_name AS partner_name, partner.email AS partner_email,
@@ -139,6 +141,70 @@ async function assertEngagementTBContext(user, engagementId) {
     throw new Error('The engagement reporting period is not linked to its client.')
   }
   return { engagement, membership, period }
+}
+
+function amountToCents(value) {
+  const text = String(value ?? '').trim()
+  if (!/^\d{1,12}(?:\.\d{1,2})?$/.test(text)) throw new Error('Journal amounts must be positive numbers with no more than two decimal places.')
+  const [whole, fraction = ''] = text.split('.')
+  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, '0'))
+  if (!Number.isSafeInteger(cents) || cents <= 0) throw new Error('Journal amounts must be positive and within the supported range.')
+  return cents
+}
+
+function validateAuditReportFields(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Audit report fields must be an object.')
+  const keys = [
+    'addressee', 'opinion', 'basisForOpinion', 'managementResponsibilities',
+    'auditorResponsibilities', 'otherMatters', 'reportDate', 'reportPlace',
+    'firmName', 'firmAddress', 'firmRegistrationNumber', 'auditorName',
+    'auditorMembershipNumber', 'auditorDesignation',
+  ]
+  const result = {}
+  for (const key of keys) {
+    const field = value[key] == null ? '' : String(value[key])
+    if (field.length > 12000) throw new Error(`Audit report field "${key}" is too long.`)
+    result[key] = field.trim()
+  }
+  if (result.reportDate && !isValidDateOnly(result.reportDate)) throw new Error('Audit report date must use YYYY-MM-DD.')
+  return result
+}
+
+async function assertAuthorizedEngagementTB(user, engagementId, trialBalanceId) {
+  const context = await assertEngagementTBContext(user, engagementId)
+  const tbId = Number(trialBalanceId)
+  if (!Number.isSafeInteger(tbId) || tbId <= 0) throw new Error('Trial balance not found in this engagement.')
+  const { rows: [authorized] } = await query(
+    `SELECT tb.id,tb.entity_id,tb.entity_period_id,tb.period,tb.filename,tb.row_count,tb.branch_name
+     FROM trial_balances tb
+     WHERE tb.id=$1 AND tb.entity_id=$2 AND tb.entity_period_id=$3 AND (
+       EXISTS (SELECT 1 FROM engagement_trial_balance_imports i WHERE i.engagement_id=$4 AND i.trial_balance_id=tb.id)
+       OR EXISTS (SELECT 1 FROM engagement_legacy_tb_links l WHERE l.engagement_id=$4 AND l.trial_balance_id=tb.id AND l.entity_period_id=$3)
+       OR EXISTS (SELECT 1 FROM engagement_final_tb_snapshots s WHERE s.engagement_id=$4 AND s.trial_balance_id=tb.id)
+     )`,
+    [tbId, context.engagement.entity_id, context.period.id, context.engagement.id]
+  )
+  if (!authorized) throw new Error('Trial balance not found in this engagement.')
+  return { ...context, trialBalance: authorized }
+}
+
+async function assertIndiaScheduleIII(engagement) {
+  const { rows: [pack] } = await query(
+    `SELECT processing_status FROM reporting_pack_catalog WHERE pack_id=$1`,
+    [engagement.reporting_pack_id]
+  )
+  if (engagement.reporting_pack_id !== 'IN_SCHEDULE_III_LEGACY' || pack?.processing_status !== 'implemented') {
+    throw new Error('This engagement reporting basis is not implemented in the current workflow. Only the existing India legacy Schedule III pack can be processed.')
+  }
+  if (engagement.trial_balance_currency !== 'INR' || engagement.presentation_currency !== 'INR') {
+    throw new Error('This India reporting workflow formats figures in INR and does not translate currencies. Confirm both engagement currencies as INR before processing.')
+  }
+}
+
+function assertEngagementEditable(engagement, period) {
+  if (engagement.status === 'finalised' || engagement.status === 'archived' || period.locked || period.is_final) {
+    throw new Error('This engagement reporting period is locked or finalised and cannot be changed.')
+  }
 }
 
 function validateTBUpload(buffer) {
@@ -1058,6 +1124,692 @@ export function registerEngagementHandlers(ipcMain, database) {
       }
       throw error
     }
+  })
+
+  ipcMain.handle('engagement:journalList', async (event, engagementId) => {
+    const user = await authenticated(event)
+    const { engagement } = await assertEngagementTBContext(user, engagementId)
+    const { rows } = await query(
+      `SELECT j.id,j.source_trial_balance_id,j.entry_number,j.journal_date,j.narration,
+              j.created_by,j.posted_at,u.display_name AS posted_by,
+              COALESCE(json_agg(json_build_object(
+                'id',l.id,'lineNumber',l.line_number,'ledgerName',l.ledger_name,
+                'ledgerCode',l.ledger_code,'side',l.entry_side,'amount',l.amount
+              ) ORDER BY l.line_number) FILTER (WHERE l.id IS NOT NULL),'[]'::json) AS lines
+       FROM engagement_journals j
+       JOIN firm_users u ON u.id=j.created_by
+       LEFT JOIN engagement_journal_lines l ON l.journal_id=j.id
+       WHERE j.engagement_id=$1
+       GROUP BY j.id,u.display_name
+       ORDER BY j.entry_number DESC`,
+      [engagement.id]
+    )
+    return rows
+  })
+
+  ipcMain.handle('engagement:journalPost', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const engagementId = Number(input.engagementId)
+    const context = await assertAuthorizedEngagementTB(user, engagementId, input.sourceTrialBalanceId)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    const journalDate = String(input.date || '')
+    if (!isValidDateOnly(journalDate) || journalDate < dateOnly(context.engagement.period_start) || journalDate > dateOnly(context.engagement.period_end)) {
+      throw new Error('Journal date must fall within the engagement reporting period.')
+    }
+    const narration = String(input.narration || '').trim()
+    if (!narration || narration.length > 2000) throw new Error('Enter a journal narration of no more than 2,000 characters.')
+    if (!Array.isArray(input.entries) || input.entries.length < 2 || input.entries.length > 500) {
+      throw new Error('A journal must contain between 2 and 500 lines.')
+    }
+    const entries = input.entries.map((entry, index) => {
+      const ledgerName = String(entry.ledgerName || '').trim()
+      const ledgerCode = String(entry.ledgerCode || '').trim()
+      if (!ledgerName || ledgerName.length > 255 || ledgerCode.length > 100) throw new Error(`Journal line ${index + 1} needs a valid ledger name and code.`)
+      if (!['Dr', 'Cr'].includes(entry.side)) throw new Error(`Journal line ${index + 1} must be Dr or Cr.`)
+      return { ledgerName, ledgerCode: ledgerCode || null, side: entry.side, cents: amountToCents(entry.amount) }
+    })
+    const debit = entries.filter(entry => entry.side === 'Dr').reduce((total, entry) => total + entry.cents, 0)
+    const credit = entries.filter(entry => entry.side === 'Cr').reduce((total, entry) => total + entry.cents, 0)
+    if (debit !== credit) throw new Error('Journal entry must balance exactly before it can be posted.')
+
+    return runInTransaction(async () => {
+      const { rows: [locked] } = await query(
+        `SELECT e.id,e.status,ep.locked,ep.is_final
+         FROM engagements e
+         JOIN engagement_reporting_sets rs ON rs.engagement_id=e.id
+         JOIN entity_periods ep ON ep.id=rs.entity_period_id
+         WHERE e.id=$1 AND e.firm_id=$2 AND rs.id=$3
+         FOR UPDATE OF e,ep`,
+        [context.engagement.id, user.firmId, context.engagement.reporting_set_id]
+      )
+      if (!locked) throw new Error('Engagement reporting context is unavailable.')
+      assertEngagementEditable({ ...context.engagement, status: locked.status }, { locked: locked.locked, is_final: locked.is_final })
+      const currentEngagement = await fetchEngagement(user.firmId, context.engagement.id)
+      await assertCanEdit(user, currentEngagement)
+      const { rows: [sequence] } = await query(
+        `SELECT COALESCE(MAX(entry_number),0)::integer+1 AS next_number
+         FROM engagement_journals WHERE engagement_id=$1`,
+        [context.engagement.id]
+      )
+      const { rows: [journal] } = await query(
+        `INSERT INTO engagement_journals
+           (engagement_id,source_trial_balance_id,entry_number,journal_date,narration,created_by)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,entry_number,journal_date,narration,posted_at`,
+        [context.engagement.id, context.trialBalance.id, sequence.next_number, journalDate, narration, user.id]
+      )
+      const lineValues = []
+      const lineParams = []
+      entries.forEach((entry, index) => {
+        const base = index * 6
+        lineValues.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6})`)
+        lineParams.push(journal.id, index + 1, entry.ledgerName, entry.ledgerCode, entry.side, (entry.cents / 100).toFixed(2))
+      })
+      await query(
+        `INSERT INTO engagement_journal_lines (journal_id,line_number,ledger_name,ledger_code,entry_side,amount)
+         VALUES ${lineValues.join(',')}`,
+        lineParams
+      )
+      await logAudit(user, 'journal.posted', context.engagement.id, {
+        journalId: Number(journal.id), entryNumber: journal.entry_number,
+        sourceTrialBalanceId: context.trialBalance.id, lineCount: entries.length,
+      })
+      return { ...journal, id: Number(journal.id), entryNumber: journal.entry_number }
+    })
+  })
+
+  ipcMain.handle('engagement:finalTrialBalanceCreate', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.sourceTrialBalanceId)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    await assertIndiaScheduleIII(context.engagement)
+    return runInTransaction(async () => {
+      const { rows: [locked] } = await query(
+        `SELECT e.status,ep.locked,ep.is_final
+         FROM engagements e
+         JOIN engagement_reporting_sets rs ON rs.engagement_id=e.id
+         JOIN entity_periods ep ON ep.id=rs.entity_period_id
+         WHERE e.id=$1 AND e.firm_id=$2 AND rs.id=$3
+         FOR UPDATE OF e,ep`,
+        [context.engagement.id, user.firmId, context.engagement.reporting_set_id]
+      )
+      if (!locked) throw new Error('Engagement reporting context is unavailable.')
+      assertEngagementEditable({ ...context.engagement, status: locked.status }, { locked: locked.locked, is_final: locked.is_final })
+      const currentEngagement = await fetchEngagement(user.firmId, context.engagement.id)
+      await assertCanEdit(user, currentEngagement)
+      await assertIndiaScheduleIII(currentEngagement)
+      const { rows: [sourceLink] } = await query(
+        `SELECT 1 FROM engagement_trial_balance_imports WHERE engagement_id=$1 AND trial_balance_id=$2
+         UNION ALL
+         SELECT 1 FROM engagement_legacy_tb_links WHERE engagement_id=$1 AND trial_balance_id=$2
+         LIMIT 1`,
+        [context.engagement.id, context.trialBalance.id]
+      )
+      if (!sourceLink) throw new Error('A final Trial Balance must be based on an imported or explicitly linked source Trial Balance.')
+      const { rows: sourceRows } = await query(
+        `SELECT period,branch,ledger_code,name,opening_balance,debit,credit,closing_balance,
+                is_revenue,is_deemed_positive,trail_balance,parent,group_parent,group_parent_1,
+                group_parent_2,group_parent_3,group_parent_4,group_parent_5,group_parent_6,
+                group_parent_7,group_parent_8,trial_balance_type
+         FROM tb_rows WHERE tb_id=$1 ORDER BY id`,
+        [context.trialBalance.id]
+      )
+      if (!sourceRows.length) throw new Error('The selected source Trial Balance has no ledger rows.')
+      const { rows: [versionRow] } = await query(
+        `SELECT COALESCE(MAX(version),0)::integer+1 AS next_version
+         FROM engagement_final_tb_snapshots WHERE engagement_id=$1`,
+        [context.engagement.id]
+      )
+      const { rows: [watermark] } = await query(
+        `SELECT COALESCE(MAX(id),0)::bigint AS journal_id
+         FROM engagement_journals WHERE engagement_id=$1 AND source_trial_balance_id=$2`,
+        [context.engagement.id, context.trialBalance.id]
+      )
+      const { rows: [ruleSet] } = await query(
+        `SELECT mrs.id
+         FROM mapping_rule_sets mrs
+         JOIN entities e ON e.id=$1
+         WHERE (mrs.entity_id=e.id OR mrs.is_default=TRUE)
+         ORDER BY (mrs.entity_id=e.id) DESC,mrs.is_default DESC,mrs.id
+         LIMIT 1`,
+        [context.engagement.entity_id]
+      )
+      if (!ruleSet) throw new Error('No India mapping rule set is available for this client. Configure the existing India mapping rules before processing.')
+
+      const { rows: journalRows } = await query(
+        `SELECT l.ledger_name,l.ledger_code,l.entry_side,l.amount
+         FROM engagement_journals j
+         JOIN engagement_journal_lines l ON l.journal_id=j.id
+         WHERE j.engagement_id=$1 AND j.source_trial_balance_id=$2 AND j.id<=$3
+         ORDER BY j.id,l.line_number`,
+        [context.engagement.id, context.trialBalance.id, watermark.journal_id]
+      )
+      const sourceByName = new Map()
+      const sourceByCode = new Map()
+      sourceRows.forEach((row, index) => {
+        const nameKey = String(row.name || '').trim().toLocaleLowerCase()
+        if (!sourceByName.has(nameKey)) sourceByName.set(nameKey, [])
+        sourceByName.get(nameKey).push(index)
+        const codeKey = String(row.ledger_code || '').trim().toLocaleLowerCase()
+        if (codeKey) {
+          if (!sourceByCode.has(codeKey)) sourceByCode.set(codeKey, [])
+          sourceByCode.get(codeKey).push(index)
+        }
+      })
+      const adjustments = new Map()
+      for (const line of journalRows) {
+        const nameKey = String(line.ledger_name || '').trim().toLocaleLowerCase()
+        const codeKey = String(line.ledger_code || '').trim().toLocaleLowerCase()
+        const matches = codeKey ? sourceByCode.get(codeKey) || [] : sourceByName.get(nameKey) || []
+        if (matches.length > 1) throw new Error(`Ledger "${line.ledger_name}" is ambiguous in the source Trial Balance; use its ledger code on the journal line.`)
+        const key = matches.length ? `row:${matches[0]}` : `new:${codeKey || nameKey}`
+        const current = adjustments.get(key) || {
+          sourceIndex: matches.length ? matches[0] : null,
+          ledgerName: line.ledger_name,
+          ledgerCode: line.ledger_code,
+          debit: 0,
+          credit: 0,
+        }
+        const amount = Number(line.amount)
+        if (line.entry_side === 'Dr') current.debit += amount
+        else current.credit += amount
+        adjustments.set(key, current)
+      }
+      const resultRows = sourceRows.map(row => ({ ...row }))
+      for (const adjustment of adjustments.values()) {
+        let row
+        if (adjustment.sourceIndex == null) {
+          row = {
+            period: context.period.year_label || '',
+            branch: '',
+            ledger_code: adjustment.ledgerCode,
+            name: adjustment.ledgerName,
+            opening_balance: 0,
+            debit: 0,
+            credit: 0,
+            closing_balance: 0,
+            is_revenue: false,
+            is_deemed_positive: true,
+            trail_balance: 0,
+            parent: null,
+            group_parent: null,
+            group_parent_1: null,
+            group_parent_2: null,
+            group_parent_3: null,
+            group_parent_4: null,
+            group_parent_5: null,
+            group_parent_6: null,
+            group_parent_7: null,
+            group_parent_8: null,
+            trial_balance_type: null,
+          }
+          resultRows.push(row)
+        } else {
+          row = resultRows[adjustment.sourceIndex]
+        }
+        row.debit = Number(row.debit || 0) + adjustment.debit
+        row.credit = Number(row.credit || 0) + adjustment.credit
+        row.closing_balance = Number(row.closing_balance || 0) - adjustment.debit + adjustment.credit
+        row.trail_balance = row.closing_balance
+        if (adjustment.sourceIndex == null) row.is_deemed_positive = row.closing_balance < 0
+      }
+      const balanceDifference = resultRows.reduce((sum, row) => sum + Number(row.closing_balance || 0), 0)
+      const { rows: [tb] } = await query(
+        `INSERT INTO trial_balances (entity_id,period,filename,row_count,branch_name,entity_period_id)
+         VALUES ($1,$2,$3,$4,'',$5) RETURNING id,period,filename,row_count,uploaded_at,branch_name,entity_id,entity_period_id`,
+        [context.engagement.entity_id, context.period.year_label || '', `Final TB v${versionRow.next_version}`, resultRows.length, context.period.id]
+      )
+      const columns = [
+        'tb_id','period','branch','ledger_code','name','opening_balance','debit','credit','closing_balance',
+        'is_revenue','is_deemed_positive','trail_balance','parent','group_parent','group_parent_1',
+        'group_parent_2','group_parent_3','group_parent_4','group_parent_5','group_parent_6','group_parent_7',
+        'group_parent_8','trial_balance_type','upload_nature',
+      ]
+      const chunkSize = 300
+      for (let start = 0; start < resultRows.length; start += chunkSize) {
+        const chunk = resultRows.slice(start, start + chunkSize)
+        const values = []
+        const params = []
+        chunk.forEach((row, index) => {
+          const base = index * columns.length
+          values.push(`(${columns.map((_, column) => `$${base + column + 1}`).join(',')})`)
+          params.push(
+            tb.id,row.period ?? null,row.branch ?? null,row.ledger_code ?? null,row.name,
+            row.opening_balance,row.debit,row.credit,row.closing_balance,row.is_revenue,
+            row.is_deemed_positive,row.trail_balance,row.parent ?? null,row.group_parent ?? null,
+            row.group_parent_1 ?? null,row.group_parent_2 ?? null,row.group_parent_3 ?? null,
+            row.group_parent_4 ?? null,row.group_parent_5 ?? null,row.group_parent_6 ?? null,
+            row.group_parent_7 ?? null,row.group_parent_8 ?? null,row.trial_balance_type ?? null,
+            'Engagement Final TB'
+          )
+        })
+        await query(`INSERT INTO tb_rows (${columns.join(',')}) VALUES ${values.join(',')}`, params)
+      }
+      await query(
+        `INSERT INTO engagement_final_tb_snapshots
+           (engagement_id,source_trial_balance_id,trial_balance_id,version,journal_watermark,mapping_rule_set_id,created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [context.engagement.id, context.trialBalance.id, tb.id, versionRow.next_version, watermark.journal_id, ruleSet.id, user.id]
+      )
+      let queryQueue = Promise.resolve()
+      const mappingDatabase = {
+        query(sql, params) {
+          const result = queryQueue.then(() => query(sql, params))
+          queryQueue = result.then(() => undefined, () => undefined)
+          return result
+        },
+        runInTransaction,
+      }
+      const mapped = await runMappingEngine(
+        Number(tb.id),
+        Number(ruleSet.id),
+        Number(context.engagement.constitution),
+        { businessType: context.engagement.business_type, database: mappingDatabase }
+      )
+      await persistMappingResults(mapped, mappingDatabase)
+      await logAudit(user, 'trial_balance.final_snapshot_created', context.engagement.id, {
+        sourceTrialBalanceId: context.trialBalance.id,
+        trialBalanceId: Number(tb.id),
+        version: versionRow.next_version,
+        journalWatermark: Number(watermark.journal_id),
+        rowCount: resultRows.length,
+        balanceDifference: Number(balanceDifference.toFixed(2)),
+        mappingRuleSetId: Number(ruleSet.id),
+      })
+      return {
+        trialBalance: { ...tb, id: Number(tb.id), row_count: Number(tb.row_count) },
+        version: versionRow.next_version,
+        journalWatermark: Number(watermark.journal_id),
+        balanceDifference: Number(balanceDifference.toFixed(2)),
+        mappedRows: mapped.length,
+      }
+    })
+  })
+
+  ipcMain.handle('engagement:finalTrialBalances', async (event, engagementId) => {
+    const user = await authenticated(event)
+    const { engagement } = await assertEngagementTBContext(user, engagementId)
+    const { rows } = await query(
+      `SELECT s.id AS snapshot_id,s.version,s.source_trial_balance_id,s.trial_balance_id,
+              s.journal_watermark,s.mapping_rule_set_id,s.created_at,
+              tb.period,tb.filename,tb.row_count,tb.uploaded_at,
+              COUNT(mt.id)::integer AS mapped_count,
+              COUNT(mt.id) FILTER (WHERE mt.status='unmapped')::integer AS unmapped_count
+       FROM engagement_final_tb_snapshots s
+       JOIN trial_balances tb ON tb.id=s.trial_balance_id
+       LEFT JOIN mapped_tb mt ON mt.tb_id=tb.id
+       WHERE s.engagement_id=$1
+       GROUP BY s.id,tb.id
+       ORDER BY s.version DESC`,
+      [engagement.id]
+    )
+    return rows.map(row => ({
+      ...row,
+      id: Number(row.trial_balance_id),
+      snapshotId: Number(row.snapshot_id),
+      version: Number(row.version),
+      row_count: Number(row.row_count),
+      mapped_count: Number(row.mapped_count),
+      unmapped_count: Number(row.unmapped_count),
+    }))
+  })
+
+  ipcMain.handle('engagement:finalTrialBalanceRows', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    const { rows } = await query(
+      `SELECT tr.id,tr.period,tr.ledger_code,tr.name,tr.opening_balance,tr.debit,tr.credit,
+              tr.closing_balance,tr.is_deemed_positive,tr.upload_nature,
+              mt.mapping1_resultant,mt.mapping2_resultant,mt.mapping3_resultant,mt.alie,
+              mt.status,mt.confidence,mt.override_note
+       FROM tb_rows tr
+       LEFT JOIN mapped_tb mt ON mt.tb_row_id=tr.id AND mt.tb_id=tr.tb_id
+       WHERE tr.tb_id=$1
+       ORDER BY tr.id`,
+      [context.trialBalance.id]
+    )
+    return rows
+  })
+
+  ipcMain.handle('engagement:reportingData', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    const { engagement, trialBalance } = context
+    await assertIndiaScheduleIII(engagement)
+    const { rows: [snapshot] } = await query(
+      `SELECT s.id,s.version,s.source_trial_balance_id,s.trial_balance_id,s.journal_watermark,
+              s.mapping_rule_set_id,s.created_at
+       FROM engagement_final_tb_snapshots s
+       WHERE s.engagement_id=$1 AND s.trial_balance_id=$2`,
+      [engagement.id, trialBalance.id]
+    )
+    if (!snapshot) throw new Error('Generate a final Trial Balance before creating financial statements.')
+    const { rows: [entity] } = await query(
+      `SELECT id,name,constitution,constitution_display,business_type,address,cin,pan,jurisdiction,legal_form
+       FROM entities WHERE id=$1`,
+      [engagement.entity_id]
+    )
+    const { rows: financialRows } = await query(
+      `SELECT mt.mapping1_resultant,mt.mapping2_resultant,mt.mapping3_resultant,
+              mt.level4_value,mt.level5_value,mt.level6_value,mt.level7_value,
+              mt.status,mt.override_note,tr.name AS ledger_name,tr.name,tr.ledger_code,
+              mt.id AS mapped_id,mt.tb_row_id,mt.tb_id,tr.opening_balance,tr.closing_balance,
+              tr.trail_balance,tr.is_deemed_positive,tr.upload_nature,tr.stock_head,
+              lf.id AS lf_id,COALESCE(lf.alie,mt.alie,lf3.alie) AS alie,
+              COALESCE(lf.level1,mt.mapping1_resultant) AS level1,
+              COALESCE(lf.level2,mt.mapping2_resultant) AS level2,
+              COALESCE(lf.level3,mt.mapping3_resultant) AS level3,
+              lf.level4,lf.level5 AS lf_level5,lf.level6 AS lf_level6,lf.level7 AS lf_level7,
+              COALESCE(lf.sort_order,lf_m2.sort_order,lf3.sort_order) AS sort_order
+       FROM mapped_tb mt
+       JOIN tb_rows tr ON tr.id=mt.tb_row_id
+       LEFT JOIN level_format lf ON lf.id=mt.level_format_id
+       LEFT JOIN level_format lf3 ON lf3.id=(
+         SELECT id FROM level_format WHERE rule_set_id=mt.rule_set_id
+           AND level1=mt.mapping1_resultant AND alie IS NOT NULL LIMIT 1
+       ) AND mt.alie IS NULL AND lf.alie IS NULL
+       LEFT JOIN level_format lf_m2 ON lf_m2.id=(
+         SELECT id FROM level_format WHERE rule_set_id=mt.rule_set_id
+           AND lower(level1)=lower(mt.mapping1_resultant)
+           AND lower(level2)=lower(mt.mapping2_resultant) LIMIT 1
+       ) AND lf.id IS NULL
+       WHERE mt.tb_id=$1
+         AND mt.status IN ('auto_high','auto_medium','auto_low','user_approved','user_override')
+         AND COALESCE(lf.alie,mt.alie,lf3.alie) IS NOT NULL
+       ORDER BY COALESCE(lf.sort_order,lf_m2.sort_order,lf3.sort_order) NULLS LAST,
+                COALESCE(lf.alie,mt.alie),COALESCE(lf.level1,mt.mapping1_resultant),
+                COALESCE(lf.level2,mt.mapping2_resultant),COALESCE(lf.level3,mt.mapping3_resultant)`,
+      [trialBalance.id]
+    )
+    const { rows: levelFormat } = await query(
+      `SELECT * FROM level_format WHERE rule_set_id=$1 AND constitution=$2 ORDER BY sort_order`,
+      [snapshot.mapping_rule_set_id, entity.constitution]
+    )
+    const { rows: details } = await query(
+      `SELECT note_num,note_title,data FROM note_details WHERE tb_id=$1 ORDER BY note_num`,
+      [trialBalance.id]
+    )
+    const { rows: disclosures } = await query(
+      `SELECT note_num,note_title,text FROM note_disclosures WHERE tb_id=$1 AND text<>'' ORDER BY note_num`,
+      [trialBalance.id]
+    )
+    const { rows: [reportSettings] } = await query(
+      `SELECT template_id,revision,fields,updated_at FROM engagement_audit_report_settings WHERE engagement_id=$1`,
+      [engagement.id]
+    )
+    const { rows: auditors } = await query(`SELECT * FROM auditors WHERE entity_id=$1 AND is_active=TRUE ORDER BY id`, [entity.id])
+    const { rows: signatories } = await query(`SELECT * FROM signatories WHERE entity_id=$1 AND is_active=TRUE ORDER BY id`, [entity.id])
+    const { rows: [generalNotes] } = await query(
+      `SELECT segments FROM general_notes WHERE entity_id=$1 AND entity_period_id=$2`,
+      [entity.id, context.period.id]
+    )
+    return {
+      engagement: {
+        id: Number(engagement.id), reference: engagement.reference, name: engagement.name,
+        status: engagement.status, periodStart: dateOnly(engagement.period_start),
+        periodEnd: dateOnly(engagement.period_end), periodLabel: engagement.period_label,
+      },
+      entity,
+      activeTB: { ...trialBalance, id: Number(trialBalance.id), entity_period_id: context.period.id },
+      snapshot: { ...snapshot, id: Number(snapshot.id), version: Number(snapshot.version) },
+      financialRows,
+      levelFormat,
+      noteDetails: details.map(row => ({ ...row, data: JSON.parse(row.data || '{}') })),
+      noteDisclosures: disclosures,
+      generalNotes: generalNotes?.segments || null,
+      auditors,
+      signatories,
+      auditReport: reportSettings || { template_id: 'india-basic-v1', revision: 0, fields: {} },
+    }
+  })
+
+  ipcMain.handle('engagement:reportingSettingsSave', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const { engagement } = await assertEngagementTBContext(user, input.engagementId)
+    await assertCanEdit(user, engagement)
+    assertEngagementEditable(engagement, { locked: engagement.locked, is_final: engagement.is_final })
+    const fields = validateAuditReportFields(input.fields)
+    return runInTransaction(async () => {
+      const { rows: [settings] } = await query(
+        `INSERT INTO engagement_audit_report_settings (engagement_id,template_id,revision,fields,updated_by)
+         VALUES ($1,'india-basic-v1',1,$2::jsonb,$3)
+         ON CONFLICT (engagement_id) DO UPDATE SET
+           revision=engagement_audit_report_settings.revision+1,
+           fields=EXCLUDED.fields,updated_by=EXCLUDED.updated_by,updated_at=now()
+         RETURNING engagement_id,template_id,revision,fields,updated_at`,
+        [engagement.id, JSON.stringify(fields), user.id]
+      )
+      await logAudit(user, 'audit_report.template_updated', engagement.id, { revision: settings.revision })
+      return settings
+    })
+  })
+
+  ipcMain.handle('engagement:reportingSignatoryCreate', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const { engagement } = await assertEngagementTBContext(user, input.engagementId)
+    await assertCanEdit(user, engagement)
+    assertEngagementEditable(engagement, { locked: engagement.locked, is_final: engagement.is_final })
+    const name = String(input.name || '').trim()
+    const designation = String(input.designation || '').trim()
+    const din = String(input.din || '').trim()
+    if (!name || name.length > 255 || designation.length > 255 || din.length > 50) {
+      throw new Error('Enter a valid signatory name, designation and identification number.')
+    }
+    return runInTransaction(async () => {
+      const { rows: [signatory] } = await query(
+        `INSERT INTO signatories (entity_id,name,din,designation,id_type)
+         VALUES ($1,$2,$3,$4,$5) RETURNING id,name,din,designation,id_type`,
+        [engagement.entity_id, name, din || null, designation || null, din ? 'DIN' : null]
+      )
+      await logAudit(user, 'report.signatory_created', engagement.id, { signatoryId: Number(signatory.id) })
+      return { ...signatory, id: Number(signatory.id) }
+    })
+  })
+
+  ipcMain.handle('engagement:noteDisclosureSave', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    await assertIndiaScheduleIII(context.engagement)
+    const noteNum = Number(input.noteNum)
+    const noteTitle = String(input.noteTitle || '').trim()
+    const text = String(input.text || '')
+    if (!Number.isInteger(noteNum) || noteNum < 1 || noteNum > 500 || !noteTitle || noteTitle.length > 500 || text.length > 12000) {
+      throw new Error('Enter a valid note number, title and disclosure of no more than 12,000 characters.')
+    }
+    await runInTransaction(async () => {
+      await query(
+        `INSERT INTO note_disclosures (tb_id,note_num,note_title,text,updated_at)
+         VALUES ($1,$2,$3,$4,now())
+         ON CONFLICT (tb_id,note_num) DO UPDATE SET
+           note_title=EXCLUDED.note_title,text=EXCLUDED.text,updated_at=now()`,
+        [context.trialBalance.id, noteNum, noteTitle, text]
+      )
+      await logAudit(user, 'report.note_disclosure_updated', context.engagement.id, {
+        trialBalanceId: context.trialBalance.id, noteNum, noteTitle,
+      })
+    })
+    return { ok: true }
+  })
+
+  ipcMain.handle('engagement:reportOutputSave', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    const pdfBase64 = input.pdfContentBase64
+    if (typeof pdfBase64 !== 'string' || pdfBase64.length > 28 * 1024 * 1024
+      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(pdfBase64)) {
+      throw new Error('Combined PDF must be a valid file no larger than 20 MB.')
+    }
+    const pdf = Buffer.from(pdfBase64, 'base64')
+    if (pdf.toString('base64') !== pdfBase64 || pdf.length < 5 || pdf.length > 20 * 1024 * 1024
+      || pdf.subarray(0, 5).toString('ascii') !== '%PDF-') {
+      throw new Error('The generated report is not a valid PDF or exceeds the 20 MB limit.')
+    }
+    const signing = input.signingDetails
+    if (!signing || typeof signing !== 'object' || Array.isArray(signing)) throw new Error('Financial-statement signing details are required.')
+    const approvalDate = String(signing.approvalDate || '')
+    const approvalPlace = String(signing.approvalPlace || '').trim()
+    if (!isValidDateOnly(approvalDate) || approvalDate < dateOnly(context.engagement.period_end) || approvalPlace.length < 1 || approvalPlace.length > 255) {
+      throw new Error('Enter a valid financial-statement approval date and place. These are separate from the audit report date and place.')
+    }
+    const { rows: [snapshot] } = await query(
+      `SELECT id,version,source_trial_balance_id,journal_watermark,mapping_rule_set_id
+       FROM engagement_final_tb_snapshots WHERE engagement_id=$1 AND trial_balance_id=$2`,
+      [context.engagement.id, context.trialBalance.id]
+    )
+    if (!snapshot) throw new Error('The selected Trial Balance is not a final engagement snapshot.')
+    const { rows: financialRows } = await query(
+      `SELECT tr.id,tr.name,tr.opening_balance,tr.closing_balance,mt.mapping1_resultant,
+              mt.mapping2_resultant,mt.mapping3_resultant,mt.alie,mt.status
+       FROM tb_rows tr LEFT JOIN mapped_tb mt ON mt.tb_row_id=tr.id AND mt.tb_id=tr.tb_id
+       WHERE tr.tb_id=$1 ORDER BY tr.id`,
+      [context.trialBalance.id]
+    )
+    const settings = (await query(
+      `SELECT template_id,revision,fields FROM engagement_audit_report_settings WHERE engagement_id=$1`,
+      [context.engagement.id]
+    )).rows[0] || { template_id: 'india-basic-v1', revision: 0, fields: {} }
+    const fields = validateAuditReportFields(settings.fields)
+    if (!fields.opinion || !fields.reportDate || !fields.reportPlace || !fields.firmName
+      || !fields.auditorName || !fields.auditorMembershipNumber) {
+      throw new Error('Complete the auditor-entered opinion, audit report date and place, audit firm, auditor name and membership number before generating the final PDF.')
+    }
+    const signatoryIds = Array.isArray(signing.signatoryIds)
+      ? [...new Set(signing.signatoryIds.map(Number).filter(value => Number.isSafeInteger(value) && value > 0))]
+      : []
+    if (!signatoryIds.length || signatoryIds.length > 20) {
+      throw new Error('Select at least one active client signatory for the financial-statement approval page.')
+    }
+    const { rows: signatoryRows } = await query(
+      `SELECT id,name,din,designation,id_type FROM signatories
+       WHERE entity_id=$1 AND is_active=TRUE AND id=ANY($2::int[])
+       ORDER BY id`,
+      [context.engagement.entity_id, signatoryIds]
+    )
+    if (signatoryRows.length !== signatoryIds.length) {
+      throw new Error('One or more selected client signatories are no longer active for this engagement.')
+    }
+    const dataHash = createHash('sha256').update(JSON.stringify({
+      snapshotId: Number(snapshot.id),
+      version: Number(snapshot.version),
+      journalWatermark: Number(snapshot.journal_watermark),
+      rows: financialRows,
+    })).digest('hex')
+    return runInTransaction(async () => {
+      const { rows: [locked] } = await query(
+        `SELECT e.status,ep.locked,ep.is_final
+         FROM engagements e
+         JOIN engagement_reporting_sets rs ON rs.engagement_id=e.id
+         JOIN entity_periods ep ON ep.id=rs.entity_period_id
+         WHERE e.id=$1 AND e.firm_id=$2 AND rs.id=$3
+         FOR UPDATE OF e,ep`,
+        [context.engagement.id, user.firmId, context.engagement.reporting_set_id]
+      )
+      if (!locked) throw new Error('Engagement reporting context is unavailable.')
+      assertEngagementEditable({ ...context.engagement, status: locked.status }, { locked: locked.locked, is_final: locked.is_final })
+      const currentEngagement = await fetchEngagement(user.firmId, context.engagement.id)
+      await assertCanEdit(user, currentEngagement)
+      const { rows: [versionRow] } = await query(
+        `SELECT COALESCE(MAX(version),0)::integer+1 AS next_version
+         FROM engagement_report_outputs WHERE engagement_id=$1`,
+        [context.engagement.id]
+      )
+      const { rows: [output] } = await query(
+        `INSERT INTO engagement_report_outputs
+           (engagement_id,final_tb_snapshot_id,version,template_id,template_revision,
+            audit_report_fields,signing_details,financial_data_sha256,pdf_content,created_by)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10)
+         RETURNING id,version,template_id,template_revision,financial_data_sha256,created_at`,
+        [
+          context.engagement.id, snapshot.id, versionRow.next_version,
+          settings.template_id, settings.revision, JSON.stringify(fields),
+          JSON.stringify({
+            approvalDate,
+            approvalPlace,
+            signatories: signatoryRows,
+            auditReportDate: fields.reportDate,
+            auditReportPlace: fields.reportPlace,
+          }), dataHash, pdf, user.id,
+        ]
+      )
+      await logAudit(user, 'report.output_created', context.engagement.id, {
+        outputId: Number(output.id), version: output.version, finalTBSnapshotId: Number(snapshot.id),
+        templateRevision: settings.revision, financialDataSha256: dataHash,
+      })
+      return { ...output, id: Number(output.id), version: Number(output.version) }
+    })
+  })
+
+  ipcMain.handle('engagement:reportOutputs', async (event, engagementId) => {
+    const user = await authenticated(event)
+    const { engagement } = await assertEngagementTBContext(user, engagementId)
+    const { rows } = await query(
+      `SELECT o.id,o.version,o.template_id,o.template_revision,o.financial_data_sha256,
+              o.created_by,u.display_name AS created_by_name,o.created_at,o.finalised_by,
+              o.finalised_at,f.display_name AS finalised_by_name,
+              s.version AS final_tb_version,tb.filename AS final_tb_filename
+       FROM engagement_report_outputs o
+       JOIN firm_users u ON u.id=o.created_by
+       LEFT JOIN firm_users f ON f.id=o.finalised_by
+       JOIN engagement_final_tb_snapshots s ON s.id=o.final_tb_snapshot_id
+       JOIN trial_balances tb ON tb.id=s.trial_balance_id
+       WHERE o.engagement_id=$1 ORDER BY o.version DESC`,
+      [engagement.id]
+    )
+    return rows.map(row => ({ ...row, id: Number(row.id), version: Number(row.version) }))
+  })
+
+  ipcMain.handle('engagement:reportOutputRead', async (event, outputId) => {
+    const user = await authenticated(event)
+    const id = Number(outputId)
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Report output not found.')
+    const { rows: [output] } = await query(
+      `SELECT o.id,o.engagement_id,o.version,o.pdf_content,o.created_at,o.finalised_at
+       FROM engagement_report_outputs o
+       JOIN engagements e ON e.id=o.engagement_id AND e.firm_id=$2
+       WHERE o.id=$1`,
+      [id, user.firmId]
+    )
+    if (!output) throw new Error('Report output not found.')
+    const engagement = await fetchEngagement(user.firmId, output.engagement_id)
+    const membership = await membershipFor(engagement.id, user.id)
+    if (!canViewEngagement(user, engagement, membership)) throw new Error('Report output not found.')
+    return {
+      id: Number(output.id), version: Number(output.version), createdAt: output.created_at,
+      finalisedAt: output.finalised_at, pdfContentBase64: Buffer.from(output.pdf_content).toString('base64'),
+      engagement: { id: Number(engagement.id), reference: engagement.reference, name: engagement.name },
+    }
+  })
+
+  ipcMain.handle('engagement:reportOutputFinalise', async (event, outputId) => {
+    const user = await authenticated(event)
+    const id = Number(outputId)
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Report output not found.')
+    return runInTransaction(async () => {
+      const { rows: [output] } = await query(
+        `SELECT id,engagement_id,version,finalised_at FROM engagement_report_outputs WHERE id=$1 FOR UPDATE`,
+        [id]
+      )
+      if (!output) throw new Error('Report output not found.')
+      const engagement = await fetchEngagement(user.firmId, output.engagement_id)
+      if (!canFinaliseEngagement(user, engagement)) throw new Error('Only the assigned engagement partner or authorised substitute may finalise this output.')
+      if (output.finalised_at) throw new Error('This report output version is already finalised and cannot be changed.')
+      const { rows: [finalised] } = await query(
+        `UPDATE engagement_report_outputs SET finalised_by=$1,finalised_at=now()
+         WHERE id=$2 AND finalised_at IS NULL
+         RETURNING id,version,finalised_by,finalised_at`,
+        [user.id, id]
+      )
+      if (!finalised) throw new Error('This report output was finalised by another request.')
+      await logAudit(user, 'report.output_finalised', engagement.id, {
+        outputId: Number(id), version: Number(output.version),
+      })
+      return { ...finalised, id: Number(finalised.id), version: Number(finalised.version) }
+    })
   })
 
   ipcMain.handle('engagement:updateAccess', async (event, input = {}) => {

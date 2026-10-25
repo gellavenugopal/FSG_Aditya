@@ -315,19 +315,24 @@ function deriveAlieFromType(trialBalanceType) {
  *   auto_low    — Stage 1 only (Stage 2 missed)
  *   unmapped    — Stage 1 failed
  */
-export async function runMappingEngine(tbId, rsId, constitution, { excludeZero = false, businessType = null } = {}) {
+export async function runMappingEngine(tbId, rsId, constitution, {
+  excludeZero = false,
+  businessType = null,
+  database = { query, runInTransaction },
+} = {}) {
+  const dbQuery = database.query
   const tbQuery = excludeZero
     // A ledger the CA has adjusted stays in even if the adjustment nets its balance to nil -
     // it must stay on the Mapped TB, where the adjustment can be seen and changed.
-    ? query(`SELECT * FROM tb_rows WHERE tb_id = $1
+    ? dbQuery(`SELECT * FROM tb_rows WHERE tb_id = $1
               AND (opening_balance != 0 OR closing_balance != 0 OR adj_debit IS NOT NULL OR adj_credit IS NOT NULL OR upload_nature = 'Manual Ledger') ORDER BY id`, [tbId])
-    : query(`SELECT * FROM tb_rows WHERE tb_id = $1 ORDER BY id`, [tbId])
+    : dbQuery(`SELECT * FROM tb_rows WHERE tb_id = $1 ORDER BY id`, [tbId])
   const [tbRes, m1Res, m2Res, m3Res, lfRes] = await Promise.all([
     tbQuery,
-    query(`SELECT * FROM map1 WHERE rule_set_id=$1 AND constitution=$2`, [rsId, constitution]),
-    query(`SELECT * FROM map2 WHERE rule_set_id=$1 AND constitution=$2 ORDER BY priority, id`, [rsId, constitution]),
-    query(`SELECT * FROM map3 WHERE rule_set_id=$1 AND constitution=$2 ORDER BY priority, id`, [rsId, constitution]),
-    query(`SELECT * FROM level_format WHERE rule_set_id=$1 AND constitution=$2 ORDER BY sort_order`, [rsId, constitution]),
+    dbQuery(`SELECT * FROM map1 WHERE rule_set_id=$1 AND constitution=$2`, [rsId, constitution]),
+    dbQuery(`SELECT * FROM map2 WHERE rule_set_id=$1 AND constitution=$2 ORDER BY priority, id`, [rsId, constitution]),
+    dbQuery(`SELECT * FROM map3 WHERE rule_set_id=$1 AND constitution=$2 ORDER BY priority, id`, [rsId, constitution]),
+    dbQuery(`SELECT * FROM level_format WHERE rule_set_id=$1 AND constitution=$2 ORDER BY sort_order`, [rsId, constitution]),
   ])
 
   const tbRows = tbRes.rows
@@ -1024,10 +1029,10 @@ export function reclassifyAbnormalBalances(results, tbRowsById, lf) {
 }
 
 // ── Persist results (upsert) ──────────────────────────────────────────────────
-export async function persistMappingResults(results) {
-  await runInTransaction(async () => {
+export async function persistMappingResults(results, database = { query, runInTransaction }) {
+  await database.runInTransaction(async () => {
     for (const r of results) {
-      await query(
+      await database.query(
         `INSERT INTO mapped_tb
            (tb_id, tb_row_id, rule_set_id, alie,
             mapping1_resultant, mapping2_resultant, mapping3_resultant,

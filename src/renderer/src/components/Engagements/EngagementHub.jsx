@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { formatPeriodDate, formatPeriodRange } from '../../utils/financialPeriodDisplay'
+import EngagementReportingPanel from './EngagementReportingPanel'
 
 const SCOPE_OPTIONS = [
   ['statutory_audit', 'Statutory audit'],
@@ -732,7 +733,10 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
             </section>
           </div>
 
-          {serviceOnlyMode && <ProtectedTrialBalancePanel engagement={engagement} />}
+          {serviceOnlyMode && <>
+            <ProtectedTrialBalancePanel engagement={engagement} />
+            <EngagementReportingPanel engagement={engagement} user={user} />
+          </>}
 
           <section className="mt-5 rounded-xl border border-gray-200 bg-white p-5">
             <h3 className="font-semibold text-gray-900">Engagement history</h3>

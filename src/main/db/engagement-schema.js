@@ -188,6 +188,79 @@ export async function ensureEngagementSchema(query) {
   await query(`CREATE INDEX IF NOT EXISTS idx_engagement_tb_imports_engagement ON engagement_trial_balance_imports(engagement_id, imported_at DESC)`)
 
   await query(`
+    CREATE TABLE IF NOT EXISTS engagement_journals (
+      id BIGSERIAL PRIMARY KEY,
+      engagement_id BIGINT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+      source_trial_balance_id INTEGER NOT NULL REFERENCES trial_balances(id) ON DELETE RESTRICT,
+      entry_number INTEGER NOT NULL,
+      journal_date DATE NOT NULL,
+      narration TEXT NOT NULL,
+      created_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
+      posted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (engagement_id, entry_number)
+    )
+  `)
+  await query(`CREATE INDEX IF NOT EXISTS idx_engagement_journals_context ON engagement_journals(engagement_id, source_trial_balance_id, posted_at)`)
+  await query(`
+    CREATE TABLE IF NOT EXISTS engagement_journal_lines (
+      id BIGSERIAL PRIMARY KEY,
+      journal_id BIGINT NOT NULL REFERENCES engagement_journals(id) ON DELETE RESTRICT,
+      line_number SMALLINT NOT NULL,
+      ledger_name TEXT NOT NULL,
+      ledger_code TEXT,
+      entry_side TEXT NOT NULL CHECK (entry_side IN ('Dr', 'Cr')),
+      amount NUMERIC(18,2) NOT NULL CHECK (amount > 0),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (journal_id, line_number)
+    )
+  `)
+  await query(`
+    CREATE TABLE IF NOT EXISTS engagement_final_tb_snapshots (
+      id BIGSERIAL PRIMARY KEY,
+      engagement_id BIGINT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+      source_trial_balance_id INTEGER NOT NULL REFERENCES trial_balances(id) ON DELETE RESTRICT,
+      trial_balance_id INTEGER NOT NULL UNIQUE REFERENCES trial_balances(id) ON DELETE RESTRICT,
+      version INTEGER NOT NULL CHECK (version > 0),
+      journal_watermark BIGINT NOT NULL DEFAULT 0,
+      mapping_rule_set_id INTEGER REFERENCES mapping_rule_sets(id) ON DELETE RESTRICT,
+      created_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (engagement_id, version)
+    )
+  `)
+  await query(`
+    CREATE TABLE IF NOT EXISTS engagement_audit_report_settings (
+      engagement_id BIGINT PRIMARY KEY REFERENCES engagements(id) ON DELETE CASCADE,
+      template_id TEXT NOT NULL DEFAULT 'india-basic-v1',
+      revision INTEGER NOT NULL DEFAULT 1,
+      fields JSONB NOT NULL DEFAULT '{}',
+      updated_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `)
+  await query(`
+    CREATE TABLE IF NOT EXISTS engagement_report_outputs (
+      id BIGSERIAL PRIMARY KEY,
+      engagement_id BIGINT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+      final_tb_snapshot_id BIGINT NOT NULL REFERENCES engagement_final_tb_snapshots(id) ON DELETE RESTRICT,
+      version INTEGER NOT NULL CHECK (version > 0),
+      template_id TEXT NOT NULL,
+      template_revision INTEGER NOT NULL,
+      audit_report_fields JSONB NOT NULL,
+      signing_details JSONB NOT NULL,
+      financial_data_sha256 TEXT NOT NULL CHECK (financial_data_sha256 ~ '^[a-f0-9]{64}$'),
+      pdf_content BYTEA NOT NULL,
+      created_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      finalised_by INTEGER REFERENCES firm_users(id) ON DELETE RESTRICT,
+      finalised_at TIMESTAMPTZ,
+      UNIQUE (engagement_id, version)
+    )
+  `)
+  await query(`CREATE INDEX IF NOT EXISTS idx_engagement_report_outputs_context ON engagement_report_outputs(engagement_id, created_at DESC)`)
+
+  await query(`
     CREATE TABLE IF NOT EXISTS engagement_audit_log (
       id BIGSERIAL PRIMARY KEY,
       firm_id INTEGER NOT NULL REFERENCES firms(id) ON DELETE CASCADE,

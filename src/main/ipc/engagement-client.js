@@ -40,6 +40,19 @@ const OPERATIONS = {
   'engagement:trialBalances': { path: 'trial-balances', args: id => [{ engagementId: id }] },
   'engagement:trialBalanceRows': { path: 'trial-balance/rows', args: input => [input] },
   'engagement:importTrialBalance': { path: 'trial-balance/import', args: input => [input], selectFile: true },
+  'engagement:journalList': { path: 'journals', args: id => [{ engagementId: id }] },
+  'engagement:journalPost': { path: 'journal/post', args: input => [input] },
+  'engagement:finalTrialBalances': { path: 'final-trial-balances', args: id => [{ engagementId: id }] },
+  'engagement:finalTrialBalanceCreate': { path: 'final-trial-balance/create', args: input => [input] },
+  'engagement:finalTrialBalanceRows': { path: 'final-trial-balance/rows', args: input => [input] },
+  'engagement:reportingData': { path: 'reporting/data', args: input => [input] },
+  'engagement:reportingSettingsSave': { path: 'reporting/settings/save', args: input => [input] },
+  'engagement:reportingSignatoryCreate': { path: 'reporting/signatory/create', args: input => [input] },
+  'engagement:noteDisclosureSave': { path: 'reporting/note-disclosure/save', args: input => [input] },
+  'engagement:reportOutputs': { path: 'reporting/outputs', args: id => [{ engagementId: id }] },
+  'engagement:reportOutputSave': { path: 'reporting/output/save', args: input => [input] },
+  'engagement:reportOutputRead': { path: 'reporting/output/read', args: id => [{ outputId: id }] },
+  'engagement:reportOutputFinalise': { path: 'reporting/output/finalise', args: id => [{ outputId: id }] },
 }
 
 function serviceUrl(path, configured = process.env.ENGAGEMENT_SERVICE_URL) {
@@ -77,7 +90,7 @@ function post(url, payload, bearer, setupToken, ca) {
       response.setEncoding('utf8')
       response.on('data', chunk => {
         raw += chunk
-        if (raw.length > 5 * 1024 * 1024) req.destroy(new Error('Engagement service response exceeded the allowed size.'))
+        if (raw.length > 30 * 1024 * 1024) req.destroy(new Error('Engagement service response exceeded the allowed size.'))
       })
       response.on('end', () => {
         let result

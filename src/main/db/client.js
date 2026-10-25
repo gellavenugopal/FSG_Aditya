@@ -1,10 +1,11 @@
 import pg from 'pg'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
-import { app, safeStorage } from 'electron'
+import electron from 'electron'
 import { join } from 'path'
 
 const { Pool, Client } = pg
+const { app, safeStorage } = typeof electron === 'object' ? electron : {}
 
 const CONFIG_PATH = () => join(app.getPath('userData'), 'db-config.json')
 const DEFAULT_CFG = { host: 'localhost', port: 5432, database: 'vera_financial', user: 'postgres', password: '' }

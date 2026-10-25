@@ -10,6 +10,7 @@ import { registerMappingHandlers, applyMappingPatches } from './ipc/mapping.js'
 import { registerMappedTBHandlers } from './ipc/mapped-tb.js'
 import { registerSettingsHandlers } from './ipc/settings.js'
 import { registerFinancialHandlers } from './ipc/financials.js'
+import { registerEngagementReportingDesktopHandlers } from './ipc/engagement-reporting.js'
 import { registerMastersHandlers } from './ipc/masters.js'
 import { registerDepreciationHandlers } from './ipc/depreciation.js'
 import { registerNotesHandlers } from './ipc/notes.js'
@@ -43,8 +44,7 @@ function isLoopbackServiceUrl(value) {
 function shouldUseLocalDevelopmentService() {
   const isDevelopment = !app.isPackaged
     && (process.env.NODE_ENV_ELECTRON_VITE === 'development' || process.env.NODE_ENV === 'development')
-  const forceServiceOnly = String(process.env.ENGAGEMENT_SERVICE_ONLY || '').toLowerCase() === 'true'
-  return isDevelopment && !forceServiceOnly
+  return isDevelopment
     && (!process.env.ENGAGEMENT_SERVICE_URL || isLoopbackServiceUrl(process.env.ENGAGEMENT_SERVICE_URL))
 }
 
@@ -173,6 +173,7 @@ app.whenReady().then(async () => {
     registerFsSnapshotHandlers()
   }
   registerEngagementClientHandlers(ipcMain, engagementClientOptions)
+  if (serviceOnlyMode) registerEngagementReportingDesktopHandlers()
   // The running exe's own version (package.json at build time), shown beside
   // the app name so it's obvious which build a server or client PC is on.
   ipcMain.handle('app:getVersion', () => app.getVersion())

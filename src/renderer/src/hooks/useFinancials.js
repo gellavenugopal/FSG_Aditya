@@ -3345,6 +3345,39 @@ export async function fetchFinancialsData(activeTB, prevTB, entity = null, activ
   return processed
 }
 
+export function buildEngagementFinancials(bundle) {
+  if (!bundle?.entity || !Array.isArray(bundle.financialRows) || !Array.isArray(bundle.levelFormat)) {
+    throw new Error('The engagement reporting data is incomplete.')
+  }
+  const { entity, financialRows, levelFormat, noteDetails = [], generalNotes = null } = bundle
+  const guarded = ignoreForeignLevel2(financialRows, levelFormat)
+  const processed = processRows(
+    withoutPreviousYear(guarded.rows),
+    null,
+    entity.constitution,
+    noteDetails,
+    entity.business_type,
+    false,
+    false,
+    null,
+    levelFormat,
+    null,
+  )
+  processed.levelFormat = levelFormat
+  processed.pyMode = 'none_show'
+  processed.cfsSaved = { cy: {}, py: {}, include: false }
+  processed.foreignLevel2 = foreignLevel2Report(guarded.flagged, [], false)
+  processed.generalNotes = withoutRatioIntro(generalNotes) || { title: '', points: [] }
+  if (parseInt(entity.constitution) === 3) processed.generalNotes = withCurrentTitleDeedsText(processed.generalNotes)
+  processed.prevMapL3 = null
+  processed.prevRowsByLedger = null
+  attachNoteExtras(processed, noteDetails, levelFormat, null, entity.constitution, null, null, null)
+  applyManualPyOverrides(processed, false, [])
+  if (parseInt(entity.constitution) === 3) computeEpsData(processed, noteDetails, null)
+  processed.generalNotes = refreshRatiosInNote(processed.generalNotes, processed)
+  return processed
+}
+
 export function useFinancials(activeTB, prevTB, entity = null, activeRsId = null) {
   const [data, setData]         = useState(null)
   const [loading, setLoading]   = useState(false)
