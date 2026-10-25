@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 // Every call goes through inv(): a call that SAVES something also tells the main process, which tells the app's other windows
 // (App.jsx offers them a refresh). Reads, dialogs and file writes do not.
-const WRITE_RX = /^(?:notes)?(save|set|add|upsert|update|override|approve|delete|remove|run|upload|import|clear|lock|unlock|finali[sz]e|attach|revert|resolve|bulk|markReview|publish|create|insert|replace|apply|merge|rename|reset|restore|toggle|accept|move|propagate|record|submit|enable|disable|link|assign|fix|dismiss|mark|insertManualRow)/i
+const WRITE_RX = /^(?:notes)?(save|set|add|upsert|update|override|approve|delete|remove|run|upload|import|clear|lock|unlock|finali[sz]e|attach|revert|resolve|bulk|markReview|publish|create|insert|replace|apply|merge|rename|reset|restore|toggle|accept|move|propagate|record|submit|enable|disable|link|assign|fix|dismiss|mark|insertManualRow|activate|reopen|requestAccess|resolveAccess|confirmLegacy|setup|changePassword)/i
 const isWrite = (channel) => {
   const ch = String(channel || '')
   if (/^(dialog|file|settings|window|app|db):/.test(ch)) return false
@@ -16,6 +16,30 @@ const inv = async (channel, ...args) => {
 }
 
 contextBridge.exposeInMainWorld('api', {
+  // Engagement identity and permission-checked operations
+  engagementAuthStatus:       () => inv('engagementAuth:status'),
+  setupEngagementAdmin:       (data) => inv('engagementAuth:setup', data),
+  loginEngagementUser:        (data) => inv('engagementAuth:login', data),
+  logoutEngagementUser:       () => inv('engagementAuth:logout'),
+  changeEngagementPassword:   (password) => inv('engagementAuth:changePassword', password),
+  listEngagementUsers:        () => inv('engagementAdmin:listUsers'),
+  createEngagementUser:       (data) => inv('engagementAdmin:createUser', data),
+  listEngagementOptions:      () => inv('engagement:listOptions'),
+  createEngagementClient:     (data) => inv('engagement:createClient', data),
+  listEngagements:            (scope) => inv('engagement:list', scope),
+  checkEngagementDuplicates:  (data) => inv('engagement:checkDuplicates', data),
+  requestEngagementAccess:    (data) => inv('engagement:requestAccessForPeriod', data),
+  createEngagement:           (data) => inv('engagement:create', data),
+  updateEngagementDraft:      (data) => inv('engagement:updateDraft', data),
+  getEngagementOverview:      (id) => inv('engagement:overview', id),
+  confirmEngagementLegacyLink: (data) => inv('engagement:confirmLegacyLink', data),
+  linkEngagementLegacyTrialBalances: (data) => inv('engagement:linkLegacyTrialBalances', data),
+  updateEngagementAccess:     (data) => inv('engagement:updateAccess', data),
+  resolveEngagementAccessRequest: (data) => inv('engagement:resolveAccessRequest', data),
+  activateEngagement:         (data) => inv('engagement:activate', data),
+  finaliseEngagement:         (data) => inv('engagement:finalise', data),
+  reopenEngagement:           (id) => inv('engagement:reopen', id),
+
   // More than one window
   openNewWindow:     (payload) => ipcRenderer.invoke('window:openNew', payload),
   quitApp:           ()       => ipcRenderer.invoke('app:quit'),

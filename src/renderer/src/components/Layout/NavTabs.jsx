@@ -21,6 +21,7 @@ import { createPortal } from 'react-dom'
 
 // Top-level tab -> its key (Alt+key). Unique across the bar.
 export const TOP_SHORTCUTS = {
+  'Engagements': 'Q',
   'Settings': 'I',
   'Trial Balance': 'T',
   'Stock': 'S',

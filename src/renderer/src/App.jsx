@@ -30,6 +30,7 @@ import Format from './components/Format'
 import PPE from './components/PPE'
 import GeneralNotes from './components/GeneralNotes'
 import GenerateFinancials from './components/GenerateFinancials'
+import EngagementHub from './components/Engagements/EngagementHub'
 import SettingsModal from './components/shared/SettingsModal'
 import DBBanner from './components/shared/DBBanner'
 import BranchModeBar from './components/shared/BranchModeBar'
@@ -70,7 +71,7 @@ const ADJUSTMENT_NOTICE_TABS = new Set([
   'Dep (Comp)', 'Dep (IT)', 'Dep (Old)', 'Tax Computation', 'Deferred Tax', 'ITR: BS', 'ITR: PL', 'ITR: BS Details', 'ITR: PL Details',
   'Rectification / Recategorisation', 'Mapped TB (Remarks)',
 ])
-const TABS = ['Settings', 'Trial Balance', 'Stock', 'Mapping', 'Dep', 'BS', 'PL', 'CFS', 'Notes', 'General Notes', 'Annex & Reco', 'Features', 'Exception', 'Generate Financials']
+const TABS = ['Engagements', 'Settings', 'Trial Balance', 'Stock', 'Mapping', 'Dep', 'BS', 'PL', 'CFS', 'Notes', 'General Notes', 'Annex & Reco', 'Features', 'Exception', 'Generate Financials']
 const TAB_GROUPS = {
   'Settings': ['Auditee Details', 'Financial Period', 'Auditor', 'Signatory', 'Mapping Rules'],
   'Trial Balance': ['Upload TB', 'Actual TB', 'Mapped TB', 'Mapped TB (Remarks)', 'Journal Entry'],
@@ -544,6 +545,8 @@ export default function App() {
   const renderTab = () => {
     if (!dbOk) return null
     switch (activeTab) {
+      case 'Engagements':
+        return <EngagementHub />
       case 'Auditee Details':
       case 'Financial Period':
       case 'Auditor':
@@ -978,7 +981,7 @@ export default function App() {
         </div>
       )}
 
-      {dbOk && !entity?.has_branches && noTBForPeriod && !['Upload TB', 'Auditee Details', 'Financial Period', 'Auditor', 'Signatory', 'Mapping Rules'].includes(activeTab) && (
+      {dbOk && !entity?.has_branches && noTBForPeriod && !['Engagements', 'Upload TB', 'Auditee Details', 'Financial Period', 'Auditor', 'Signatory', 'Mapping Rules'].includes(activeTab) && (
         <div className="flex items-center gap-3 px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-800 text-sm shrink-0">
           <span>No Trial Balance uploaded yet for {entityPeriods.find(p => p.id === currentEntityPeriodId)?.year_label || 'this Financial Year'}.</span>
           <button
