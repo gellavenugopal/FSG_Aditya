@@ -1,12 +1,18 @@
 import pg from 'pg'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { readFileSync } from 'node:fs'
+import {
+  assertDatabaseOptionsMatchDisposableTarget,
+  isDisposableTestMode,
+  resolveDisposableTestTarget,
+} from '../main/test-isolation.mjs'
 
 const { Pool, types } = pg
 const transactionStorage = new AsyncLocalStorage()
 types.setTypeParser(1082, value => value)
 
 function poolOptionsFromEnvironment() {
+  if (isDisposableTestMode()) return resolveDisposableTestTarget().databaseConfig
   const connectionString = process.env.ENGAGEMENT_DATABASE_URL
   const sslEnabled = process.env.ENGAGEMENT_DATABASE_SSL === 'true'
   const ssl = sslEnabled
@@ -41,13 +47,67 @@ function poolOptionsFromEnvironment() {
 }
 
 export function createEngagementDatabase(databaseOptions = null) {
-  const pool = new Pool(databaseOptions || poolOptionsFromEnvironment())
+  const options = databaseOptions || poolOptionsFromEnvironment()
+  const testTarget = isDisposableTestMode()
+    ? assertDatabaseOptionsMatchDisposableTarget(options)
+    : null
+  if (testTarget) {
+    console.info('Engagement service disposable database target:', {
+      host: options.host,
+      port: Number(options.port),
+      database: options.database,
+      user: options.user,
+      dataDirectory: testTarget.dataDirectory,
+    })
+  }
+  const pool = new Pool(options)
   pool.on('error', error => console.error('Engagement database pool reported an idle-client error:', error.message))
 
   return {
     async connect() {
       const client = await pool.connect()
-      client.release()
+      try {
+        if (testTarget) {
+          const { rows: [identity] } = await client.query(`
+            SELECT current_database() AS database,
+                   current_user AS username,
+                   inet_server_addr()::text AS host,
+                   inet_server_port() AS port
+          `)
+          const { rows: [marker] } = await client.query(
+            `SELECT instance_id, data_directory
+               FROM public.fsg_test_instance_identity
+              WHERE singleton = TRUE`
+          )
+          const normalizePath = value => String(value || '').replace(/[\\/]+$/, '').toLowerCase()
+          const connectedHost = String(identity?.host || '').split('/')[0]
+          if (!identity || identity.database !== testTarget.database || identity.username !== testTarget.user
+            || connectedHost !== testTarget.host || Number(identity.port) !== testTarget.port
+            || marker?.instance_id !== testTarget.instanceId
+            || normalizePath(marker?.data_directory) !== normalizePath(testTarget.dataDirectory)) {
+            throw new Error(`Connected PostgreSQL identity mismatch: ${JSON.stringify({
+              actual: {
+                host: connectedHost,
+                port: identity?.port,
+                database: identity?.database,
+                user: identity?.username,
+                instanceId: marker?.instance_id,
+                dataDirectory: marker?.data_directory,
+              },
+              expected: {
+                host: testTarget.host,
+                port: testTarget.port,
+                database: testTarget.database,
+                user: testTarget.user,
+                instanceId: testTarget.instanceId,
+                dataDirectory: testTarget.dataDirectory,
+              },
+            })}`)
+          }
+        }
+      } finally {
+        client.release()
+      }
     },
     query(sql, params = []) {
       const transactionClient = transactionStorage.getStore()

@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import electron from 'electron'
 import { join } from 'path'
+import { isDisposableTestMode, loadDatabaseConfig } from '../test-isolation.mjs'
 
 const { Pool, Client } = pg
 const { app, safeStorage } = typeof electron === 'object' ? electron : {}
@@ -41,22 +42,25 @@ function decryptPassword(stored) {
 }
 
 export function loadConfig() {
-  try {
-    if (existsSync(CONFIG_PATH())) {
-      const raw = JSON.parse(readFileSync(CONFIG_PATH(), 'utf8'))
-      return {
-        host: raw.host || DEFAULT_CFG.host,
-        port: raw.port || DEFAULT_CFG.port,
-        database: raw.database || DEFAULT_CFG.database,
-        user: raw.user || DEFAULT_CFG.user,
-        password: decryptPassword(raw.password)
+  return loadDatabaseConfig(process.env, () => {
+    try {
+      if (existsSync(CONFIG_PATH())) {
+        const raw = JSON.parse(readFileSync(CONFIG_PATH(), 'utf8'))
+        return {
+          host: raw.host || DEFAULT_CFG.host,
+          port: raw.port || DEFAULT_CFG.port,
+          database: raw.database || DEFAULT_CFG.database,
+          user: raw.user || DEFAULT_CFG.user,
+          password: decryptPassword(raw.password)
+        }
       }
-    }
-  } catch (_) {}
-  return { ...DEFAULT_CFG }
+    } catch (_) {}
+    return { ...DEFAULT_CFG }
+  })
 }
 
 export function saveConfig(cfg) {
+  if (isDisposableTestMode()) throw new Error('Saving legacy database settings is disabled in disposable test mode.')
   writeFileSync(CONFIG_PATH(), JSON.stringify({
     host: cfg.host,
     port: cfg.port,
@@ -67,6 +71,7 @@ export function saveConfig(cfg) {
 }
 
 export async function initDB(cfg = null) {
+  if (isDisposableTestMode()) throw new Error('Legacy PostgreSQL initialization is disabled in disposable test mode.')
   const c = cfg || loadConfig()
   if (pool) {
     const old = pool

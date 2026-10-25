@@ -12,6 +12,33 @@ The engagement client keeps the service session after an authentication-status r
 
 The startup screen is an application-entry gate, not complete authorization for legacy data. Legacy financial IPC still has direct PostgreSQL access and does not enforce per-user engagement permissions. Do not treat the login gate as securing those operations or as production-ready multi-user isolation.
 
+## Disposable test mode
+
+Use the explicit disposable test mode for local desktop/service development. It is intentionally separate from ordinary development mode; an unset or incomplete test configuration fails before opening any database connection.
+
+The test harness must create its own temporary PostgreSQL cluster and database, using a restricted non-superuser role and a non-default port. It writes a target manifest containing the exact host, port, database, role, random instance ID, PostgreSQL data directory and isolated Electron user-data directory. The desktop requires all of these environment variables:
+
+```text
+FSG_TEST_MODE=true
+FSG_TEST_DB_HOST=127.0.0.1
+FSG_TEST_DB_PORT=<harness-assigned-port>
+FSG_TEST_DB_NAME=<harness-created-database>
+FSG_TEST_DB_USER=<harness-created-role>
+FSG_TEST_DB_PASSWORD=<harness-generated-secret>
+FSG_TEST_TARGET_FILE=<absolute-harness-manifest-path>
+FSG_TEST_USER_DATA_PATH=<absolute-harness-user-data-path>
+```
+
+Do not set `ENGAGEMENT_SERVICE_URL`, `ENGAGEMENT_DATABASE_URL`, or any `ENGAGEMENT_DB_*` variable in this mode. The application sets and verifies Electron's effective `userData` path before loading any saved database profile, displays the non-secret target, starts only the local engagement service, and disables legacy DB initialization, schema/mapping setup and legacy financial IPC registration. The service compares its complete database options with the harness manifest before connecting. After connection it verifies the PostgreSQL endpoint, current database/user and the harness-created instance marker/data-directory identity before running engagement schema setup.
+
+Run the safeguards self-test with:
+
+```powershell
+npm run isolation:test
+```
+
+That command builds the desktop and provisions a disposable PostgreSQL cluster under the system temporary directory. It uses SCRAM password authentication and a restricted runtime role; validates missing/conflicting configuration, production-target rejection, saved-profile non-fallback, Electron `userData`, legacy-startup disabling, and service identity/schema startup; then launches the Electron main process in a no-window startup probe and removes only its own temporary cluster. It is not a reporting workflow or UI UAT. Never use the saved Settings profile or the live `vera_financial` server for tests. The prior database-isolation incident remains unresolved; this test does not establish impact to existing data or authorise a restore/reversal.
+
 ## Run on the firm server
 
 Use a trusted Windows firm server with Node.js and PostgreSQL network access. The server process, not a desktop client, must receive the engagement-service database credentials. Keep the database name `vera_financial`; do not point the service at a separate production database.

@@ -1,6 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, dialog } from 'electron'
 import { join } from 'path'
-import { isIP } from 'node:net'
 import { initDB, loadConfig, flushDB, withStartupLock } from './db/client.js'
 import { ensureSchema } from './db/schema.js'
 import { seedDefaultMapping, ensureStockCategories } from './services/excel.js'
@@ -24,6 +23,27 @@ import { registerFsSnapshotHandlers } from './ipc/fs-snapshot.js'
 import { registerEngagementClientHandlers } from './ipc/engagement-client.js'
 import { startLocalEngagementService } from '../server/dev-engagement-service.js'
 import { guardScreen } from './screen-guard.js'
+import {
+  configureDisposableTestUserData,
+  getApplicationStartupPlan,
+  isDisposableTestMode,
+  resolveDisposableTestTarget,
+} from './test-isolation.mjs'
+
+const disposableTestMode = isDisposableTestMode()
+const startupPlan = getApplicationStartupPlan(process.env, app.isPackaged)
+if (disposableTestMode) {
+  configureDisposableTestUserData(app)
+  const { databaseConfig, target } = resolveDisposableTestTarget()
+  console.info('Disposable test target selected:', {
+    host: databaseConfig.host,
+    port: databaseConfig.port,
+    database: databaseConfig.database,
+    user: databaseConfig.user,
+    dataDirectory: target.dataDirectory,
+    userDataPath: app.getPath('userData'),
+  })
+}
 
 let mainWindow
 let localEngagementService = null
@@ -31,25 +51,11 @@ let closingLocalEngagementService = false
 const engagementClientOptions = {}
 const appWindows = new Set()   // every open window of the app (more than one is allowed)
 
-function isLoopbackServiceUrl(value) {
-  if (!value) return false
-  try {
-    const hostname = new URL(value).hostname.replace(/^\[|\]$/g, '').toLowerCase()
-    return hostname === 'localhost' || hostname === '::1' || (isIP(hostname) === 4 && hostname.startsWith('127.'))
-  } catch {
-    return false
-  }
-}
-
 function shouldUseLocalDevelopmentService() {
-  const isDevelopment = !app.isPackaged
-    && (process.env.NODE_ENV_ELECTRON_VITE === 'development' || process.env.NODE_ENV === 'development')
-  return isDevelopment
-    && (!process.env.ENGAGEMENT_SERVICE_URL || isLoopbackServiceUrl(process.env.ENGAGEMENT_SERVICE_URL))
+  return startupPlan.localDevelopmentService
 }
 
-const serviceOnlyMode = String(process.env.ENGAGEMENT_SERVICE_ONLY || '').toLowerCase() === 'true'
-  || Boolean(process.env.ENGAGEMENT_SERVICE_URL && !shouldUseLocalDevelopmentService())
+const serviceOnlyMode = startupPlan.serviceOnlyMode
 if (serviceOnlyMode) engagementClientOptions.serviceOnlyMode = true
 
 // More than one window: every window is the whole app, on the same database. A window opened with "New window" is told (in the page
@@ -98,7 +104,7 @@ async function createWindow(popoutPayload = null, fromWindow = null) {
 
 app.whenReady().then(async () => {
   let legacyDatabaseReady = false
-  if (!serviceOnlyMode) {
+  if (startupPlan.initializeLegacyDatabase) {
     try {
       await initDB()
       legacyDatabaseReady = true
@@ -155,7 +161,7 @@ app.whenReady().then(async () => {
       throw error
     }
   })
-  if (!serviceOnlyMode) {
+  if (startupPlan.registerLegacyIpc) {
     registerTBHandlers()
     registerMappingHandlers()
     registerMappedTBHandlers()
@@ -196,6 +202,17 @@ app.whenReady().then(async () => {
       w.webContents.send('data:changed', { channel: String((info && info.channel) || '') })
     }
   })
+
+  if (disposableTestMode && process.env.FSG_TEST_STARTUP_PROBE === 'true') {
+    console.info('Disposable desktop startup probe passed:', {
+      effectiveUserData: app.getPath('userData'),
+      serviceOnlyMode,
+      legacyDatabaseInitialized: legacyDatabaseReady,
+      legacyIpcRegistered: startupPlan.registerLegacyIpc,
+    })
+    app.quit()
+    return
+  }
 
   await createWindow()
 
