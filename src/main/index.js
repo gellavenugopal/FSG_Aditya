@@ -29,6 +29,12 @@ let closingLocalEngagementService = false
 const engagementClientOptions = {}
 const appWindows = new Set()   // every open window of the app (more than one is allowed)
 
+function isUnconfiguredLocalDevelopment() {
+  return !process.env.ENGAGEMENT_SERVICE_URL
+    && !app.isPackaged
+    && (process.env.NODE_ENV_ELECTRON_VITE === 'development' || process.env.NODE_ENV === 'development')
+}
+
 // More than one window: every window is the whole app, on the same database. A window opened with "New window" is told (in the page
 // address) the client, Financial Year, Trial Balance and tab it was opened from - see App.jsx (POPOUT).
 async function createWindow(popoutPayload = null, fromWindow = null) {
@@ -97,7 +103,7 @@ app.whenReady().then(async () => {
     // show the Settings modal for the user to enter connection details.
   }
 
-  if (!process.env.ENGAGEMENT_SERVICE_URL && !app.isPackaged && process.env.NODE_ENV === 'development') {
+  if (isUnconfiguredLocalDevelopment()) {
     try {
       localEngagementService = await startLocalEngagementService(loadConfig())
       Object.assign(engagementClientOptions, localEngagementService.clientOptions)
@@ -114,11 +120,9 @@ app.whenReady().then(async () => {
   registerMappingHandlers()
   registerMappedTBHandlers()
   registerSettingsHandlers()
-  ipcMain.handle('engagementService:localSetupAvailable', () => (
-    !process.env.ENGAGEMENT_SERVICE_URL && !app.isPackaged && process.env.NODE_ENV === 'development'
-  ))
+  ipcMain.handle('engagementService:localSetupAvailable', () => isUnconfiguredLocalDevelopment())
   ipcMain.handle('engagementService:restartLocal', async () => {
-    if (process.env.ENGAGEMENT_SERVICE_URL || app.isPackaged || process.env.NODE_ENV !== 'development') {
+    if (!isUnconfiguredLocalDevelopment()) {
       throw new Error('Local engagement service setup is only available in an unconfigured development build.')
     }
     if (localEngagementService) {

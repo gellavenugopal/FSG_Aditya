@@ -46,6 +46,13 @@ function serviceUrl(path, configured = process.env.ENGAGEMENT_SERVICE_URL) {
   return url
 }
 
+function describeConnectionError(error, url) {
+  const details = error instanceof AggregateError && error.errors?.length
+    ? error.errors.map(item => item.code || item.message || String(item)).join(', ')
+    : error.code || error.message || String(error)
+  return new Error(`Could not connect to the engagement service at ${url.origin}: ${details}`, { cause: error })
+}
+
 function post(url, payload, bearer, setupToken, ca) {
   const body = JSON.stringify(payload ?? {})
   return new Promise((resolve, reject) => {
@@ -77,7 +84,7 @@ function post(url, payload, bearer, setupToken, ca) {
       })
     })
     req.on('timeout', () => req.destroy(new Error('Engagement service request timed out.')))
-    req.on('error', reject)
+    req.on('error', error => reject(describeConnectionError(error, url)))
     req.end(body)
   })
 }

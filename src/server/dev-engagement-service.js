@@ -25,6 +25,13 @@ function findOpenSsl() {
   return executable
 }
 
+function describeStartupError(error) {
+  if (error instanceof AggregateError && error.errors?.length) {
+    return error.errors.map(item => item.code || item.message || String(item)).join(', ')
+  }
+  return error?.message || String(error)
+}
+
 export async function startLocalEngagementService(databaseConfig) {
   const directory = mkdtempSync(join(tmpdir(), 'fsg-engagement-dev-'))
   const keyPath = join(directory, 'localhost-key.pem')
@@ -75,6 +82,9 @@ export async function startLocalEngagementService(databaseConfig) {
   } catch (error) {
     if (service) await service.close().catch(() => {})
     rmSync(directory, { recursive: true, force: true })
-    throw error
+    const endpoint = databaseConfig?.host
+      ? ` for PostgreSQL at ${databaseConfig.host}:${databaseConfig.port || 5432}/${databaseConfig.database}`
+      : ''
+    throw new Error(`Could not start the local engagement service${endpoint}: ${describeStartupError(error)}`, { cause: error })
   }
 }
