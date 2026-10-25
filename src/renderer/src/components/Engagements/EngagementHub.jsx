@@ -39,7 +39,7 @@ function ShieldNotice({ children }) {
 function AuthGate({ setupRequired, onAuthenticated }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [values, setValues] = useState({ firmName: '', displayName: '', email: '', password: '' })
+  const [values, setValues] = useState({ firmName: '', displayName: '', email: '', password: '', setupAuthorizationToken: '' })
   const set = (key, value) => setValues(prev => ({ ...prev, [key]: value }))
 
   const submit = async (event) => {
@@ -65,13 +65,14 @@ function AuthGate({ setupRequired, onAuthenticated }) {
         <h2 className="mt-1 text-xl font-bold text-gray-900">{setupRequired ? 'Create the firm administrator' : 'Sign in to engagements'}</h2>
         <p className="mt-2 text-sm leading-relaxed text-gray-500">
           {setupRequired
-            ? 'The first account becomes the firm administrator. Setup is claimed once and cannot be repeated from another client.'
+            ? 'The first account becomes the firm administrator. Enter the one-time setup authorization issued by the firm server administrator.'
             : 'Use your firm account. Engagement permissions are checked by the application service for each operation.'}
         </p>
         {setupRequired && (
           <>
             <div className="mt-5"><Field label="Firm name"><Input required autoComplete="organization" value={values.firmName} onChange={e => set('firmName', e.target.value)} /></Field></div>
             <div className="mt-4"><Field label="Administrator name"><Input required autoComplete="name" value={values.displayName} onChange={e => set('displayName', e.target.value)} /></Field></div>
+            <div className="mt-4"><Field label="One-time setup authorization"><Input required autoComplete="off" type="password" value={values.setupAuthorizationToken} onChange={e => set('setupAuthorizationToken', e.target.value)} /></Field></div>
           </>
         )}
         <div className="mt-4"><Field label="Work email"><Input required type="email" autoComplete="username" value={values.email} onChange={e => set('email', e.target.value)} /></Field></div>

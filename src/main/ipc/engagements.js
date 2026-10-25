@@ -1,12 +1,12 @@
-import { ipcMain } from 'electron'
 import { randomBytes, pbkdf2, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
-import { query, runInTransaction } from '../db/client.js'
 import {
   canEditEngagement, canFinaliseEngagement, canViewEngagement,
   isValidDateOnly, validateActivation, validateEngagementDraft,
 } from '../services/engagement-domain.js'
 
+let query
+let runInTransaction
 const derivePassword = promisify(pbkdf2)
 const sessions = new Map()
 const PASSWORD_ITERATIONS = 310000
@@ -15,6 +15,11 @@ const BOOTSTRAP_LOCK = 517203841
 
 function cleanEmail(value) {
   return String(value || '').trim().toLowerCase()
+}
+
+function dateOnly(value) {
+  if (value instanceof Date) return value.toISOString().slice(0, 10)
+  return typeof value === 'string' ? value.slice(0, 10) : ''
 }
 
 function validatePassword(value) {
@@ -30,6 +35,7 @@ async function passwordRecord(password, salt = randomBytes(16).toString('hex')) 
 }
 
 async function verifyPassword(password, salt, expectedHex) {
+  if (typeof password !== 'string' || password.length > 256) return false
   const actual = await derivePassword(String(password || ''), Buffer.from(salt, 'hex'), PASSWORD_ITERATIONS, 32, 'sha256')
   const expected = Buffer.from(expectedHex, 'hex')
   return actual.length === expected.length && timingSafeEqual(actual, expected)
@@ -47,11 +53,24 @@ function publicUser(row) {
   }
 }
 
-async function authenticated(event) {
+async function authenticated(event, allowPasswordChange = false) {
   const session = sessions.get(event.sender.id)
   if (!session || session.expiresAt <= Date.now()) {
     sessions.delete(event.sender.id)
     throw new Error('Sign in to use engagement management.')
+  }
+  const { rows: [row] } = await query(
+    `SELECT id,firm_id,email,display_name,role,professional_signatory_id,must_change_password
+     FROM firm_users WHERE id=$1 AND active=TRUE`,
+    [session.user.id]
+  )
+  if (!row) {
+    sessions.delete(event.sender.id)
+    throw new Error('This firm account is disabled. Contact your firm administrator.')
+  }
+  session.user = publicUser(row)
+  if (session.user.mustChangePassword && !allowPasswordChange) {
+    throw new Error('Change your temporary password before continuing.')
   }
   session.expiresAt = Date.now() + SESSION_MAX_AGE
   return session.user
@@ -116,7 +135,8 @@ async function logAudit(user, action, engagementId = null, details = {}) {
 
 function validateUserList(ids, currentUserId) {
   if (!Array.isArray(ids)) return []
-  const clean = [...new Set(ids.map(Number).filter(id => Number.isInteger(id) && id > 0 && id !== currentUserId))]
+  const clean = [...new Set(ids.map(item => Number(item && typeof item === 'object' ? item.userId : item))
+    .filter(id => Number.isInteger(id) && id > 0 && id !== currentUserId))]
   return clean.slice(0, 100)
 }
 
@@ -184,15 +204,36 @@ async function assertEntityPeriodAvailableForActivation(entityPeriodId) {
   }
 }
 
-export function registerEngagementHandlers() {
+export function registerEngagementHandlers(ipcMain, database) {
+  if (!ipcMain?.handle || typeof database?.query !== 'function' || typeof database?.runInTransaction !== 'function') {
+    throw new Error('Engagement handlers require an IPC-compatible handler registry and database adapter.')
+  }
+  query = database.query
+  runInTransaction = database.runInTransaction
+
   ipcMain.handle('engagementAuth:status', async (event) => {
     const { rows: [result] } = await query(
-      `SELECT EXISTS(SELECT 1 FROM firm_users) AS configured`
+      `SELECT EXISTS(SELECT 1 FROM firm_users WHERE role='administrator') AS configured`
     )
     const session = sessions.get(event.sender.id)
+    let user = null
+    if (session && session.expiresAt > Date.now()) {
+      const { rows: [activeUser] } = await query(
+        `SELECT id,firm_id,email,display_name,role,professional_signatory_id,must_change_password
+         FROM firm_users WHERE id=$1 AND active=TRUE`,
+        [session.user.id]
+      )
+      if (activeUser) {
+        user = publicUser(activeUser)
+        session.user = user
+        session.expiresAt = Date.now() + SESSION_MAX_AGE
+      } else {
+        sessions.delete(event.sender.id)
+      }
+    }
     return {
       setupRequired: !result.configured,
-      user: session && session.expiresAt > Date.now() ? session.user : null,
+      user,
     }
   })
 
@@ -204,9 +245,15 @@ export function registerEngagementHandlers() {
     const { salt, hash } = await passwordRecord(input.password)
     const user = await runInTransaction(async () => {
       await query(`SELECT pg_advisory_xact_lock($1)`, [BOOTSTRAP_LOCK])
-      const { rows: [existing] } = await query(`SELECT EXISTS(SELECT 1 FROM firm_users) AS configured`)
+      const { rows: [existing] } = await query(
+        `SELECT EXISTS(SELECT 1 FROM firm_users WHERE role='administrator') AS configured`
+      )
       if (existing.configured) throw new Error('Administrator setup has already been completed.')
-      const { rows: [firm] } = await query(`INSERT INTO firms(name) VALUES($1) RETURNING id`, [String(input.firmName).trim()])
+      const { rows: [currentFirm] } = await query(`SELECT firm_id FROM firm_users ORDER BY id LIMIT 1`)
+      const { rows: [firm] } = currentFirm
+        ? await query(`SELECT id FROM firms WHERE id=$1`, [currentFirm.firm_id])
+        : await query(`INSERT INTO firms(name) VALUES($1) RETURNING id`, [String(input.firmName).trim()])
+      if (!firm) throw new Error('The existing firm record is unavailable; contact the service administrator.')
       const { rows: [row] } = await query(
         `INSERT INTO firm_users (firm_id,email,display_name,password_salt,password_hash,role)
          VALUES ($1,$2,$3,$4,$5,'administrator') RETURNING *`,
@@ -222,10 +269,11 @@ export function registerEngagementHandlers() {
 
   ipcMain.handle('engagementAuth:login', async (event, input = {}) => {
     const email = cleanEmail(input.email)
-    const { rows: [row] } = await query(
-      `SELECT * FROM firm_users WHERE email=$1 AND active=TRUE ORDER BY id LIMIT 1`,
+    const { rows } = await query(
+      `SELECT * FROM firm_users WHERE lower(email)=$1 AND active=TRUE ORDER BY id LIMIT 2`,
       [email]
     )
+    const row = rows.length === 1 ? rows[0] : null
     if (!row || !(await verifyPassword(input.password, row.password_salt, row.password_hash))) {
       throw new Error('Email or password is incorrect.')
     }
@@ -243,7 +291,7 @@ export function registerEngagementHandlers() {
   })
 
   ipcMain.handle('engagementAuth:changePassword', async (event, password) => {
-    const user = await authenticated(event)
+    const user = await authenticated(event, true)
     const { salt, hash } = await passwordRecord(password)
     await runInTransaction(async () => {
       await query(
@@ -252,7 +300,11 @@ export function registerEngagementHandlers() {
       )
       await logAudit(user, 'user.password_changed')
     })
-    sessions.get(event.sender.id).user = { ...user, mustChangePassword: false }
+    for (const [senderId, activeSession] of sessions) {
+      if (senderId !== event.sender.id && activeSession.user.id === user.id) sessions.delete(senderId)
+    }
+    const currentSession = sessions.get(event.sender.id)
+    if (currentSession) currentSession.user = { ...user, mustChangePassword: false }
     return { ok: true }
   })
 
@@ -346,8 +398,9 @@ export function registerEngagementHandlers() {
               CASE WHEN e.owner_user_id=$2 THEN 'Owner'
                    WHEN e.partner_user_id=$2 THEN 'Assigned partner'
                    WHEN e.substitute_user_id=$2 THEN 'Authorised substitute'
-                   WHEN $3 IN ('administrator','partner') AND $4::boolean THEN 'Firm-wide visibility'
-                   ELSE COALESCE(m.access_level,'read') END AS current_access
+                   WHEN m.access_level IS NOT NULL THEN m.access_level
+                   WHEN $4::boolean AND $3 IN ('administrator','partner') THEN 'Firm-wide visibility'
+                   ELSE 'read' END AS current_access
        FROM engagements e
        JOIN entities en ON en.id=e.entity_id
        JOIN firm_users owner ON owner.id=e.owner_user_id
@@ -357,8 +410,7 @@ export function registerEngagementHandlers() {
        ) rs ON TRUE
        LEFT JOIN engagement_memberships m ON m.engagement_id=e.id AND m.user_id=$2
        WHERE e.firm_id=$1 AND (
-         $4::boolean OR e.owner_user_id=$2 OR e.partner_user_id=$2 OR e.substitute_user_id=$2
-         OR m.user_id IS NOT NULL OR ($3 IN ('administrator','partner') AND $4::boolean)
+         $4::boolean OR e.owner_user_id=$2 OR e.partner_user_id=$2 OR e.substitute_user_id=$2 OR m.user_id IS NOT NULL
        )
        ORDER BY e.updated_at DESC,e.id DESC`,
       [user.firmId, user.id, user.role, all]
@@ -376,11 +428,16 @@ export function registerEngagementHandlers() {
       || (excludeId !== null && (!Number.isInteger(excludeId) || excludeId <= 0))) {
       throw new Error('Select a client and enter a valid reporting period.')
     }
+    const { rows: [client] } = await query(
+      `SELECT 1 FROM firm_entities WHERE firm_id=$1 AND entity_id=$2`,
+      [user.firmId, entityId]
+    )
+    if (!client) throw new Error('Client not found or not available to this firm.')
     const { rows } = await query(
-      `SELECT e.*,en.name AS client_name,owner.display_name AS owner_name,rs.jurisdiction,rs.accounting_framework,
-              rs.reporting_pack_id,rs.entity_period_id,rs.compatibility_confirmed,
+      `SELECT e.id,e.reference,e.name,e.status,e.owner_user_id,e.partner_user_id,e.substitute_user_id,
+              owner.display_name AS owner_name,rs.accounting_framework,
               m.access_level
-       FROM engagements e JOIN entities en ON en.id=e.entity_id
+       FROM engagements e
        JOIN firm_users owner ON owner.id=e.owner_user_id
        LEFT JOIN LATERAL (
          SELECT * FROM engagement_reporting_sets WHERE engagement_id=e.id ORDER BY id LIMIT 1
@@ -392,6 +449,9 @@ export function registerEngagementHandlers() {
       [user.firmId, entityId, start, end, user.id, excludeId]
     )
     const visibleMatches = rows.filter(row => canViewEngagement(user, row, row.access_level ? { access_level: row.access_level } : null))
+      .map(({ id, reference, name, status, owner_name, accounting_framework }) => ({
+        id: Number(id), reference, name, status, owner_name, accounting_framework,
+      }))
     return { visibleMatches, restrictedMatch: visibleMatches.length < rows.length }
   })
 
@@ -402,6 +462,11 @@ export function registerEngagementHandlers() {
       || !isValidDateOnly(input.periodEnd) || input.periodStart >= input.periodEnd) {
       throw new Error('Select a client and enter a valid reporting period.')
     }
+    const { rows: [client] } = await query(
+      `SELECT 1 FROM firm_entities WHERE firm_id=$1 AND entity_id=$2`,
+      [user.firmId, entityId]
+    )
+    if (!client) throw new Error('Client not found or not available to this firm.')
     await runInTransaction(async () => {
       const { rows } = await query(
         `SELECT e.id FROM engagements e
@@ -564,7 +629,7 @@ export function registerEngagementHandlers() {
     const ownerId = Number(input.ownerUserId || engagement.owner_user_id)
     const partnerId = input.partnerUserId ? Number(input.partnerUserId) : null
     const substituteId = input.substituteUserId ? Number(input.substituteUserId) : null
-    if (ownerId !== actor.id && !['administrator', 'partner'].includes(actor.role)) {
+    if (ownerId !== engagement.owner_user_id && !['administrator', 'partner'].includes(actor.role)) {
       throw new Error('Only a partner or administrator can assign another engagement owner.')
     }
     const participants = validateUserList(input.participants, actor.id)
@@ -581,8 +646,8 @@ export function registerEngagementHandlers() {
     const periodStart = input.periodStart || null
     const periodEnd = input.periodEnd || null
     if (engagement.entity_period_id
-      && (periodStart !== String(engagement.period_start).slice(0, 10)
-        || periodEnd !== String(engagement.period_end).slice(0, 10))) {
+      && (periodStart !== dateOnly(engagement.period_start)
+        || periodEnd !== dateOnly(engagement.period_end))) {
       throw new Error('The reporting period is already linked to legacy work and cannot be changed.')
     }
     const separateReason = String(input.separateReason || '').trim()
@@ -920,8 +985,8 @@ export function registerEngagementHandlers() {
     void membership
     if (engagement.status !== 'draft') throw new Error('Only a Draft engagement can be activated.')
     const validation = validateActivation({
-      entityId: engagement.entity_id, name: engagement.name, periodStart: engagement.period_start,
-      periodEnd: engagement.period_end, serviceScope: engagement.service_scope,
+      entityId: engagement.entity_id, name: engagement.name, periodStart: dateOnly(engagement.period_start),
+      periodEnd: dateOnly(engagement.period_end), serviceScope: engagement.service_scope,
       partnerUserId: engagement.partner_user_id, jurisdiction: engagement.jurisdiction,
       framework: engagement.accounting_framework, reportingPackId: engagement.reporting_pack_id,
       trialBalanceCurrency: engagement.trial_balance_currency,
@@ -958,7 +1023,8 @@ export function registerEngagementHandlers() {
     if (!engagement.entity_period_id) throw new Error('This engagement has no linked entity reporting period.')
     await runInTransaction(async () => {
       const { rows: [period] } = await query(
-        `SELECT locked,locked_at,is_final,finalised_at,final_sign_place,final_sign_date
+        `SELECT locked,locked_at::text AS locked_at,is_final,finalised_at::text AS finalised_at,
+                final_sign_place,final_sign_date
          FROM entity_periods WHERE id=$1 FOR UPDATE`,
         [engagement.entity_period_id]
       )
@@ -976,7 +1042,7 @@ export function registerEngagementHandlers() {
       }
       const { rows: [updated] } = await query(
         `UPDATE entity_periods SET is_final=TRUE,final_sign_place=$1,final_sign_date=$2,finalised_at=now(),
-                locked=TRUE,locked_at=now() WHERE id=$3 RETURNING finalised_at`,
+                locked=TRUE,locked_at=now() WHERE id=$3 RETURNING finalised_at::text AS finalised_at`,
         [place, date, engagement.entity_period_id]
       )
       await query(
@@ -1001,7 +1067,8 @@ export function registerEngagementHandlers() {
     if (!engagement.entity_period_id) throw new Error('This engagement has no linked entity reporting period.')
     await runInTransaction(async () => {
       const { rows: [reporting] } = await query(
-        `SELECT prior_entity_period_state,finalisation_sign_place,finalisation_sign_date,engagement_finalised_at
+        `SELECT prior_entity_period_state,finalisation_sign_place,finalisation_sign_date,
+                engagement_finalised_at::text AS engagement_finalised_at
          FROM engagement_reporting_sets WHERE id=$1 FOR UPDATE`,
         [engagement.reporting_set_id]
       )

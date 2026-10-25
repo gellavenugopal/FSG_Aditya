@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "engagement:server": "node src/server/engagement-server.js",
+    "engagement:test": "node tools/selftest-engagement-service.mjs",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win"
   },

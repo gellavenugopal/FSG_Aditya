@@ -1,6 +1,5 @@
-import { query } from './client.js'
-
-export async function ensureEngagementSchema() {
+export async function ensureEngagementSchema(query) {
+  if (typeof query !== 'function') throw new Error('A PostgreSQL query function is required for the engagement schema.')
   await query(`ALTER TABLE entities ADD COLUMN IF NOT EXISTS jurisdiction TEXT`)
   await query(`ALTER TABLE entities ADD COLUMN IF NOT EXISTS legal_form TEXT`)
   await query(`CREATE SEQUENCE IF NOT EXISTS engagement_reference_seq`)
