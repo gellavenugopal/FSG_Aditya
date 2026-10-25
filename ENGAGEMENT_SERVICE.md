@@ -60,7 +60,7 @@ npm run dev
 
 For a packaged client, configure the same variable in the approved Windows machine/user environment before launching FSG. The URL must be HTTPS and match the service certificate. The desktop stores the opaque service session token in the Electron main process, not renderer storage.
 
-With an explicitly configured non-loopback service URL, the desktop enters **service-only mode**. It does not initialize the legacy PostgreSQL client and does not register the legacy financial IPC handlers. The screen provides engagement list/create/open and the protected Trial Balance import/inspection flow. Mapping, journals, notes and financial reports are unavailable in this mode; they must not silently fall back to direct database access. The same mode is selected in packaged clients when `ENGAGEMENT_SERVICE_URL` is configured, including a deliberate loopback URL.
+With an explicitly configured service URL, the desktop enters **service-only mode**. It does not initialize the legacy PostgreSQL client and does not register the legacy financial IPC handlers. The protected reporting panel provides journal posting, final-TB snapshots, India auto-mapping, report settings, note narrative disclosures, combined-PDF generation, and versioned output operations in addition to engagement and TB workflows. Unmigrated functions must not silently fall back to direct database access. The same mode is selected in packaged clients when `ENGAGEMENT_SERVICE_URL` is configured, including a deliberate loopback URL.
 
 For a second desktop, configure only `ENGAGEMENT_SERVICE_URL` and the service certificate trust. No PostgreSQL credentials or local database settings are needed on that client. In development, an unset or loopback URL normally selects the embedded single-machine service and therefore still needs local PostgreSQL configuration; use the firm server's non-loopback HTTPS hostname to exercise service-only mode. To explicitly use a trusted service bound to loopback during development, set `ENGAGEMENT_SERVICE_ONLY=true` as well.
 
@@ -77,9 +77,39 @@ Those handlers can operate on entity-period or TB identifiers without proving ac
 
 Open an engagement from the service-connected engagement list. The overview shows only TBs explicitly linked to that engagement and its reporting period. Owners and users with edit membership can select **Import Excel**; readers and visibility-only partners/administrators can inspect linked rows but cannot import. Imports are limited to 8 MB and 100,000 ledger rows, require the standard `Name`, `OpeningBalance`, `Debit`, `Credit`, and `ClosingBalance` columns, and are parsed on the trusted server. The desktop's native picker sends the selected bytes and a basename; no local file path is sent to the server.
 
-Each successful import creates a new `trial_balances` record and ledger rows. The source filename, SHA-256, size, importing user and timestamp are retained in `engagement_trial_balance_imports`. Re-importing byte-identical content into the same engagement is rejected without changing the existing import. Distinct concurrent uploads remain separate. Trial balance, rows, source metadata and the audit event are committed atomically. Locked or finalised periods reject imports. Imported rows are read-only in this first slice; existing mapping, journal and report calculations are not invoked.
+Each successful import creates a new `trial_balances` record and ledger rows. The source filename, SHA-256, size, importing user and timestamp are retained in `engagement_trial_balance_imports`. Re-importing byte-identical content into the same engagement is rejected without changing the existing import. Distinct concurrent uploads remain separate. Trial balance, rows, source metadata and the audit event are committed atomically. Locked or finalised periods reject imports. Imported rows remain read-only; posted journals and later final-TB snapshots do not overwrite them.
 
 Legacy TBs can be inspected only after the owner/admin explicitly links them to this engagement through the existing confirmation workflow. Merely sharing a client entity or period does not grant an engagement access path. Cross-engagement TB IDs are rejected by the protected read API.
+
+## Single-machine India reporting pack
+
+The first protected reporting path is available in the engagement overview. It supports only the existing India legacy Schedule III pack with trial-balance and presentation currency both set to INR. No currency translation is performed.
+
+1. Open an active engagement and import an Excel workbook with `Name`, `OpeningBalance`, `Debit`, `Credit`, and `ClosingBalance`. Include hierarchy columns such as `Parent` and `Group.$Parent` to help the existing India auto-mapper classify accounts.
+2. Post balanced audit journals. Users with engagement edit rights can post without approval. Journal entries are retained as immutable history; the source import does not change.
+3. Create a final Trial Balance. Each operation creates a new versioned snapshot from the selected import plus the posted journals through a saved journal watermark, then runs the existing India auto-mapping engine.
+4. Review the mapping results and report inputs. The panel currently supports automatic mapping and inspection only; manual mapping overrides are not yet available through the protected service.
+5. Edit and save the auditor-entered audit-report fields. The application does not infer the opinion. Enter audit-report date/place separately from financial-statement approval date/place, select the client signatories, and add separate narrative note disclosures as needed.
+6. Generate one combined PDF. The desktop renders the existing India financial-statement and notes HTML together with the audit-report page, then sends the bounded PDF bytes to the trusted service for versioned persistence. Download saved versions from the panel. Output finalisation is restricted to the assigned engagement partner or authorised substitute.
+
+Current limitations: the protected panel does not migrate the existing structured note fill-details forms, provide manual mapping corrections, or select a comparative Trial Balance. The renderer can consume saved note-detail records, but those forms are not editable through this panel. The PDF persistence integration test uses a synthetic valid PDF; Electron rendering is separately verified with the synthetic report script below, not by full end-to-end UI UAT.
+
+### Reproducible single-machine sample
+
+On Windows, with dependencies installed and Electron available, run:
+
+```powershell
+& '.\node_modules\.bin\electron.cmd' '.\tools\synthetic-report-electron'
+```
+
+This uses synthetic-only data and the production India statement HTML builder plus Electron PDF renderer. It writes:
+
+- `artifacts\Synthetic-Engagement-TB.xlsx` — a three-ledger import workbook for the sample client and period 01-Apr-2025 to 31-Mar-2026.
+- `artifacts\Synthetic-Engagement-India-Reporting-Pack.pdf` — a seven-page sample containing an auditor-entered report, India financial statements, notes and signing page.
+
+The sample PDF is a renderer review artifact, not a report for a real client, and is not saved into the engagement service. To create a persistent sample through the application, use only a disposable local PostgreSQL database: configure the local connection in development Settings, run `npm run dev`, complete first-admin setup/sign-in, create a synthetic India engagement for `2025-04-01` through `2026-03-31`, import the sample workbook, post balanced journals (Dr Synthetic Expense / Cr Synthetic Capital for 15.00 and again for 5.00), create the final TB, enter synthetic auditor/report/signatory details, then generate and download the combined PDF.
+
+For the same-machine development path, `npm run dev` starts the embedded HTTPS service on loopback when `ENGAGEMENT_SERVICE_URL` is unset or loopback. The service uses the database settings already saved by the app and applies its additive engagement migration at service startup. Use a disposable development database; do not point this procedure at the live firm database. A remote firm service can also be used with `ENGAGEMENT_SERVICE_URL`, without desktop PostgreSQL credentials.
 
 ## First administrator on a development laptop
 
@@ -89,7 +119,7 @@ For local development, configure the database in the app's existing Settings scr
 npm run dev
 ```
 
-When the app is an unpackaged development build and `ENGAGEMENT_SERVICE_URL` is unset or points to loopback (`localhost`/`127.0.0.1`), Electron starts the engagement service automatically on loopback using those saved database settings. This avoids depending on a separately started local service or a stale local port setting. A non-loopback `ENGAGEMENT_SERVICE_URL` continues to select the remote firm service. The embedded service creates a temporary localhost HTTPS certificate and a one-time setup authorization inside the main process; neither value needs to be copied into the UI. Open the startup first-run form to create the administrator, then sign in. Administrators can create additional firm users from the Engagements screen.
+When the app is an unpackaged development build and `ENGAGEMENT_SERVICE_URL` is unset or points to loopback (`localhost`/`127.0.0.1`), Electron starts the engagement service automatically on loopback using those saved database settings. This avoids depending on a separately started local service or a stale local port setting. A non-loopback `ENGAGEMENT_SERVICE_URL` continues to select the remote firm service. The embedded service creates a temporary localhost HTTPS certificate and a one-time setup authorization inside the main process; neither value needs to be copied into the UI. Open the startup first-run form to create the administrator, then sign in. Administrators can create additional firm users from **Settings → Firm Team**.
 
 The startup sign-in page provides a limited **Configure database** flow if the saved connection cannot start the local service. Once the database is saved and connected, the app starts the local service and returns to first-run setup. This pre-login configuration flow only exposes database connection fields; it does not expose the settings screen's database export features.
 
@@ -103,7 +133,9 @@ From the repository root on Windows, with Node.js, PostgreSQL binaries under `C:
 npm run engagement:test
 ```
 
-The test creates a temporary PostgreSQL cluster, starts the local-development HTTPS service against that disposable database, exercises it with synthetic fixtures/workbooks, stops the cluster, and removes its temporary files. It never reads the configured application DB settings or connects to the live database. It covers migration/repeated startup, persistence, password setup/change, read/edit and partner/admin/substitute permissions, revocation/disabled users, privacy-safe duplicate checks, legacy trial-balance linking, activation/finalisation/reopening, validated Excel import, TB identifier isolation, read/edit permission checks, locked/finalised rejection, concurrent and repeated-import handling, source metadata, restart persistence, and rollback when either import or engagement audit insertion fails.
+The test creates a temporary PostgreSQL cluster, starts the local-development HTTPS service against that disposable database, exercises it with synthetic fixtures/workbooks, stops the cluster, and removes its temporary files. It never reads the configured application DB settings or connects to the live database. The latest run passed 82 assertions covering migration/repeated startup, persistence, password setup/change, read/edit and partner/admin/substitute permissions, revocation/disabled users, privacy-safe duplicate checks, legacy trial-balance linking, activation/finalisation/reopening, validated Excel import, TB identifier isolation, locked/finalised rejection, concurrent/repeated import handling, source metadata, journal posting, final-TB versioning/mapping, report settings/output permissions, and rollback when audit insertion fails. It does not render a PDF through Electron.
+
+The latest validation also passed `npm run build`, `node tools/selftest-fs-snapshot.mjs`, and `node tools/selftest-final-signing.mjs`. Physical two-client UAT is deferred. No live database migration, push or merge was performed.
 
 The service uses in-memory bearer sessions: restart logs all clients out. Deploy a process supervisor and monitor service/DB health before firm use. `/health` reports process availability, not database readiness.
 
