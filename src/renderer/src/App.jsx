@@ -30,7 +30,7 @@ import Format from './components/Format'
 import PPE from './components/PPE'
 import GeneralNotes from './components/GeneralNotes'
 import GenerateFinancials from './components/GenerateFinancials'
-import EngagementHub from './components/Engagements/EngagementHub'
+import EngagementHub, { AuthGate, PasswordChange } from './components/Engagements/EngagementHub'
 import SettingsModal from './components/shared/SettingsModal'
 import DBBanner from './components/shared/DBBanner'
 import BranchModeBar from './components/shared/BranchModeBar'
@@ -95,7 +95,7 @@ const POPOUT = (() => {
   } catch { return null }
 })()
 
-export default function App() {
+function ApplicationWorkspace({ user, onSignOut, signingOut }) {
   const [activeTab, setActiveTab]     = useState((POPOUT && POPOUT.tab) || 'Auditee Details')
   const [entity, setEntity]           = useState(null)
   const [activeTB, setActiveTB]       = useState(null)
@@ -546,7 +546,7 @@ export default function App() {
     if (!dbOk) return null
     switch (activeTab) {
       case 'Engagements':
-        return <EngagementHub />
+        return <EngagementHub onSignedOut={onSignOut} />
       case 'Auditee Details':
       case 'Financial Period':
       case 'Auditor':
@@ -964,6 +964,13 @@ export default function App() {
         onEntityPeriodChange={handleEntityPeriodChange}
       />
 
+      {activeTab !== 'Engagements' && (
+        <div className="flex shrink-0 items-center justify-end gap-3 border-b border-gray-100 bg-white px-4 py-1.5 text-xs text-gray-500">
+          <span>{user.displayName} <span className="capitalize">({user.role})</span></span>
+          <button disabled={signingOut} onClick={onSignOut} className="font-medium text-gray-600 hover:text-red-700 disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out'}</button>
+        </div>
+      )}
+
       {dbOk && <NavTabs tabs={TABS} groups={TAB_GROUPS} active={activeTab} onChange={setActiveTab} openRequest={menuRequest} />}
 
       {!dbOk && (
@@ -1046,4 +1053,86 @@ export default function App() {
     </div>
     </ConsolidationContext.Provider>
   )
+}
+
+export default function App() {
+  const [auth, setAuth] = useState({ loading: true, setupRequired: false, localDevelopment: false, localSetupAvailable: false, user: null, error: '' })
+  const [signingOut, setSigningOut] = useState(false)
+  const [showDatabaseSetup, setShowDatabaseSetup] = useState(false)
+
+  const refreshAuth = useCallback(async () => {
+    let localSetupAvailable = false
+    try {
+      localSetupAvailable = await window.api.canConfigureLocalEngagement()
+      const result = await window.api.engagementAuthStatus()
+      setAuth({ loading: false, setupRequired: result.setupRequired, localDevelopment: !!result.localDevelopment, localSetupAvailable, user: result.user, error: '' })
+    } catch (error) {
+      setAuth(current => ({ ...current, loading: false, localSetupAvailable, user: null, error: error.message || 'Unable to connect to the firm sign-in service.' }))
+    }
+  }, [])
+
+  useEffect(() => { refreshAuth() }, [refreshAuth])
+
+  const signOut = async () => {
+    setSigningOut(true)
+    try {
+      await window.api.logoutEngagementUser()
+      setAuth(current => ({ ...current, user: null }))
+    } catch (error) {
+      setAuth(current => ({ ...current, error: error.message || 'Unable to sign out.' }))
+    } finally {
+      setSigningOut(false)
+    }
+  }
+
+  if (auth.loading) {
+    return <div className="flex h-screen items-center justify-center bg-gray-50 text-sm text-gray-500">Connecting to firm sign-in…</div>
+  }
+  if (!auth.user && auth.error) {
+    return (
+      <>
+        <div className="flex h-screen flex-col items-center justify-center gap-4 bg-gray-50 p-5">
+          <p role="alert" className="max-w-md text-center text-sm text-red-700">{auth.error}</p>
+          <div className="flex gap-3">
+            {auth.localSetupAvailable && <button onClick={() => setShowDatabaseSetup(true)} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Configure database</button>}
+            <button onClick={refreshAuth} className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--color-primary-dark)]">Retry connection</button>
+          </div>
+        </div>
+        {showDatabaseSetup && <SettingsModal
+          initialSetupOnly
+          onClose={() => setShowDatabaseSetup(false)}
+          onConnected={async () => {
+            try {
+              await window.api.restartLocalEngagement()
+              setShowDatabaseSetup(false)
+              await refreshAuth()
+            } catch (error) {
+              setShowDatabaseSetup(false)
+              setAuth(current => ({ ...current, error: error.message || 'Unable to start the local engagement service.' }))
+            }
+          }}
+        />}
+      </>
+    )
+  }
+  if (!auth.user) {
+    return (
+      <div className="flex h-screen flex-col overflow-y-auto bg-gray-50">
+        <AuthGate
+          setupRequired={auth.setupRequired}
+          localDevelopment={auth.localDevelopment}
+          requireLoginAfterSetup
+          onAuthenticated={user => setAuth(current => ({ ...current, user, error: '' }))}
+        />
+        <p className="mx-auto max-w-md px-5 pb-5 text-center text-xs leading-relaxed text-gray-500">
+          Sign-in currently controls access to the workspace and engagement service. Legacy financial operations still require migration to permission-enforced server APIs.
+        </p>
+      </div>
+    )
+  }
+  if (auth.user.mustChangePassword) {
+    return <div className="h-screen overflow-y-auto bg-gray-50"><PasswordChange user={auth.user} onChanged={user => setAuth(current => ({ ...current, user }))} /></div>
+  }
+
+  return <ApplicationWorkspace key={auth.user.id} user={auth.user} onSignOut={signOut} signingOut={signingOut} />
 }

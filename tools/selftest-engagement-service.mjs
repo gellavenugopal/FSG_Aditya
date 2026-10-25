@@ -244,8 +244,11 @@ try {
     email: 'admin@example.test', firmName: 'Synthetic Firm', displayName: 'Synthetic Admin',
     password: 'Synthetic-Admin-Password!',
   }, null, service.clientOptions.setupToken)
-  const adminToken = setup.sessionToken
-  check(!!setup.user && !!adminToken, 'server-authorized first administrator setup returns an authenticated session')
+  check(!!setup.user && !!setup.sessionToken, 'server-authorized first administrator setup creates the initial account')
+  await ok('auth/logout', {}, setup.sessionToken)
+  const adminLogin = await login('admin@example.test', 'Synthetic-Admin-Password!')
+  const adminToken = adminLogin.sessionToken
+  check(!!adminToken && adminLogin.user.role === 'administrator', 'first administrator can sign in after setup')
   await fails('auth/setup', {
     email: 'second@example.test', firmName: 'Another Firm', displayName: 'Second Admin',
     password: 'Synthetic-Admin-Password!',

@@ -2,6 +2,12 @@
 
 This service handles the new engagement operations. It does not secure the rest of the desktop application: legacy financial IPC still connects directly to PostgreSQL and does not enforce engagement permissions. Do not treat this milestone as multi-user production isolation.
 
+## Desktop sign-up and sign-in
+
+The desktop now opens with firm sign-in instead of the financial workspace. When the firm has no administrator, the first-run screen lets the authorized operator create the firm administrator; the new administrator then signs in with that account. Once signed in, the administrator can create firm users in Engagements and include existing users as engagement participants. Only the first administrator can sign up through first-run setup; this is not open public registration.
+
+The startup screen is an application-entry gate, not complete authorization for legacy data. Legacy financial IPC still has direct PostgreSQL access and does not enforce per-user engagement permissions. Do not treat the login gate as securing those operations or as production-ready multi-user isolation.
+
 ## Run on the firm server
 
 Use a trusted Windows firm server with Node.js and PostgreSQL network access. The server process, not a desktop client, must receive the engagement-service database credentials. Keep the database name `vera_financial`; do not point the service at a separate production database.
@@ -62,6 +68,8 @@ npm run dev
 
 When the app is an unpackaged development build and `ENGAGEMENT_SERVICE_URL` is not set, Electron starts the engagement service automatically on loopback using those saved database settings. It creates a temporary localhost HTTPS certificate and a one-time setup authorization inside the main process; neither value needs to be copied into the UI. Open Engagements and submit the first-run form to create the administrator. After signing in, administrators can create additional firm users from the Engagements screen.
 
+The startup sign-in page provides a limited **Configure database** flow if the saved connection cannot start the local service. Once the database is saved and connected, the app starts the local service and returns to first-run setup. This pre-login configuration flow only exposes database connection fields; it does not expose the settings screen's database export features.
+
 Local auto-start requires OpenSSL, available with Git for Windows or installed at `C:\Program Files\OpenSSL-Win64\bin\openssl.exe`. The service applies its additive schema migration to the configured database at startup, so back up any existing development database before the first run. This local mode is for a single developer machine only; it is not a substitute for the separately hosted HTTPS service. Setting `ENGAGEMENT_SERVICE_URL` disables the embedded service and uses the remote setup-token flow described above.
 
 ## Disposable integration test
@@ -81,7 +89,7 @@ The service uses in-memory bearer sessions: restart logs all clients out. Deploy
 Run only against a disposable database restored from an approved backup or a dedicated test fixture:
 
 1. Start the service with a temporary database URL, trusted test TLS certificate, and a one-time setup token.
-2. Open the desktop with `ENGAGEMENT_SERVICE_URL` set. Complete first administrator setup, then remove the setup token from the service environment and restart it.
+2. Open the desktop with `ENGAGEMENT_SERVICE_URL` set. Create the first administrator through the desktop startup form, then sign in. Remove the setup token from the service environment and restart it.
 3. Create synthetic staff, partner, and substitute users. Sign into each client using its own account and change each initial password.
 4. As an admin, create a synthetic client/engagement with an owner, partner, substitute, and read/edit participants. Try to spoof `userId` or `role` in request data; access must remain tied to the authenticated account.
 5. Verify an invited reader can view but not edit; an editor can edit; an owner can grant/revoke; partners/admins can see all but do not gain edit/finalisation from visibility alone; only the assigned partner/substitute can finalise or reopen.

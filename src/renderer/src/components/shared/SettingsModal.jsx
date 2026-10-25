@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useModalKeys } from '../../hooks/useModalKeys'
 
-export default function SettingsModal({ onClose, onConnected }) {
+export default function SettingsModal({ onClose, onConnected, initialSetupOnly = false }) {
   const [cfg, setCfg] = useState({ host: 'localhost', port: 5432, database: 'vera_financial', user: 'postgres', password: '' })
   const [testing, setTesting]   = useState(false)
   const [saving, setSaving]     = useState(false)
@@ -111,7 +111,7 @@ export default function SettingsModal({ onClose, onConnected }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box max-w-md" ref={containerRef} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-blue-900">PostgreSQL Connection</h2>
+          <h2 className="text-lg font-bold text-blue-900">{initialSetupOnly ? 'Connect to the firm database' : 'PostgreSQL Connection'}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
         </div>
         <div className="space-y-3">
@@ -145,7 +145,7 @@ export default function SettingsModal({ onClose, onConnected }) {
         </div>
         <p className="text-xs text-gray-400 text-center mt-2">Ctrl+Enter to save · Esc to close</p>
 
-        <div className="mt-5 pt-4 border-t border-gray-200">
+        {!initialSetupOnly && <div className="mt-5 pt-4 border-t border-gray-200">
           <div className="text-xs font-semibold text-gray-600 uppercase mb-1">Database Export</div>
           <p className="text-xs text-gray-400 mb-2">
             Downloads every table in the local database as one Excel workbook, one sheet per table — a full
@@ -159,9 +159,9 @@ export default function SettingsModal({ onClose, onConnected }) {
             {exporting ? 'Exporting…' : '↓ Download All Tables (Excel)'}
           </button>
           {exportMsg && <p className="text-xs text-gray-500 mt-2 break-words">{exportMsg}</p>}
-        </div>
+        </div>}
 
-        <div className="mt-5 pt-4 border-t border-gray-200">
+        {!initialSetupOnly && <div className="mt-5 pt-4 border-t border-gray-200">
           <div className="text-xs font-semibold text-gray-600 uppercase mb-1">Prescribed Format Reference</div>
           <p className="text-xs text-gray-400 mb-2">
             Blank BS, PL and Notes shape for all three constitutions, plus every Fill-Details form shown as if
@@ -175,7 +175,7 @@ export default function SettingsModal({ onClose, onConnected }) {
             {refExporting ? 'Preparing…' : '↓ Download Format Reference (HTML)'}
           </button>
           {refExportMsg && <p className="text-xs text-gray-500 mt-2 break-words">{refExportMsg}</p>}
-        </div>
+        </div>}
       </div>
     </div>
   )

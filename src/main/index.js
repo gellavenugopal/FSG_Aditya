@@ -26,6 +26,7 @@ import { guardScreen } from './screen-guard.js'
 let mainWindow
 let localEngagementService = null
 let closingLocalEngagementService = false
+const engagementClientOptions = {}
 const appWindows = new Set()   // every open window of the app (more than one is allowed)
 
 // More than one window: every window is the whole app, on the same database. A window opened with "New window" is told (in the page
@@ -73,7 +74,6 @@ async function createWindow(popoutPayload = null, fromWindow = null) {
 }
 
 app.whenReady().then(async () => {
-  let engagementClientOptions = {}
   let legacyDatabaseReady = false
   try {
     await initDB()
@@ -100,13 +100,12 @@ app.whenReady().then(async () => {
   if (!process.env.ENGAGEMENT_SERVICE_URL && !app.isPackaged && process.env.NODE_ENV === 'development') {
     try {
       localEngagementService = await startLocalEngagementService(loadConfig())
-      engagementClientOptions = localEngagementService.clientOptions
+      Object.assign(engagementClientOptions, localEngagementService.clientOptions)
       console.info('Local development engagement service started on localhost.')
     } catch (err) {
       const databaseHint = legacyDatabaseReady ? '' : ' Check that the local PostgreSQL connection is configured in Settings.'
-      engagementClientOptions = {
-        startupError: `Could not start the local engagement service: ${err.message}${databaseHint}`,
-      }
+      engagementClientOptions.startupError = `Could not start the local engagement service: ${err.message}${databaseHint}`
+      engagementClientOptions.localDevelopment = true
       console.error(engagementClientOptions.startupError)
     }
   }
@@ -115,6 +114,28 @@ app.whenReady().then(async () => {
   registerMappingHandlers()
   registerMappedTBHandlers()
   registerSettingsHandlers()
+  ipcMain.handle('engagementService:localSetupAvailable', () => (
+    !process.env.ENGAGEMENT_SERVICE_URL && !app.isPackaged && process.env.NODE_ENV === 'development'
+  ))
+  ipcMain.handle('engagementService:restartLocal', async () => {
+    if (process.env.ENGAGEMENT_SERVICE_URL || app.isPackaged || process.env.NODE_ENV !== 'development') {
+      throw new Error('Local engagement service setup is only available in an unconfigured development build.')
+    }
+    if (localEngagementService) {
+      await localEngagementService.close()
+      localEngagementService = null
+    }
+    try {
+      localEngagementService = await startLocalEngagementService(loadConfig())
+      Object.assign(engagementClientOptions, localEngagementService.clientOptions)
+      delete engagementClientOptions.startupError
+      console.info('Local development engagement service started on localhost.')
+      return true
+    } catch (error) {
+      engagementClientOptions.startupError = `Could not start the local engagement service: ${error.message}`
+      throw error
+    }
+  })
   registerFinancialHandlers()
   registerMastersHandlers()
   registerDepreciationHandlers()

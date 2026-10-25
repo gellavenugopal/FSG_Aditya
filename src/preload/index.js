@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('api', {
   loginEngagementUser:        (data) => inv('engagementAuth:login', data),
   logoutEngagementUser:       () => inv('engagementAuth:logout'),
   changeEngagementPassword:   (password) => inv('engagementAuth:changePassword', password),
+  canConfigureLocalEngagement:() => inv('engagementService:localSetupAvailable'),
+  restartLocalEngagement:     () => inv('engagementService:restartLocal'),
   listEngagementUsers:        () => inv('engagementAdmin:listUsers'),
   createEngagementUser:       (data) => inv('engagementAdmin:createUser', data),
   listEngagementOptions:      () => inv('engagement:listOptions'),

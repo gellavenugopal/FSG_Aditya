@@ -36,20 +36,33 @@ function ShieldNotice({ children }) {
   return <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900">{children}</div>
 }
 
-function AuthGate({ setupRequired, localDevelopment, onAuthenticated }) {
+export function AuthGate({ setupRequired, localDevelopment, requireLoginAfterSetup = false, onAuthenticated }) {
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [showSetup, setShowSetup] = useState(setupRequired)
   const [values, setValues] = useState({ firmName: '', displayName: '', email: '', password: '', setupAuthorizationToken: '' })
   const set = (key, value) => setValues(prev => ({ ...prev, [key]: value }))
 
   const submit = async (event) => {
     event.preventDefault()
     setError('')
+    setMessage('')
     setBusy(true)
     try {
-      const user = setupRequired
-        ? await window.api.setupEngagementAdmin(values)
-        : await window.api.loginEngagementUser(values)
+      if (showSetup) {
+        const user = await window.api.setupEngagementAdmin(values)
+        if (requireLoginAfterSetup) {
+          await window.api.logoutEngagementUser()
+          setShowSetup(false)
+          setValues(current => ({ ...current, password: '', setupAuthorizationToken: '' }))
+          setMessage('Administrator account created. Sign in with your new account to continue.')
+          return
+        }
+        onAuthenticated(user)
+        return
+      }
+      const user = await window.api.loginEngagementUser(values)
       onAuthenticated(user)
     } catch (err) {
       setError(err.message || 'Unable to authenticate.')
@@ -61,16 +74,16 @@ function AuthGate({ setupRequired, localDevelopment, onAuthenticated }) {
   return (
     <div className="flex min-h-full items-center justify-center p-5">
       <form onSubmit={submit} className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">{setupRequired ? 'Secure first-run setup' : 'Firm access'}</p>
-        <h2 className="mt-1 text-xl font-bold text-gray-900">{setupRequired ? 'Create the firm administrator' : 'Sign in to engagements'}</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">{showSetup ? 'Secure first-run setup' : 'Firm access'}</p>
+        <h2 className="mt-1 text-xl font-bold text-gray-900">{showSetup ? 'Create the firm administrator' : 'Sign in to FSG Bharat'}</h2>
         <p className="mt-2 text-sm leading-relaxed text-gray-500">
-          {setupRequired
+          {showSetup
             ? localDevelopment
-              ? 'Create the first administrator for this local development database. You can add more firm users after signing in.'
+              ? 'Create the first administrator for this firm workspace. After signing in, the administrator can add or invite firm users.'
               : 'The first account becomes the firm administrator. Enter the one-time setup authorization issued by the firm server administrator.'
-            : 'Use your firm account. Engagement permissions are checked by the application service for each operation.'}
+            : 'Use your firm account to continue to the workspace.'}
         </p>
-        {setupRequired && (
+        {showSetup && (
           <>
             <div className="mt-5"><Field label="Firm name"><Input required autoComplete="organization" value={values.firmName} onChange={e => set('firmName', e.target.value)} /></Field></div>
             <div className="mt-4"><Field label="Administrator name"><Input required autoComplete="name" value={values.displayName} onChange={e => set('displayName', e.target.value)} /></Field></div>
@@ -78,15 +91,16 @@ function AuthGate({ setupRequired, localDevelopment, onAuthenticated }) {
           </>
         )}
         <div className="mt-4"><Field label="Work email"><Input required type="email" autoComplete="username" value={values.email} onChange={e => set('email', e.target.value)} /></Field></div>
-        <div className="mt-4"><Field label="Password" hint={setupRequired ? 'Use at least 12 characters.' : undefined}><Input required type="password" autoComplete={setupRequired ? 'new-password' : 'current-password'} value={values.password} onChange={e => set('password', e.target.value)} /></Field></div>
+        <div className="mt-4"><Field label="Password" hint={showSetup ? 'Use at least 12 characters.' : undefined}><Input required type="password" autoComplete={showSetup ? 'new-password' : 'current-password'} value={values.password} onChange={e => set('password', e.target.value)} /></Field></div>
         {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
-        <PrimaryButton type="submit" disabled={busy} className="mt-5 w-full">{busy ? 'Please wait…' : setupRequired ? 'Create administrator' : 'Sign in'}</PrimaryButton>
+        {message && <p role="status" className="mt-4 text-sm text-green-700">{message}</p>}
+        <PrimaryButton type="submit" disabled={busy} className="mt-5 w-full">{busy ? 'Please wait…' : showSetup ? 'Create administrator' : 'Sign in'}</PrimaryButton>
       </form>
     </div>
   )
 }
 
-function PasswordChange({ user, onChanged }) {
+export function PasswordChange({ user, onChanged }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -669,7 +683,7 @@ function EngagementOverview({ user, id, onBack, onEdit }) {
   )
 }
 
-export default function EngagementHub() {
+export default function EngagementHub({ onSignedOut }) {
   const [auth, setAuth] = useState({ loading: true, setupRequired: false, localDevelopment: false, user: null })
   const [screen, setScreen] = useState({ type: 'list' })
   const [error, setError] = useState('')
@@ -689,6 +703,10 @@ export default function EngagementHub() {
   const signOut = async () => {
     setSigningOut(true)
     try {
+      if (onSignedOut) {
+        await onSignedOut()
+        return
+      }
       await window.api.logoutEngagementUser()
       setAuth(current => ({ ...current, user: null }))
       setScreen({ type: 'list' })
