@@ -48,6 +48,7 @@ function publicUser(row) {
     email: row.email,
     displayName: row.display_name,
     role: row.role,
+    jobTitle: row.job_title || (row.role === 'partner' ? 'partner' : 'employee'),
     professionalSignatoryId: row.professional_signatory_id == null ? null : Number(row.professional_signatory_id),
     mustChangePassword: !!row.must_change_password,
   }
@@ -60,7 +61,7 @@ async function authenticated(event, allowPasswordChange = false) {
     throw new Error('Sign in to use engagement management.')
   }
   const { rows: [row] } = await query(
-    `SELECT id,firm_id,email,display_name,role,professional_signatory_id,must_change_password
+    `SELECT id,firm_id,email,display_name,role,job_title,professional_signatory_id,must_change_password
      FROM firm_users WHERE id=$1 AND active=TRUE`,
     [session.user.id]
   )
@@ -219,7 +220,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     let user = null
     if (session && session.expiresAt > Date.now()) {
       const { rows: [activeUser] } = await query(
-        `SELECT id,firm_id,email,display_name,role,professional_signatory_id,must_change_password
+        `SELECT id,firm_id,email,display_name,role,job_title,professional_signatory_id,must_change_password
          FROM firm_users WHERE id=$1 AND active=TRUE`,
         [session.user.id]
       )
@@ -255,8 +256,8 @@ export function registerEngagementHandlers(ipcMain, database) {
         : await query(`INSERT INTO firms(name) VALUES($1) RETURNING id`, [String(input.firmName).trim()])
       if (!firm) throw new Error('The existing firm record is unavailable; contact the service administrator.')
       const { rows: [row] } = await query(
-        `INSERT INTO firm_users (firm_id,email,display_name,password_salt,password_hash,role)
-         VALUES ($1,$2,$3,$4,$5,'administrator') RETURNING *`,
+        `INSERT INTO firm_users (firm_id,email,display_name,job_title,password_salt,password_hash,role)
+         VALUES ($1,$2,$3,'partner',$4,$5,'administrator') RETURNING *`,
         [firm.id, email, String(input.displayName).trim(), salt, hash]
       )
       const administrator = publicUser(row)
@@ -312,7 +313,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     const user = await authenticated(event)
     if (user.role !== 'administrator') throw new Error('Administrator access is required.')
     const { rows } = await query(
-      `SELECT id,firm_id,email,display_name,role,professional_signatory_id,must_change_password
+      `SELECT id,firm_id,email,display_name,role,job_title,professional_signatory_id,must_change_password
        FROM firm_users WHERE firm_id=$1 AND active=TRUE ORDER BY display_name`,
       [user.firmId]
     )
@@ -324,20 +325,21 @@ export function registerEngagementHandlers(ipcMain, database) {
     if (actor.role !== 'administrator') throw new Error('Administrator access is required.')
     const email = cleanEmail(input.email)
     const name = String(input.displayName || '').trim()
-    const role = input.role
+    const jobTitle = String(input.jobTitle || 'employee')
+    const role = jobTitle === 'partner' ? 'partner' : 'staff'
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Enter a valid user email.')
     if (!name) throw new Error('User name is required.')
-    if (!['partner', 'staff'].includes(role)) throw new Error('Choose a valid firm role.')
+    if (!['employee', 'article', 'auditor', 'partner'].includes(jobTitle)) throw new Error('Choose a valid team position.')
     const initialPassword = randomBytes(24).toString('hex')
     const { salt, hash } = await passwordRecord(initialPassword)
     const row = await runInTransaction(async () => {
       const { rows: [created] } = await query(
-        `INSERT INTO firm_users (firm_id,email,display_name,password_salt,password_hash,role,must_change_password)
-         VALUES ($1,$2,$3,$4,$5,$6,TRUE)
-         RETURNING id,firm_id,email,display_name,role,professional_signatory_id,must_change_password`,
-        [actor.firmId, email, name, salt, hash, role]
+        `INSERT INTO firm_users (firm_id,email,display_name,job_title,password_salt,password_hash,role,must_change_password)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE)
+         RETURNING id,firm_id,email,display_name,role,job_title,professional_signatory_id,must_change_password`,
+        [actor.firmId, email, name, jobTitle, salt, hash, role]
       )
-      await logAudit(actor, 'user.created', null, { userId: Number(created.id), email, role })
+      await logAudit(actor, 'user.created', null, { userId: Number(created.id), email, role, jobTitle })
       return created
     })
     return { user: publicUser(row), initialPassword }
@@ -356,7 +358,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     const { rows: periods } = await query(`SELECT id,year_label,date_from,date_till FROM financial_periods ORDER BY date_from DESC`)
     const { rows: packs } = await query(`SELECT * FROM reporting_pack_catalog ORDER BY jurisdiction,framework`)
     const { rows: users } = await query(
-      `SELECT id,email,display_name,role FROM firm_users WHERE firm_id=$1 AND active=TRUE ORDER BY display_name`,
+      `SELECT id,email,display_name,role,job_title FROM firm_users WHERE firm_id=$1 AND active=TRUE ORDER BY display_name`,
       [user.firmId]
     )
     return { entities, periods, packs, users }

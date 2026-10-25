@@ -249,14 +249,19 @@ try {
   const adminLogin = await login('admin@example.test', 'Synthetic-Admin-Password!')
   const adminToken = adminLogin.sessionToken
   check(!!adminToken && adminLogin.user.role === 'administrator', 'first administrator can sign in after setup')
+  const statusAfterLogin = await ok('auth/status', {}, adminToken)
+  check(statusAfterLogin.data.user?.id === adminLogin.user.id, 'status refresh preserves the authenticated user session')
   await fails('auth/setup', {
     email: 'second@example.test', firmName: 'Another Firm', displayName: 'Second Admin',
     password: 'Synthetic-Admin-Password!',
   }, null, /already been completed/i, service.clientOptions.setupToken)
 
   const createUser = async (email, role) => {
-    const created = await ok('admin/users/create', { email, displayName: email.split('@')[0], role }, adminToken)
+    const jobTitle = role === 'partner' ? 'partner' : 'employee'
+    const created = await ok('admin/users/create', { email, displayName: email.split('@')[0], jobTitle }, adminToken)
     check(created.data.user.mustChangePassword && created.data.initialPassword.length >= 12, `${role} user receives a one-time password`)
+    check(created.data.user.jobTitle === jobTitle && created.data.user.role === role,
+      `${jobTitle} position maps to the expected directory label and permission role`)
     return login(email, created.data.initialPassword)
   }
   const owner = await createUser('owner@example.test', 'staff')
@@ -272,8 +277,8 @@ try {
   const partnerToken = partner.sessionToken
   const substituteToken = substitute.sessionToken
   await fails('admin/users/create', {
-    email: 'forbidden-admin@example.test', displayName: 'Forbidden', role: 'administrator',
-  }, adminToken, /valid firm role/i)
+    email: 'forbidden-admin@example.test', displayName: 'Forbidden', jobTitle: 'administrator',
+  }, adminToken, /valid team position/i)
 
   await fails('list', {
     scope: 'all', userId: 1, role: 'administrator',
@@ -477,6 +482,7 @@ try {
   await fails('overview', { engagementId }, readerToken, /disabled/i)
 
   const oldToken = adminToken
+  await pool.query(`ALTER TABLE firm_users DROP COLUMN job_title`)
   await service.close()
   service = null
   service = await startLocalEngagementService({
@@ -488,6 +494,11 @@ try {
   const loggedBackIn = await login('admin@example.test', 'Synthetic-Admin-Password!')
   const persistent = await ok('list', { scope: 'all' }, loggedBackIn.sessionToken)
   check(persistent.data.some(item => Number(item.id) === engagementId), 'saved engagement survives service restart and schema migration is repeatable')
+  const migratedPositions = (await pool.query(`SELECT role,job_title FROM firm_users WHERE id=ANY($1::int[])`, [[adminLogin.user.id, partner.user.id, owner.user.id]])).rows
+  check(migratedPositions.length === 3
+    && migratedPositions.filter(row => row.role === 'partner').every(row => row.job_title === 'partner')
+    && migratedPositions.find(row => row.role === 'staff')?.job_title === 'employee',
+  'additive team-position migration backfills older partner and staff accounts safely')
 
   console.log(`Engagement service integration self-test passed (${checks} assertions, PostgreSQL ${version}).`)
 } finally {

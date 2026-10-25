@@ -116,7 +116,7 @@ export function registerEngagementClientHandlers(handlerRegistry = ipcMain, opti
         return response.user
       }
       if (channel === 'engagementAuth:logout') sessions.delete(event.sender.id)
-      if (channel === 'engagementAuth:status' && !response.user) sessions.delete(event.sender.id)
+      if (channel === 'engagementAuth:status' && !response.data?.user) sessions.delete(event.sender.id)
       if (session) session.expiresAt = Date.now() + SESSION_MAX_AGE
       return channel === 'engagementAuth:status' && options.localDevelopment
         ? { ...response.data, localDevelopment: true }

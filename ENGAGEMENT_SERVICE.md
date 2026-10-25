@@ -4,7 +4,11 @@ This service handles the new engagement operations. It does not secure the rest 
 
 ## Desktop sign-up and sign-in
 
-The desktop now opens with firm sign-in instead of the financial workspace. When the firm has no administrator, the first-run screen lets the authorized operator create the firm administrator; the new administrator then signs in with that account. Once signed in, the administrator can create firm users in Engagements and include existing users as engagement participants. Only the first administrator can sign up through first-run setup; this is not open public registration.
+The desktop now opens with firm sign-in instead of the financial workspace. When the firm has no administrator, the first-run screen lets the authorized operator create the firm administrator; the new administrator then signs in with that account. Only the first administrator can sign up through first-run setup; this is not open public registration.
+
+After sign-in, use **Settings → Engagements** for client engagements and **Settings → Firm Team** to add colleagues. Team positions are Employee, Article assistant, Auditor, and Partner. Employee/article/auditor are directory labels with standard staff permissions; Partner is also a permission role. Finalisation still requires assignment as the engagement partner or authorised substitute. Creating a team account displays a one-time password to share securely; automatic email invitations are not implemented.
+
+The engagement client keeps the service session after an authentication-status refresh. If a session expires, sign in again; engagement reads and edits continue to be checked by the trusted service.
 
 The startup screen is an application-entry gate, not complete authorization for legacy data. Legacy financial IPC still has direct PostgreSQL access and does not enforce per-user engagement permissions. Do not treat the login gate as securing those operations or as production-ready multi-user isolation.
 

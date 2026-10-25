@@ -18,6 +18,7 @@ export async function ensureEngagementSchema(query) {
       firm_id INTEGER NOT NULL REFERENCES firms(id) ON DELETE CASCADE,
       email TEXT NOT NULL,
       display_name TEXT NOT NULL,
+      job_title TEXT NOT NULL DEFAULT 'employee',
       password_salt TEXT NOT NULL,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('administrator', 'partner', 'staff')),
@@ -29,6 +30,14 @@ export async function ensureEngagementSchema(query) {
       UNIQUE (firm_id, email)
     )
   `)
+  await query(`ALTER TABLE firm_users ADD COLUMN IF NOT EXISTS job_title TEXT`)
+  await query(`
+    UPDATE firm_users
+    SET job_title=CASE WHEN role IN ('administrator','partner') THEN 'partner' ELSE 'employee' END
+    WHERE job_title IS NULL OR btrim(job_title)=''
+  `)
+  await query(`ALTER TABLE firm_users ALTER COLUMN job_title SET DEFAULT 'employee'`)
+  await query(`ALTER TABLE firm_users ALTER COLUMN job_title SET NOT NULL`)
 
   await query(`
     CREATE TABLE IF NOT EXISTS firm_entities (

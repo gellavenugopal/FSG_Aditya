@@ -137,16 +137,11 @@ function EngagementList({ user, onCreate, onOpen }) {
   const [status, setStatus] = useState('all')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  const [users, setUsers] = useState([])
-  const [newUser, setNewUser] = useState({ displayName: '', email: '', role: 'staff' })
-  const [newUserResult, setNewUserResult] = useState(null)
-
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
       setRows(await window.api.listEngagements(scope))
-      if (user.role === 'administrator') setUsers(await window.api.listEngagementUsers())
     } catch (err) {
       setError(err.message || 'Unable to load engagements.')
     } finally {
@@ -161,19 +156,6 @@ function EngagementList({ user, onCreate, onOpen }) {
       && (!term || [row.client_name, row.reference, row.name, row.accounting_framework, row.owner_name, row.partner_name]
         .some(value => String(value || '').toLowerCase().includes(term))))
   }, [rows, search, status])
-
-  const createUser = async event => {
-    event.preventDefault()
-    setError('')
-    try {
-      const result = await window.api.createEngagementUser(newUser)
-      setNewUserResult(result)
-      setNewUser({ displayName: '', email: '', role: 'staff' })
-      await load()
-    } catch (err) {
-      setError(err.message || 'Unable to create firm user.')
-    }
-  }
 
   return (
     <div className="mx-auto max-w-7xl p-5 sm:p-7">
@@ -194,7 +176,7 @@ function EngagementList({ user, onCreate, onOpen }) {
         {['administrator', 'partner'].includes(user.role) && (
           <button onClick={() => setScope('all')} className={`border-b-2 px-3 py-2 text-sm font-medium ${scope === 'all' ? 'border-blue-700 text-blue-800' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>All Engagements</button>
         )}
-        <span className="ml-auto text-xs text-gray-500">Signed in as {user.displayName} · {user.role}</span>
+        <span className="ml-auto text-xs text-gray-500">Signed in as {user.displayName} · {user.jobTitle || user.role}</span>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-3">
@@ -233,20 +215,101 @@ function EngagementList({ user, onCreate, onOpen }) {
             )}
       </div>
 
-      {user.role === 'administrator' && (
-        <details className="mt-6 rounded-xl border border-gray-200 bg-white p-4">
-          <summary className="cursor-pointer text-sm font-semibold text-gray-800">Firm user provisioning</summary>
-          <p className="mt-2 text-xs leading-relaxed text-gray-500">Creates an existing firm account with a one-time temporary password. Share it with the user through your firm’s secure channel; they must change it on first sign-in. No email is sent by this application.</p>
-          <form onSubmit={createUser} className="mt-4 grid gap-3 sm:grid-cols-4">
-            <Input required placeholder="Full name" value={newUser.displayName} onChange={e => setNewUser({ ...newUser, displayName: e.target.value })} />
-            <Input required type="email" placeholder="Work email" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} />
-            <Select value={newUser.role} onChange={e => setNewUser({ ...newUser, role: e.target.value })}><option value="staff">Staff</option><option value="partner">Partner</option></Select>
-            <PrimaryButton type="submit">Create firm user</PrimaryButton>
-          </form>
-          {newUserResult && <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm"><p className="font-semibold text-amber-900">Temporary password — shown once</p><p className="mt-1 break-all font-mono text-amber-900">{newUserResult.initialPassword}</p><p className="mt-1 text-xs text-amber-800">Account: {newUserResult.user.email}. Copy this password now; it will not be shown again.</p></div>}
-          {users.length > 0 && <p className="mt-3 text-xs text-gray-500">{users.length} active firm users available for engagement assignment.</p>}
-        </details>
-      )}
+    </div>
+  )
+}
+
+function FirmTeam({ user }) {
+  const [users, setUsers] = useState([])
+  const [form, setForm] = useState({ displayName: '', email: '', jobTitle: 'employee' })
+  const [createdUser, setCreatedUser] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      setUsers(await window.api.listEngagementUsers())
+    } catch (err) {
+      setError(err.message || 'Unable to load the firm team.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (user.role === 'administrator') load()
+    else setLoading(false)
+  }, [load, user.role])
+
+  const addUser = async event => {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    setCreatedUser(null)
+    try {
+      const result = await window.api.createEngagementUser(form)
+      setCreatedUser(result)
+      setForm({ displayName: '', email: '', jobTitle: 'employee' })
+      await load()
+    } catch (err) {
+      setError(err.message || 'Unable to add the team member.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (user.role !== 'administrator') {
+    return <div className="mx-auto max-w-3xl p-5 sm:p-7"><ShieldNotice>Only a firm administrator can manage the firm team.</ShieldNotice></div>
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl p-5 sm:p-7">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">Settings · Firm Team</p>
+        <h2 className="mt-1 text-2xl font-bold text-gray-900">People in your firm</h2>
+        <p className="mt-1 text-sm text-gray-500">Add a colleague once, then assign them to the engagements they work on.</p>
+      </div>
+
+      <form onSubmit={addUser} className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
+        <h3 className="text-sm font-semibold text-gray-900">Add a team member</h3>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <Field label="Full name"><Input required autoComplete="name" value={form.displayName} onChange={event => setForm(current => ({ ...current, displayName: event.target.value }))} /></Field>
+          <Field label="Work email"><Input required type="email" autoComplete="email" value={form.email} onChange={event => setForm(current => ({ ...current, email: event.target.value }))} /></Field>
+          <Field label="Position">
+            <Select value={form.jobTitle} onChange={event => setForm(current => ({ ...current, jobTitle: event.target.value }))}>
+              <option value="employee">Employee</option>
+              <option value="article">Article assistant</option>
+              <option value="auditor">Auditor</option>
+              <option value="partner">Partner</option>
+            </Select>
+          </Field>
+        </div>
+        <p className="mt-3 text-xs text-gray-500">Employee, Article assistant, and Auditor are directory positions. Partner is an application permission role; only the assigned engagement partner or substitute can finalise.</p>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-2xl text-xs leading-relaxed text-gray-500">The app creates a temporary password for you to share securely. The colleague must change it at first sign-in. Email invitations are not sent automatically.</p>
+          <PrimaryButton type="submit" disabled={saving}>{saving ? 'Adding…' : 'Add member'}</PrimaryButton>
+        </div>
+      </form>
+
+      {createdUser && <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <p className="text-sm font-semibold text-amber-900">Share this temporary password securely</p>
+        <p className="mt-1 text-xs text-amber-800">{createdUser.user.displayName} · {createdUser.user.email}</p>
+        <p className="mt-2 select-all break-all font-mono text-sm text-amber-950">{createdUser.initialPassword}</p>
+      </div>}
+      {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+
+      <section className="mt-6 overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <div className="border-b border-gray-100 px-5 py-3"><h3 className="text-sm font-semibold text-gray-900">Firm team</h3></div>
+        {loading ? <p className="p-6 text-center text-sm text-gray-500">Loading team…</p>
+          : users.length === 0 ? <p className="p-6 text-center text-sm text-gray-500">No team members have been added.</p>
+            : <div className="divide-y divide-gray-100">{users.map(member => <div key={member.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+              <div><p className="text-sm font-medium text-gray-900">{member.displayName}</p><p className="text-xs text-gray-500">{member.email}</p></div>
+              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs capitalize text-gray-700">{member.jobTitle || member.role}</span>
+            </div>)}</div>}
+      </section>
     </div>
   )
 }
@@ -683,53 +746,17 @@ function EngagementOverview({ user, id, onBack, onEdit }) {
   )
 }
 
-export default function EngagementHub({ onSignedOut }) {
-  const [auth, setAuth] = useState({ loading: true, setupRequired: false, localDevelopment: false, user: null })
+export default function EngagementHub({ user, initialView = 'engagements' }) {
   const [screen, setScreen] = useState({ type: 'list' })
   const [error, setError] = useState('')
-  const [signingOut, setSigningOut] = useState(false)
-
-  const refreshAuth = useCallback(async () => {
-    try {
-      const result = await window.api.engagementAuthStatus()
-      setAuth({ loading: false, setupRequired: result.setupRequired, localDevelopment: !!result.localDevelopment, user: result.user })
-    } catch (err) {
-      setError(err.message || 'Engagement authentication is unavailable.')
-      setAuth({ loading: false, setupRequired: false, user: null })
-    }
-  }, [])
-  useEffect(() => { refreshAuth() }, [refreshAuth])
-
-  const signOut = async () => {
-    setSigningOut(true)
-    try {
-      if (onSignedOut) {
-        await onSignedOut()
-        return
-      }
-      await window.api.logoutEngagementUser()
-      setAuth(current => ({ ...current, user: null }))
-      setScreen({ type: 'list' })
-    } catch (err) {
-      setError(err.message || 'Unable to sign out.')
-    } finally {
-      setSigningOut(false)
-    }
-  }
-
-  if (auth.loading) return <div className="flex h-full items-center justify-center text-sm text-gray-500">Loading engagement service…</div>
-  if (!auth.user) return <div className="h-full overflow-y-auto"><AuthGate setupRequired={auth.setupRequired} localDevelopment={auth.localDevelopment} onAuthenticated={user => { setAuth(current => ({ ...current, user, setupRequired: false })); setError('') }} />{error && <p role="alert" className="mx-auto max-w-md px-5 pb-5 text-sm text-red-700">{error}</p>}</div>
-  if (auth.user.mustChangePassword) return <div className="h-full overflow-y-auto"><PasswordChange user={auth.user} onChanged={user => setAuth(current => ({ ...current, user }))} /></div>
+  if (!user) return <div role="alert" className="p-6 text-sm text-red-700">Sign in to access firm settings.</div>
+  if (initialView === 'team') return <div className="h-full overflow-y-auto bg-gray-50"><FirmTeam user={user} /></div>
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-gray-50">
-      <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-5 py-2.5 sm:px-7">
-        <p className="text-xs text-gray-500">Firm workspace · {auth.user.displayName} <span className="capitalize">({auth.user.role})</span></p>
-        <button disabled={signingOut} onClick={signOut} className="text-xs font-medium text-gray-600 hover:text-red-700">{signingOut ? 'Signing out…' : 'Sign out'}</button>
-      </div>
-      {screen.type === 'list' && <EngagementList user={auth.user} onCreate={() => { setError(''); setScreen({ type: 'create' }) }} onOpen={id => { setError(''); setScreen({ type: 'overview', id }) }} />}
+      {screen.type === 'list' && <EngagementList user={user} onCreate={() => { setError(''); setScreen({ type: 'create' }) }} onOpen={id => { setError(''); setScreen({ type: 'overview', id }) }} />}
       {(screen.type === 'create' || screen.type === 'edit') && <CreateEngagement
-        user={auth.user}
+        user={user}
         initialEngagement={screen.type === 'edit' ? screen.initialEngagement : null}
         onCancel={() => setScreen({ type: 'list' })}
         onCreated={id => setScreen({ type: 'overview', id })}
@@ -737,7 +764,7 @@ export default function EngagementHub({ onSignedOut }) {
         onOpen={id => setScreen({ type: 'overview', id })}
       />}
       {screen.type === 'overview' && <EngagementOverview
-        user={auth.user}
+        user={user}
         id={screen.id}
         onBack={() => setScreen({ type: 'list' })}
         onEdit={data => setScreen({ type: 'edit', initialEngagement: data })}

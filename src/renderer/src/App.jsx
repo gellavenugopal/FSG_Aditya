@@ -71,9 +71,9 @@ const ADJUSTMENT_NOTICE_TABS = new Set([
   'Dep (Comp)', 'Dep (IT)', 'Dep (Old)', 'Tax Computation', 'Deferred Tax', 'ITR: BS', 'ITR: PL', 'ITR: BS Details', 'ITR: PL Details',
   'Rectification / Recategorisation', 'Mapped TB (Remarks)',
 ])
-const TABS = ['Engagements', 'Settings', 'Trial Balance', 'Stock', 'Mapping', 'Dep', 'BS', 'PL', 'CFS', 'Notes', 'General Notes', 'Annex & Reco', 'Features', 'Exception', 'Generate Financials']
+const TABS = ['Settings', 'Trial Balance', 'Stock', 'Mapping', 'Dep', 'BS', 'PL', 'CFS', 'Notes', 'General Notes', 'Annex & Reco', 'Features', 'Exception', 'Generate Financials']
 const TAB_GROUPS = {
-  'Settings': ['Auditee Details', 'Financial Period', 'Auditor', 'Signatory', 'Mapping Rules'],
+  'Settings': ['Auditee Details', 'Financial Period', 'Auditor', 'Signatory', 'Mapping Rules', 'Engagements', 'Firm Team'],
   'Trial Balance': ['Upload TB', 'Actual TB', 'Mapped TB', 'Mapped TB (Remarks)', 'Journal Entry'],
   'Mapping': ['Rectification / Recategorisation', 'Mapped TB', 'Mapping Rules'],
   'Dep': ['Dep (Comp)', 'Dep (IT)', 'Dep (Old)'],
@@ -546,7 +546,9 @@ function ApplicationWorkspace({ user, onSignOut, signingOut }) {
     if (!dbOk) return null
     switch (activeTab) {
       case 'Engagements':
-        return <EngagementHub onSignedOut={onSignOut} />
+        return <EngagementHub user={user} />
+      case 'Firm Team':
+        return <EngagementHub user={user} initialView="team" />
       case 'Auditee Details':
       case 'Financial Period':
       case 'Auditor':
@@ -964,12 +966,10 @@ function ApplicationWorkspace({ user, onSignOut, signingOut }) {
         onEntityPeriodChange={handleEntityPeriodChange}
       />
 
-      {activeTab !== 'Engagements' && (
-        <div className="flex shrink-0 items-center justify-end gap-3 border-b border-gray-100 bg-white px-4 py-1.5 text-xs text-gray-500">
-          <span>{user.displayName} <span className="capitalize">({user.role})</span></span>
-          <button disabled={signingOut} onClick={onSignOut} className="font-medium text-gray-600 hover:text-red-700 disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out'}</button>
-        </div>
-      )}
+      <div className="flex shrink-0 items-center justify-end gap-3 border-b border-gray-100 bg-white px-4 py-1.5 text-xs text-gray-500">
+        <span>{user.displayName} <span className="capitalize">({user.jobTitle || user.role})</span></span>
+        <button disabled={signingOut} onClick={onSignOut} className="font-medium text-gray-600 hover:text-red-700 disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out'}</button>
+      </div>
 
       {dbOk && <NavTabs tabs={TABS} groups={TAB_GROUPS} active={activeTab} onChange={setActiveTab} openRequest={menuRequest} />}
 
@@ -988,7 +988,7 @@ function ApplicationWorkspace({ user, onSignOut, signingOut }) {
         </div>
       )}
 
-      {dbOk && !entity?.has_branches && noTBForPeriod && !['Engagements', 'Upload TB', 'Auditee Details', 'Financial Period', 'Auditor', 'Signatory', 'Mapping Rules'].includes(activeTab) && (
+      {dbOk && !entity?.has_branches && noTBForPeriod && !['Engagements', 'Firm Team', 'Upload TB', 'Auditee Details', 'Financial Period', 'Auditor', 'Signatory', 'Mapping Rules'].includes(activeTab) && (
         <div className="flex items-center gap-3 px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-800 text-sm shrink-0">
           <span>No Trial Balance uploaded yet for {entityPeriods.find(p => p.id === currentEntityPeriodId)?.year_label || 'this Financial Year'}.</span>
           <button
