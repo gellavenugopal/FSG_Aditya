@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, dialog } from 'electron'
 import { join } from 'path'
-import { initDB, flushDB, withStartupLock } from './db/client.js'
+import { initDB, loadConfig, flushDB, withStartupLock } from './db/client.js'
 import { ensureSchema } from './db/schema.js'
 import { seedDefaultMapping, ensureStockCategories } from './services/excel.js'
 import { migrateMappingV3Captions, migrateMappingV3CaptionsPass2 } from './db/mapping-v3-migration.js'
@@ -20,9 +20,12 @@ import { registerGeneralNotesHandlers } from './ipc/general-notes.js'
 import { registerCfsHandlers } from './ipc/cfs.js'
 import { registerFsSnapshotHandlers } from './ipc/fs-snapshot.js'
 import { registerEngagementClientHandlers } from './ipc/engagement-client.js'
+import { startLocalEngagementService } from '../server/dev-engagement-service.js'
 import { guardScreen } from './screen-guard.js'
 
 let mainWindow
+let localEngagementService = null
+let closingLocalEngagementService = false
 const appWindows = new Set()   // every open window of the app (more than one is allowed)
 
 // More than one window: every window is the whole app, on the same database. A window opened with "New window" is told (in the page
@@ -70,8 +73,11 @@ async function createWindow(popoutPayload = null, fromWindow = null) {
 }
 
 app.whenReady().then(async () => {
+  let engagementClientOptions = {}
+  let legacyDatabaseReady = false
   try {
     await initDB()
+    legacyDatabaseReady = true
     // Serialize one-time/shared schema+seed setup across every Electron
     // client connected to this Postgres DB — otherwise 15 PCs launching
     // around the same time would race each other through table creation
@@ -91,6 +97,20 @@ app.whenReady().then(async () => {
     // show the Settings modal for the user to enter connection details.
   }
 
+  if (!process.env.ENGAGEMENT_SERVICE_URL && !app.isPackaged && process.env.NODE_ENV === 'development') {
+    try {
+      localEngagementService = await startLocalEngagementService(loadConfig())
+      engagementClientOptions = localEngagementService.clientOptions
+      console.info('Local development engagement service started on localhost.')
+    } catch (err) {
+      const databaseHint = legacyDatabaseReady ? '' : ' Check that the local PostgreSQL connection is configured in Settings.'
+      engagementClientOptions = {
+        startupError: `Could not start the local engagement service: ${err.message}${databaseHint}`,
+      }
+      console.error(engagementClientOptions.startupError)
+    }
+  }
+
   registerTBHandlers()
   registerMappingHandlers()
   registerMappedTBHandlers()
@@ -106,7 +126,7 @@ app.whenReady().then(async () => {
   registerGeneralNotesHandlers()
   registerCfsHandlers()
   registerFsSnapshotHandlers()
-  registerEngagementClientHandlers(ipcMain)
+  registerEngagementClientHandlers(ipcMain, engagementClientOptions)
   // The running exe's own version (package.json at build time), shown beside
   // the app name so it's obvious which build a server or client PC is on.
   ipcMain.handle('app:getVersion', () => app.getVersion())
@@ -140,7 +160,17 @@ app.whenReady().then(async () => {
   })
 })
 
-app.on('before-quit', () => flushDB())
+app.on('before-quit', (event) => {
+  flushDB()
+  if (!localEngagementService || closingLocalEngagementService) return
+  event.preventDefault()
+  closingLocalEngagementService = true
+  const service = localEngagementService
+  localEngagementService = null
+  service.close().catch(err => {
+    console.error('Local engagement service shutdown failed:', err)
+  }).finally(() => app.quit())
+})
 
 // Belt-and-suspenders durability: flush on window-all-closed (fires before
 // 'before-quit' on most platforms) and on graceful termination signals, so

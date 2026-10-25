@@ -36,7 +36,8 @@ const ROUTES = {
   reopen: { channel: 'engagement:reopen', args: body => [body.engagementId] },
 }
 
-function getTlsOptions() {
+function getTlsOptions(options = {}) {
+  if (options.tlsOptions) return options.tlsOptions
   const pfxPath = process.env.ENGAGEMENT_TLS_PFX_FILE
   if (pfxPath) {
     return {
@@ -50,8 +51,8 @@ function getTlsOptions() {
   return { key: readFileSync(resolve(keyPath)), cert: readFileSync(resolve(certPath)) }
 }
 
-function setupTokenMatches(candidate) {
-  const expected = process.env.ENGAGEMENT_SETUP_TOKEN || ''
+function setupTokenMatches(candidate, configuredToken = process.env.ENGAGEMENT_SETUP_TOKEN || '') {
+  const expected = configuredToken
   const provided = String(candidate || '')
   if (Buffer.byteLength(expected) < 32 || Buffer.byteLength(provided) !== Buffer.byteLength(expected)) return false
   return timingSafeEqual(Buffer.from(expected), Buffer.from(provided))
@@ -116,9 +117,9 @@ function requestSessionToken(request) {
   return match ? match[1] : null
 }
 
-export async function createEngagementServer() {
-  const tlsOptions = getTlsOptions()
-  const database = createEngagementDatabase()
+export async function createEngagementServer(options = {}) {
+  const tlsOptions = getTlsOptions(options)
+  const database = createEngagementDatabase(options.databaseOptions)
   try {
     await database.connect()
     await database.withStartupLock(() => ensureEngagementSchema(database.query))
@@ -165,7 +166,10 @@ export async function createEngagementServer() {
       const remoteAddress = request.socket.remoteAddress || 'unknown'
       const isLogin = routeName === 'auth/login' || routeName === 'auth/setup'
       if (isLogin) limiter.assertAllowed(remoteAddress)
-      if (routeName === 'auth/setup' && !setupTokenMatches(request.headers['x-engagement-setup-token'])) {
+      if (routeName === 'auth/setup' && !setupTokenMatches(
+        request.headers['x-engagement-setup-token'],
+        options.setupToken,
+      )) {
         limiter.failed(remoteAddress)
         statusCode = 403
         sendJson(response, statusCode, { error: 'Server setup authorization is invalid or unavailable.' })
@@ -228,8 +232,8 @@ export async function createEngagementServer() {
     server,
     database,
     async listen() {
-      const host = process.env.ENGAGEMENT_BIND_HOST || '127.0.0.1'
-      const port = Number(process.env.ENGAGEMENT_PORT || 8443)
+      const host = options.host || process.env.ENGAGEMENT_BIND_HOST || '127.0.0.1'
+      const port = options.port ?? Number(process.env.ENGAGEMENT_PORT || 8443)
       await new Promise((resolveListen, reject) => {
         server.once('error', reject)
         server.listen(port, host, () => {
@@ -254,19 +258,25 @@ export async function createEngagementServer() {
 
 const invokedPath = process.argv[1] && resolve(process.argv[1])
 if (invokedPath === fileURLToPath(import.meta.url)) {
-  const service = await createEngagementServer()
-  const address = await service.listen()
-  console.info(`Engagement HTTPS service listening on ${address.address}:${address.port}`)
+  const startStandaloneService = async () => {
+    const service = await createEngagementServer()
+    const address = await service.listen()
+    console.info(`Engagement HTTPS service listening on ${address.address}:${address.port}`)
 
-  const shutdown = async () => {
-    try {
-      await service.close()
-      process.exit(0)
-    } catch (error) {
-      console.error('Engagement service shutdown failed:', error)
-      process.exit(1)
+    const shutdown = async () => {
+      try {
+        await service.close()
+        process.exit(0)
+      } catch (error) {
+        console.error('Engagement service shutdown failed:', error)
+        process.exit(1)
+      }
     }
+    process.once('SIGINT', shutdown)
+    process.once('SIGTERM', shutdown)
   }
-  process.once('SIGINT', shutdown)
-  process.once('SIGTERM', shutdown)
+  startStandaloneService().catch(error => {
+    console.error('Engagement service startup failed:', error)
+    process.exitCode = 1
+  })
 }

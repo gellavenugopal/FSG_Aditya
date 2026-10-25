@@ -40,8 +40,8 @@ function poolOptionsFromEnvironment() {
   }
 }
 
-export function createEngagementDatabase() {
-  const pool = new Pool(poolOptionsFromEnvironment())
+export function createEngagementDatabase(databaseOptions = null) {
+  const pool = new Pool(databaseOptions || poolOptionsFromEnvironment())
   pool.on('error', error => console.error('Engagement database pool reported an idle-client error:', error.message))
 
   return {

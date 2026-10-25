@@ -36,8 +36,7 @@ const OPERATIONS = {
   'engagement:reopen': { path: 'reopen', args: id => [{ engagementId: id }] },
 }
 
-function serviceUrl(path) {
-  const configured = process.env.ENGAGEMENT_SERVICE_URL
+function serviceUrl(path, configured = process.env.ENGAGEMENT_SERVICE_URL) {
   if (!configured) throw new Error('Engagement service URL is not configured. Set ENGAGEMENT_SERVICE_URL to the firm HTTPS endpoint.')
   const url = new URL(configured)
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
@@ -47,11 +46,12 @@ function serviceUrl(path) {
   return url
 }
 
-function post(url, payload, bearer, setupToken) {
+function post(url, payload, bearer, setupToken, ca) {
   const body = JSON.stringify(payload ?? {})
   return new Promise((resolve, reject) => {
     const req = request(url, {
       method: 'POST',
+      ...(ca ? { ca } : {}),
       headers: {
         'content-type': 'application/json',
         'content-length': Buffer.byteLength(body),
@@ -82,9 +82,10 @@ function post(url, payload, bearer, setupToken) {
   })
 }
 
-export function registerEngagementClientHandlers(handlerRegistry = ipcMain) {
+export function registerEngagementClientHandlers(handlerRegistry = ipcMain, options = {}) {
   for (const [channel, operation] of Object.entries(OPERATIONS)) {
     handlerRegistry.handle(channel, async (event, input) => {
+      if (options.startupError) throw new Error(options.startupError)
       if (!attachedSenders.has(event.sender.id)) {
         attachedSenders.add(event.sender.id)
         event.sender.once('destroyed', () => {
@@ -95,10 +96,11 @@ export function registerEngagementClientHandlers(handlerRegistry = ipcMain) {
       const [payload, setupToken] = operation.args(input)
       const session = sessions.get(event.sender.id)
       const response = await post(
-        serviceUrl(operation.path),
+        serviceUrl(operation.path, options.serviceUrl),
         payload,
         session?.expiresAt > Date.now() ? session.token : null,
-        setupToken,
+        setupToken || options.setupToken,
+        options.ca,
       )
 
       if (channel === 'engagementAuth:login' || channel === 'engagementAuth:setup') {
@@ -109,7 +111,9 @@ export function registerEngagementClientHandlers(handlerRegistry = ipcMain) {
       if (channel === 'engagementAuth:logout') sessions.delete(event.sender.id)
       if (channel === 'engagementAuth:status' && !response.user) sessions.delete(event.sender.id)
       if (session) session.expiresAt = Date.now() + SESSION_MAX_AGE
-      return response.data
+      return channel === 'engagementAuth:status' && options.localDevelopment
+        ? { ...response.data, localDevelopment: true }
+        : response.data
     })
   }
 }

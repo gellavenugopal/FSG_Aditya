@@ -52,6 +52,18 @@ For a packaged client, configure the same variable in the approved Windows machi
 
 This setting only routes engagement IPC through the trusted service. The existing desktop still opens its legacy PostgreSQL connection for Trial Balance, mapping, statements, notes, and other operations. Therefore it still requires its legacy DB configuration and retains the existing permission bypasses. Do not distribute a new unrestricted DB credential to clients to make this feature work; this implementation has not migrated or isolated those legacy operations. A service-only client/UI mode that can run without the legacy DB connection is not included.
 
+## First administrator on a development laptop
+
+For local development, configure the database in the app's existing Settings screen, then run:
+
+```powershell
+npm run dev
+```
+
+When the app is an unpackaged development build and `ENGAGEMENT_SERVICE_URL` is not set, Electron starts the engagement service automatically on loopback using those saved database settings. It creates a temporary localhost HTTPS certificate and a one-time setup authorization inside the main process; neither value needs to be copied into the UI. Open Engagements and submit the first-run form to create the administrator. After signing in, administrators can create additional firm users from the Engagements screen.
+
+Local auto-start requires OpenSSL, available with Git for Windows or installed at `C:\Program Files\OpenSSL-Win64\bin\openssl.exe`. The service applies its additive schema migration to the configured database at startup, so back up any existing development database before the first run. This local mode is for a single developer machine only; it is not a substitute for the separately hosted HTTPS service. Setting `ENGAGEMENT_SERVICE_URL` disables the embedded service and uses the remote setup-token flow described above.
+
 ## Disposable integration test
 
 From the repository root on Windows, with Node.js, PostgreSQL binaries under `C:\Program Files\PostgreSQL\<version>\bin`, and OpenSSL available at one of the paths in the test:
@@ -60,7 +72,7 @@ From the repository root on Windows, with Node.js, PostgreSQL binaries under `C:
 npm run engagement:test
 ```
 
-The test creates a uniquely named temporary PostgreSQL cluster and self-signed test certificate, exercises the real HTTPS service with synthetic fixtures, stops the cluster, and removes its temporary files. It never reads the configured application DB settings or connects to the live database. It covers migration/repeated startup, persistence, password setup/change, read/edit and partner/admin/substitute permissions, revocation/disabled users, privacy-safe duplicate checks, legacy trial-balance linking, activation/finalisation/reopening, duplicate races, separate reasons, and rollback when audit insertion fails.
+The test creates a uniquely named temporary PostgreSQL cluster, starts the local-development HTTPS service against that disposable database, exercises it with synthetic fixtures, stops the cluster, and removes its temporary files. It never reads the configured application DB settings or connects to the live database. It covers migration/repeated startup, persistence, password setup/change, read/edit and partner/admin/substitute permissions, revocation/disabled users, privacy-safe duplicate checks, legacy trial-balance linking, activation/finalisation/reopening, duplicate races, separate reasons, and rollback when audit insertion fails.
 
 The service uses in-memory bearer sessions: restart logs all clients out. Deploy a process supervisor and monitor service/DB health before firm use. `/health` reports process availability, not database readiness.
 

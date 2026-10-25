@@ -36,7 +36,7 @@ function ShieldNotice({ children }) {
   return <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900">{children}</div>
 }
 
-function AuthGate({ setupRequired, onAuthenticated }) {
+function AuthGate({ setupRequired, localDevelopment, onAuthenticated }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [values, setValues] = useState({ firmName: '', displayName: '', email: '', password: '', setupAuthorizationToken: '' })
@@ -65,14 +65,16 @@ function AuthGate({ setupRequired, onAuthenticated }) {
         <h2 className="mt-1 text-xl font-bold text-gray-900">{setupRequired ? 'Create the firm administrator' : 'Sign in to engagements'}</h2>
         <p className="mt-2 text-sm leading-relaxed text-gray-500">
           {setupRequired
-            ? 'The first account becomes the firm administrator. Enter the one-time setup authorization issued by the firm server administrator.'
+            ? localDevelopment
+              ? 'Create the first administrator for this local development database. You can add more firm users after signing in.'
+              : 'The first account becomes the firm administrator. Enter the one-time setup authorization issued by the firm server administrator.'
             : 'Use your firm account. Engagement permissions are checked by the application service for each operation.'}
         </p>
         {setupRequired && (
           <>
             <div className="mt-5"><Field label="Firm name"><Input required autoComplete="organization" value={values.firmName} onChange={e => set('firmName', e.target.value)} /></Field></div>
             <div className="mt-4"><Field label="Administrator name"><Input required autoComplete="name" value={values.displayName} onChange={e => set('displayName', e.target.value)} /></Field></div>
-            <div className="mt-4"><Field label="One-time setup authorization"><Input required autoComplete="off" type="password" value={values.setupAuthorizationToken} onChange={e => set('setupAuthorizationToken', e.target.value)} /></Field></div>
+            {!localDevelopment && <div className="mt-4"><Field label="One-time setup authorization"><Input required autoComplete="off" type="password" value={values.setupAuthorizationToken} onChange={e => set('setupAuthorizationToken', e.target.value)} /></Field></div>}
           </>
         )}
         <div className="mt-4"><Field label="Work email"><Input required type="email" autoComplete="username" value={values.email} onChange={e => set('email', e.target.value)} /></Field></div>
@@ -668,7 +670,7 @@ function EngagementOverview({ user, id, onBack, onEdit }) {
 }
 
 export default function EngagementHub() {
-  const [auth, setAuth] = useState({ loading: true, setupRequired: false, user: null })
+  const [auth, setAuth] = useState({ loading: true, setupRequired: false, localDevelopment: false, user: null })
   const [screen, setScreen] = useState({ type: 'list' })
   const [error, setError] = useState('')
   const [signingOut, setSigningOut] = useState(false)
@@ -676,7 +678,7 @@ export default function EngagementHub() {
   const refreshAuth = useCallback(async () => {
     try {
       const result = await window.api.engagementAuthStatus()
-      setAuth({ loading: false, setupRequired: result.setupRequired, user: result.user })
+      setAuth({ loading: false, setupRequired: result.setupRequired, localDevelopment: !!result.localDevelopment, user: result.user })
     } catch (err) {
       setError(err.message || 'Engagement authentication is unavailable.')
       setAuth({ loading: false, setupRequired: false, user: null })
@@ -698,7 +700,7 @@ export default function EngagementHub() {
   }
 
   if (auth.loading) return <div className="flex h-full items-center justify-center text-sm text-gray-500">Loading engagement service…</div>
-  if (!auth.user) return <div className="h-full overflow-y-auto"><AuthGate setupRequired={auth.setupRequired} onAuthenticated={user => { setAuth(current => ({ ...current, user, setupRequired: false })); setError('') }} />{error && <p role="alert" className="mx-auto max-w-md px-5 pb-5 text-sm text-red-700">{error}</p>}</div>
+  if (!auth.user) return <div className="h-full overflow-y-auto"><AuthGate setupRequired={auth.setupRequired} localDevelopment={auth.localDevelopment} onAuthenticated={user => { setAuth(current => ({ ...current, user, setupRequired: false })); setError('') }} />{error && <p role="alert" className="mx-auto max-w-md px-5 pb-5 text-sm text-red-700">{error}</p>}</div>
   if (auth.user.mustChangePassword) return <div className="h-full overflow-y-auto"><PasswordChange user={auth.user} onChanged={user => setAuth(current => ({ ...current, user }))} /></div>
 
   return (

@@ -6,9 +6,8 @@ import https from 'node:https'
 import net from 'node:net'
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { createEngagementServer } from '../src/server/engagement-server.js'
+import { startLocalEngagementService } from '../src/server/dev-engagement-service.js'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const require = createRequire(import.meta.url)
@@ -20,12 +19,7 @@ const versions = fs.existsSync(pgRoot)
   : []
 const version = versions[0]
 const pgBin = version && path.join(pgRoot, version, 'bin')
-const openssl = [
-  'C:\\Program Files\\Git\\usr\\bin\\openssl.exe',
-  'C:\\Program Files\\OpenSSL-Win64\\bin\\openssl.exe',
-].find(candidate => fs.existsSync(candidate))
 if (!pgBin) throw new Error('PostgreSQL initdb.exe was not found under C:\\Program Files\\PostgreSQL.')
-if (!openssl) throw new Error('OpenSSL was not found at a supported Windows installation path.')
 
 const run = (exe, args, timeout = 120000) => {
   const result = spawnSync(exe, args, { encoding: 'utf8', timeout })
@@ -51,16 +45,8 @@ const freePort = async () => new Promise((resolvePort, reject) => {
 const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'fsg-engagement-service-'))
 const dataDirectory = path.join(rootDirectory, 'postgres')
 const pgPort = await freePort()
-let servicePort = await freePort()
-while (servicePort === pgPort) servicePort = await freePort()
-const setupToken = `test-only-setup-token-${randomBytes(24).toString('hex')}`
-const originalEnvironment = new Map([
-  'ENGAGEMENT_DATABASE_URL', 'ENGAGEMENT_DATABASE_SSL', 'ENGAGEMENT_DATABASE_SSL_CA_FILE',
-  'ENGAGEMENT_DB_HOST', 'ENGAGEMENT_DB_PORT', 'ENGAGEMENT_DB_NAME', 'ENGAGEMENT_DB_USER',
-  'ENGAGEMENT_DB_PASSWORD', 'ENGAGEMENT_TLS_KEY_FILE', 'ENGAGEMENT_TLS_CERT_FILE',
-  'ENGAGEMENT_TLS_PFX_FILE', 'ENGAGEMENT_TLS_PFX_PASSWORD', 'ENGAGEMENT_SETUP_TOKEN',
-  'ENGAGEMENT_BIND_HOST', 'ENGAGEMENT_PORT',
-].map(key => [key, process.env[key]]))
+let servicePort
+let serviceCa = null
 let postgresStarted = false
 let service = null
 let pool = null
@@ -76,7 +62,7 @@ function api(pathname, body = {}, token = null, setupAuthorization = null) {
   return new Promise((resolveRequest, reject) => {
     const request = https.request(`https://127.0.0.1:${servicePort}/v1/engagement/${pathname}`, {
       method: 'POST',
-      ca: fs.readFileSync(path.join(rootDirectory, 'cert.pem')),
+      ca: serviceCa,
       headers: {
         'content-type': 'application/json',
         'content-length': Buffer.byteLength(serialized),
@@ -152,31 +138,6 @@ try {
     '-D', dataDirectory, '-o', `-h 127.0.0.1 -p ${pgPort}`, '-l', path.join(rootDirectory, 'postgres.log'), '-w', 'start',
   ])
   console.info('Disposable PostgreSQL started.')
-  run(openssl, [
-    'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
-    '-keyout', path.join(rootDirectory, 'key.pem'),
-    '-out', path.join(rootDirectory, 'cert.pem'),
-    '-subj', '/CN=localhost', '-days', '1',
-    '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1',
-  ])
-
-  Object.assign(process.env, {
-    ENGAGEMENT_DATABASE_URL: `postgres://selftest@127.0.0.1:${pgPort}/postgres`,
-    ENGAGEMENT_TLS_KEY_FILE: path.join(rootDirectory, 'key.pem'),
-    ENGAGEMENT_TLS_CERT_FILE: path.join(rootDirectory, 'cert.pem'),
-    ENGAGEMENT_SETUP_TOKEN: setupToken,
-    ENGAGEMENT_BIND_HOST: '127.0.0.1',
-    ENGAGEMENT_PORT: String(servicePort),
-  })
-  delete process.env.ENGAGEMENT_DATABASE_SSL
-  delete process.env.ENGAGEMENT_DATABASE_SSL_CA_FILE
-  delete process.env.ENGAGEMENT_DB_HOST
-  delete process.env.ENGAGEMENT_DB_PORT
-  delete process.env.ENGAGEMENT_DB_NAME
-  delete process.env.ENGAGEMENT_DB_USER
-  delete process.env.ENGAGEMENT_DB_PASSWORD
-  delete process.env.ENGAGEMENT_TLS_PFX_FILE
-  delete process.env.ENGAGEMENT_TLS_PFX_PASSWORD
 
   pool = new Pool({ host: '127.0.0.1', port: pgPort, database: 'postgres', user: 'selftest' })
   await pool.query(`
@@ -241,10 +202,18 @@ try {
   `)
   check(beforeLegacy.rowCount === 1, 'representative legacy fixture created')
 
-  service = await createEngagementServer()
-  const address = await service.listen()
-  console.info('HTTPS engagement service started.')
-  check(address.port === servicePort, 'service starts with HTTPS on the configured port')
+  service = await startLocalEngagementService({
+    host: '127.0.0.1', port: pgPort, database: 'postgres', user: 'selftest', password: '',
+  })
+  const address = new URL(service.clientOptions.serviceUrl)
+  servicePort = Number(address.port)
+  serviceCa = service.clientOptions.ca
+  const boundAddress = service.service.server.address()
+  check(address.protocol === 'https:' && address.hostname === 'localhost' && boundAddress.address === '127.0.0.1',
+    'local development service uses HTTPS and binds only to loopback')
+  check(Buffer.isBuffer(serviceCa) && service.clientOptions.setupToken.length >= 64,
+    'local development creates a private setup authorization and trusted local CA')
+  console.info('Local HTTPS engagement service started.')
   const status = await ok('auth/status')
   check(status.data.setupRequired && !status.data.user, 'fresh service reports administrator setup required')
   const unauthorizedSetup = await api('auth/setup', {
@@ -274,13 +243,13 @@ try {
   const setup = await ok('auth/setup', {
     email: 'admin@example.test', firmName: 'Synthetic Firm', displayName: 'Synthetic Admin',
     password: 'Synthetic-Admin-Password!',
-  }, null, setupToken)
+  }, null, service.clientOptions.setupToken)
   const adminToken = setup.sessionToken
   check(!!setup.user && !!adminToken, 'server-authorized first administrator setup returns an authenticated session')
   await fails('auth/setup', {
     email: 'second@example.test', firmName: 'Another Firm', displayName: 'Second Admin',
     password: 'Synthetic-Admin-Password!',
-  }, null, /already been completed/i, setupToken)
+  }, null, /already been completed/i, service.clientOptions.setupToken)
 
   const createUser = async (email, role) => {
     const created = await ok('admin/users/create', { email, displayName: email.split('@')[0], role }, adminToken)
@@ -507,8 +476,11 @@ try {
   const oldToken = adminToken
   await service.close()
   service = null
-  service = await createEngagementServer()
-  await service.listen()
+  service = await startLocalEngagementService({
+    host: '127.0.0.1', port: pgPort, database: 'postgres', user: 'selftest', password: '',
+  })
+  servicePort = Number(new URL(service.clientOptions.serviceUrl).port)
+  serviceCa = service.clientOptions.ca
   await fails('list', { scope: 'all' }, oldToken, /sign in/i)
   const loggedBackIn = await login('admin@example.test', 'Synthetic-Admin-Password!')
   const persistent = await ok('list', { scope: 'all' }, loggedBackIn.sessionToken)
@@ -522,8 +494,4 @@ try {
     runQuiet(path.join(pgBin, 'pg_ctl.exe'), ['-D', dataDirectory, '-m', 'immediate', '-w', 'stop'], 30000)
   }
   fs.rmSync(rootDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
-  for (const [key, value] of originalEnvironment) {
-    if (value === undefined) delete process.env[key]
-    else process.env[key] = value
-  }
 }
