@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, dialog } from 'electron'
 import { join } from 'path'
+import { isIP } from 'node:net'
 import { initDB, loadConfig, flushDB, withStartupLock } from './db/client.js'
 import { ensureSchema } from './db/schema.js'
 import { seedDefaultMapping, ensureStockCategories } from './services/excel.js'
@@ -29,10 +30,20 @@ let closingLocalEngagementService = false
 const engagementClientOptions = {}
 const appWindows = new Set()   // every open window of the app (more than one is allowed)
 
-function isUnconfiguredLocalDevelopment() {
-  return !process.env.ENGAGEMENT_SERVICE_URL
-    && !app.isPackaged
+function isLoopbackServiceUrl(value) {
+  if (!value) return false
+  try {
+    const hostname = new URL(value).hostname.replace(/^\[|\]$/g, '').toLowerCase()
+    return hostname === 'localhost' || hostname === '::1' || (isIP(hostname) === 4 && hostname.startsWith('127.'))
+  } catch {
+    return false
+  }
+}
+
+function shouldUseLocalDevelopmentService() {
+  const isDevelopment = !app.isPackaged
     && (process.env.NODE_ENV_ELECTRON_VITE === 'development' || process.env.NODE_ENV === 'development')
+  return isDevelopment && (!process.env.ENGAGEMENT_SERVICE_URL || isLoopbackServiceUrl(process.env.ENGAGEMENT_SERVICE_URL))
 }
 
 // More than one window: every window is the whole app, on the same database. A window opened with "New window" is told (in the page
@@ -103,7 +114,7 @@ app.whenReady().then(async () => {
     // show the Settings modal for the user to enter connection details.
   }
 
-  if (isUnconfiguredLocalDevelopment()) {
+  if (shouldUseLocalDevelopmentService()) {
     try {
       localEngagementService = await startLocalEngagementService(loadConfig())
       Object.assign(engagementClientOptions, localEngagementService.clientOptions)
@@ -120,10 +131,10 @@ app.whenReady().then(async () => {
   registerMappingHandlers()
   registerMappedTBHandlers()
   registerSettingsHandlers()
-  ipcMain.handle('engagementService:localSetupAvailable', () => isUnconfiguredLocalDevelopment())
+  ipcMain.handle('engagementService:localSetupAvailable', () => shouldUseLocalDevelopmentService())
   ipcMain.handle('engagementService:restartLocal', async () => {
-    if (!isUnconfiguredLocalDevelopment()) {
-      throw new Error('Local engagement service setup is only available in an unconfigured development build.')
+    if (!shouldUseLocalDevelopmentService()) {
+      throw new Error('Local engagement service setup is only available in a development build using a local or unset service URL.')
     }
     if (localEngagementService) {
       await localEngagementService.close()

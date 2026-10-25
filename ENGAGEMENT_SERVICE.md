@@ -66,7 +66,7 @@ For local development, configure the database in the app's existing Settings scr
 npm run dev
 ```
 
-When the app is an unpackaged development build and `ENGAGEMENT_SERVICE_URL` is not set, Electron starts the engagement service automatically on loopback using those saved database settings. It creates a temporary localhost HTTPS certificate and a one-time setup authorization inside the main process; neither value needs to be copied into the UI. Open Engagements and submit the first-run form to create the administrator. After signing in, administrators can create additional firm users from the Engagements screen.
+When the app is an unpackaged development build and `ENGAGEMENT_SERVICE_URL` is unset or points to loopback (`localhost`/`127.0.0.1`), Electron starts the engagement service automatically on loopback using those saved database settings. This avoids depending on a separately started local service or a stale local port setting. A non-loopback `ENGAGEMENT_SERVICE_URL` continues to select the remote firm service. The embedded service creates a temporary localhost HTTPS certificate and a one-time setup authorization inside the main process; neither value needs to be copied into the UI. Open the startup first-run form to create the administrator, then sign in. Administrators can create additional firm users from the Engagements screen.
 
 The startup sign-in page provides a limited **Configure database** flow if the saved connection cannot start the local service. Once the database is saved and connected, the app starts the local service and returns to first-run setup. This pre-login configuration flow only exposes database connection fields; it does not expose the settings screen's database export features.
 
