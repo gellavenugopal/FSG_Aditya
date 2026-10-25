@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 import { useFinancials, fmtINR, displayAmt as rowAmt } from '../../hooks/useFinancials'
 import { mapSavedRowsToLiveNotes } from '../../utils/savedNoteData'
 import { pointLabel } from '../../utils/pointLabel'
@@ -1905,7 +1906,7 @@ export default function Notes({ entity, activeTB, prevTB, activeRsId, onPrevTBCh
     </div>
   ) : null
 
-  const period = activeTB?.period || ''
+  const period = formatPeriodText(activeTB?.period)
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { formatPeriodRange } from '../../utils/financialPeriodDisplay'
 
 /**
  * Financial Year / Period badge — shown in the TopBar immediately before the
@@ -52,7 +53,7 @@ export default function FinancialYearBadge({ entity, entityPeriods = [], selecte
                   selectedId === p.id ? 'bg-blue-50 font-semibold text-blue-800' : 'text-gray-800'
                 }`}
               >
-                {p.year_label} <span className="text-gray-400">({p.date_from} to {p.date_till})</span>{p.locked ? ' 🔒' : ''}
+                {p.year_label} <span className="text-gray-400">({formatPeriodRange(p.date_from, p.date_till)})</span>{p.locked ? ' 🔒' : ''}
               </button>
             ))}
             <div className="border-t border-gray-100 mt-1 pt-1">

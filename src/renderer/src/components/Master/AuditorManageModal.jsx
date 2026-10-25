@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useModalKeys } from '../../hooks/useModalKeys'
 import GlobalAuditorPicker from '../shared/GlobalAuditorPicker'
+import RowActionButton from './RowActionButton'
 
 function AuditorForm({ entityId, editing, onSaved, onCancel }) {
   const [firmName, setFirmName] = useState(editing?.firm_name || '')
@@ -101,12 +102,12 @@ function AuditorForm({ entityId, editing, onSaved, onCancel }) {
   )
 }
 
-export default function AuditorManageModal({ entity, startInCreate = false, onClose }) {
+export default function AuditorManageModal({ entity, startInCreate = false, onClose, embedded = false }) {
   const [auditors, setAuditors] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
   const [error, setError] = useState('')
-  const containerRef = useModalKeys({ onClose })
+  const containerRef = useModalKeys({ onClose, enabled: !embedded })
 
   const load = () => {
     if (!entity?.id) { setLoading(false); return }
@@ -131,17 +132,21 @@ export default function AuditorManageModal({ entity, startInCreate = false, onCl
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className={embedded ? 'w-full' : 'modal-backdrop'} onClick={embedded ? undefined : onClose}>
       <div
-        className="bg-white rounded-xl shadow-2xl p-6 flex flex-col"
-        style={{ width: '620px', maxWidth: '92vw', maxHeight: '82vh' }}
+        className={embedded
+          ? 'flex min-h-[220px] flex-col rounded-xl border border-gray-200 bg-white p-4 sm:p-5'
+          : 'bg-white rounded-xl shadow-2xl p-6 flex flex-col'}
+        style={embedded ? undefined : { width: '620px', maxWidth: '92vw', maxHeight: '82vh' }}
         ref={containerRef}
-        onClick={e => e.stopPropagation()}
+        onClick={embedded ? undefined : e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4 shrink-0">
-          <h2 className="text-base font-bold text-blue-900">Auditors{entity ? ` — ${entity.name}` : ''}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
-        </div>
+        {!embedded && (
+          <div className="flex items-center justify-between mb-4 shrink-0">
+            <h2 className="text-base font-bold text-blue-900">Auditors{entity ? ` — ${entity.name}` : ''}</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+          </div>
+        )}
 
         {!entity && <p className="text-gray-400 text-sm py-6 text-center">Select an Auditee first.</p>}
 
@@ -149,28 +154,34 @@ export default function AuditorManageModal({ entity, startInCreate = false, onCl
           <AuditorForm
             entityId={entity.id}
             editing={editing.id ? editing : null}
-            onSaved={() => { setEditing(null); load() }}
-            onCancel={() => setEditing(null)}
+            onSaved={() => { setEditing(null); load(); if (embedded) onClose?.() }}
+            onCancel={() => { setEditing(null); if (embedded) onClose?.() }}
           />
         ) : (
-          <div className="flex items-center justify-end mb-3 shrink-0">
-            <button
-              onClick={() => setEditing({})}
-              className="px-3 py-2 bg-blue-700 text-white rounded text-sm font-medium hover:bg-blue-800 whitespace-nowrap"
-            >
-              + Add Auditor
-            </button>
+          <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
+            {embedded && <p className="text-sm font-medium text-gray-700">{auditors.length} {auditors.length === 1 ? 'auditor' : 'auditors'}</p>}
+            {!embedded && (
+              <button
+                onClick={() => setEditing({})}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800 whitespace-nowrap"
+              >
+                <span aria-hidden="true" className="text-lg leading-none">+</span> Add auditor
+              </button>
+            )}
           </div>
         ))}
 
         {error && <p className="text-red-500 text-xs mb-2 shrink-0">{error}</p>}
 
         {entity && (
-          <div className="flex-1 overflow-y-auto -mx-2 px-2">
+          <div className={`${embedded ? 'flex-1' : 'flex-1 overflow-y-auto -mx-2 px-2'}`}>
             {loading ? (
-              <p className="text-gray-400 text-sm py-6 text-center">Loading...</p>
+              <p className="text-gray-400 text-sm py-6 text-center">Loading auditors...</p>
             ) : auditors.length === 0 ? (
-              <p className="text-gray-400 text-sm py-6 text-center">No Auditors added yet.</p>
+              <div className="rounded-lg border border-dashed border-gray-200 py-10 text-center">
+                <p className="text-sm font-medium text-gray-700">No auditors added yet</p>
+                <p className="mt-1 text-xs text-gray-500">Add an auditor to keep engagement details here.</p>
+              </div>
             ) : (
               <ul className="divide-y divide-gray-100">
                 {auditors.map(a => (
@@ -181,9 +192,9 @@ export default function AuditorManageModal({ entity, startInCreate = false, onCl
                         {a.firm_name ? `${a.firm_name} · ` : ''}M.No. {a.membership_number}{a.membership_category ? ` (${a.membership_category === 'Fellow' ? 'FCA' : 'ACA'})` : ''}{a.frn ? ` · FRN ${a.frn}` : ''}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => setEditing(a)} className="px-2 py-1 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-50">Edit</button>
-                      <button onClick={() => handleDelete(a)} className="px-2 py-1 text-xs border border-red-300 rounded text-red-700 hover:bg-red-50">Delete</button>
+                    <div className="flex items-center">
+                      <RowActionButton action="edit" onClick={() => setEditing(a)} />
+                      <RowActionButton action="delete" onClick={() => handleDelete(a)} />
                     </div>
                   </li>
                 ))}
@@ -192,7 +203,7 @@ export default function AuditorManageModal({ entity, startInCreate = false, onCl
           </div>
         )}
 
-        <p className="text-xs text-gray-400 text-center mt-3 shrink-0">Esc to close</p>
+        {!embedded && <p className="text-xs text-gray-400 text-center mt-3 shrink-0">Esc to close</p>}
       </div>
     </div>
   )

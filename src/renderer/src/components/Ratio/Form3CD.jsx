@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 import { useFinancials, fmtINR } from '../../hooks/useFinancials'
 
 const ROWS = [
@@ -531,7 +532,7 @@ export default function Form3CD({ entity, activeTB, prevTB, onPrevTBChange }) {
                   accent="bg-green-50 text-green-700" />
               </div>
 
-              <h4 className="text-xs font-bold text-blue-900 mb-2 uppercase tracking-wide">Trading Account {activeTB?.period ? `for the year ended ${activeTB.period}` : ''}</h4>
+              <h4 className="text-xs font-bold text-blue-900 mb-2 uppercase tracking-wide">Trading Account {activeTB?.period ? `for the year ended ${formatPeriodText(activeTB.period)}` : ''}</h4>
               <div className="grid grid-cols-2 border border-gray-300 rounded overflow-hidden divide-x divide-gray-300">
                 <LedgerSide title="Dr." rows={cyDebitRows} total={cyDebitTotal} />
                 <LedgerSide title="Cr." rows={cyCreditRows} total={cyCreditTotal} />

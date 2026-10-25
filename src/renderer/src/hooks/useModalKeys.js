@@ -17,11 +17,12 @@ const FOCUSABLE_SEL =
  * @param {{ onClose: Function, onConfirm?: Function }} options
  * @returns {React.RefObject}
  */
-export function useModalKeys({ onClose, onConfirm } = {}) {
+export function useModalKeys({ onClose, onConfirm, enabled = true } = {}) {
   const containerRef = useRef(null)
 
   // Auto-focus first input or focusable element on mount
   useEffect(() => {
+    if (!enabled) return undefined
     const el = containerRef.current
     if (!el) return
     const t = setTimeout(() => {
@@ -30,10 +31,11 @@ export function useModalKeys({ onClose, onConfirm } = {}) {
       ;(firstInput || firstFocusable)?.focus()
     }, 40)
     return () => clearTimeout(t)
-  }, [])
+  }, [enabled])
 
   // Escape / Ctrl+Enter / focus trap
   useEffect(() => {
+    if (!enabled) return undefined
     const handler = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -66,7 +68,7 @@ export function useModalKeys({ onClose, onConfirm } = {}) {
 
     document.addEventListener('keydown', handler, { capture: true })
     return () => document.removeEventListener('keydown', handler, { capture: true })
-  }, [onClose, onConfirm])
+  }, [enabled, onClose, onConfirm])
 
   return containerRef
 }

@@ -53,17 +53,16 @@ function fmtUploadedAt(v) {
   return `${dd}-${mm}-${d.getFullYear()}`
 }
 
-// Top-level menu bar: Master > Trial Balance > Stock > Mapping > Dep > BS > PL > Notes > Annexures > Exception > Generate Financials
-// 'Master', 'Trial Balance' and 'Mapping' are dropdown groups (hover/click,
-// or their Alt mnemonic). Master's dropdown mirrors its own page
-// sections — Auditee Details, Financial Period, Auditor, Signatory, Mapping
-// Rules — each jumping straight to that section (see Master/index.jsx's
-// LEAF_MODAL_TYPE). Trial Balance embeds Upload TB / Actual TB / Mapped TB /
+// Top-level menu bar: Settings > Trial Balance > Stock > Mapping > Dep > BS > PL > Notes > Annexures > Exception > Generate Financials
+// 'Settings', 'Trial Balance' and 'Mapping' are dropdown groups (hover/click,
+// or their Alt mnemonic). Settings' dropdown mirrors its page sections —
+// Auditee Details, Financial Period, Auditor, Signatory, Mapping Rules.
+// Trial Balance embeds Upload TB / Actual TB / Mapped TB /
 // Mapped TB (Remarks) / Journal Entry. Mapping groups the mapping workflow —
 // Rectification / Recategorisation (renamed from the old standalone
 // "Categorisation" tab) / Mapped TB / Mapping Rules. "Mapped TB" and
 // "Mapping Rules" are deliberately reachable from two groups (Trial
-// Balance / Master respectively, as well as from Mapping) — same leaf
+// Balance / Settings respectively, as well as from Mapping) — same leaf
 // label, same render case, just listed in more than one dropdown.
 // Screens whose figures come from the Trial Balance's closing balances: they say when those are revised by Adjustments.
 const ADJUSTMENT_NOTICE_TABS = new Set([
@@ -71,9 +70,9 @@ const ADJUSTMENT_NOTICE_TABS = new Set([
   'Dep (Comp)', 'Dep (IT)', 'Dep (Old)', 'Tax Computation', 'Deferred Tax', 'ITR: BS', 'ITR: PL', 'ITR: BS Details', 'ITR: PL Details',
   'Rectification / Recategorisation', 'Mapped TB (Remarks)',
 ])
-const TABS = ['Master', 'Trial Balance', 'Stock', 'Mapping', 'Dep', 'BS', 'PL', 'CFS', 'Notes', 'General Notes', 'Annex & Reco', 'Features', 'Exception', 'Generate Financials']
+const TABS = ['Settings', 'Trial Balance', 'Stock', 'Mapping', 'Dep', 'BS', 'PL', 'CFS', 'Notes', 'General Notes', 'Annex & Reco', 'Features', 'Exception', 'Generate Financials']
 const TAB_GROUPS = {
-  'Master': ['Auditee Details', 'Financial Period', 'Auditor', 'Signatory', 'Mapping Rules'],
+  'Settings': ['Auditee Details', 'Financial Period', 'Auditor', 'Signatory', 'Mapping Rules'],
   'Trial Balance': ['Upload TB', 'Actual TB', 'Mapped TB', 'Mapped TB (Remarks)', 'Journal Entry'],
   'Mapping': ['Rectification / Recategorisation', 'Mapped TB', 'Mapping Rules'],
   'Dep': ['Dep (Comp)', 'Dep (IT)', 'Dep (Old)'],
@@ -555,6 +554,7 @@ export default function App() {
             onEntityChange={handleEntityChange}
             onOpenMappingRules={() => setActiveTab('Mapping Rules')}
             activeLeaf={activeTab}
+            onSelectSection={setActiveTab}
           />
         )
       case 'Upload TB':
@@ -605,7 +605,7 @@ export default function App() {
               <button
                 onClick={() => setActiveTab('Auditee Details')}
                 className="text-xs text-blue-700 hover:text-blue-900 font-medium"
-              >← Back to Master</button>
+              >← Back to Settings</button>
             </div>
             <MappingRules
               entity={entity}
@@ -950,7 +950,7 @@ export default function App() {
         onQuit={() => window.api?.quitApp?.()}
         entity={entity}
         onEntityChange={handleEntityChange}
-        onOpenMaster={() => setActiveTab('Auditee Details')}
+        onOpenSettings={() => setActiveTab('Auditee Details')}
         onManageFinancialPeriods={() => setActiveTab('Financial Period')}
         onSettings={() => setShowSettings(true)}
         dbOk={dbOk}

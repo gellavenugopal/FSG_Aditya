@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 import { useFinancials, fmtINR } from '../../hooks/useFinancials'
 import { fixFilterWith } from '../../utils/fixTargets'
 import PYTBSelector from '../shared/PYTBSelector'
@@ -455,7 +456,7 @@ export default function BS({ entity, activeTB, prevTB, activeRsId, onPrevTBChang
   const isCompany = parseInt(entity?.constitution) === 3
   const cyLabel   = 'Current Year'
   const pyLabel   = 'Previous Year'
-  const subtitle  = activeTB?.period ? `Balance Sheet as at ${activeTB.period}` : 'Balance Sheet'
+  const subtitle  = activeTB?.period ? `Balance Sheet as at ${formatPeriodText(activeTB.period)}` : 'Balance Sheet'
   // Previous Year not required for this Financial Year (PYModeSelect): nothing to pick or type, and - when the CA
   // asked for it - no Previous Year column ('hide-py' hides every .py-col below).
   const pyOff = !!data?.pyMode && data.pyMode !== 'required'

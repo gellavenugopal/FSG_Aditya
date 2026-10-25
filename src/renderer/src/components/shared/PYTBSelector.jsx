@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 
 /**
  * Dropdown to pick a Previous Year Trial Balance.
@@ -30,7 +31,7 @@ export default function PYTBSelector({ entity, currentTBId, prevTB, onChange, di
         <option value="">— None (use opening balances) —</option>
         {options.map(t => (
           <option key={t.id} value={t.id}>
-            {t.period || t.filename} ({t.row_count} rows)
+            {formatPeriodText(t.period) || t.filename} ({t.row_count} rows)
           </option>
         ))}
       </select>

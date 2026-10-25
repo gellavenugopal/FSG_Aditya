@@ -9,6 +9,7 @@
  * Same ledger can have one opening row AND one addition row.
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 import { fmtINR } from '../../hooks/useFinancials'
 
 // ── Style constants ────────────────────────────────────────────────────────────
@@ -375,7 +376,7 @@ function ScheduleView({ rows, entity, period, yearEnd }) {
       <div className="text-center mb-4 pb-2 border-b-2 border-blue-800">
         <h1 className="text-sm font-bold text-blue-900 uppercase">{entity?.name || 'Entity Name'}</h1>
         <h2 className="text-sm font-bold text-gray-700 mt-1">Fixed Assets Schedule — Property, Plant & Equipment (Tangible)</h2>
-        {period && <p className="text-xs text-gray-500">For the year ended {period}</p>}
+        {period && <p className="text-xs text-gray-500">For the year ended {formatPeriodText(period)}</p>}
         <p className="text-[10px] text-gray-400">As per Companies Act 2013, Schedule II</p>
       </div>
       <table className="w-full border-collapse text-[11px] mb-4">
@@ -984,7 +985,7 @@ export default function Depreciation({ entity, activeTB }) {
         <span><span className="font-semibold text-gray-800">{rows.length}</span> row{rows.length !== 1 ? 's' : ''}</span>
         <span>Dep for Year: <span className="font-bold text-green-700 font-mono">{fmtINR(totalDepYear)}</span></span>
         <span>Net WDV (Closing): <span className="font-bold text-orange-700 font-mono">{fmtINR(totalNetWDV)}</span></span>
-        {period && <span className="text-gray-400">Period: {period}</span>}
+        {period && <span className="text-gray-400">Period: {formatPeriodText(period)}</span>}
       </div>
 
       {/* Tab strip */}

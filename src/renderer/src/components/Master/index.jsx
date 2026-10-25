@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState } from 'react'
 import AuditeeListModal from './AuditeeListModal'
 import AuditeeFormModal from './AuditeeFormModal'
 import AuditeeReadModal from './AuditeeReadModal'
@@ -6,137 +6,207 @@ import FinancialPeriodManageModal from './FinancialPeriodManageModal'
 import AuditorManageModal from './AuditorManageModal'
 import SignatoryManageModal from './SignatoryManageModal'
 
-// Hover-first flyout menu (click also toggles, for accessibility/touch).
-function FlyoutMenu({ label, items }) {
-  const [open, setOpen] = useState(false)
-  const closeTimer = useRef(null)
+const SECTIONS = [
+  { label: 'Auditee Details', description: 'Organization profile' },
+  { label: 'Financial Period', description: 'Financial years' },
+  { label: 'Auditor', description: 'Audit appointments' },
+  { label: 'Signatory', description: 'Signing authorities' },
+  { label: 'Mapping Rules', description: 'Ledger classification' },
+]
 
-  const openNow = () => {
-    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null }
-    setOpen(true)
-  }
-  const closeSoon = () => {
-    closeTimer.current = setTimeout(() => setOpen(false), 150)
-  }
-
+function AddButton({ label, onClick }) {
   return (
-    <div className="relative" onMouseEnter={openNow} onMouseLeave={closeSoon}>
-      <button
-        onClick={() => setOpen(v => !v)}
-        className={`px-5 py-3 text-sm font-semibold rounded-lg transition ${
-          open ? 'bg-blue-700 text-white' : 'bg-white text-blue-900 border border-blue-200 hover:bg-blue-50'
-        }`}
-      >
-        {label} <span className="text-xs ml-1">▾</span>
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-56 py-1" onMouseEnter={openNow} onMouseLeave={closeSoon}>
-          {items.map(item => (
-            <button
-              key={item.label}
-              onClick={() => { setOpen(false); item.onClick() }}
-              className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 text-gray-800 transition"
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Add ${label}`}
+      title={`Add ${label}`}
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-700 text-white transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-5 w-5" aria-hidden="true">
+        <path d="M12 5v14M5 12h14" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </button>
+  )
+}
+
+function SectionHeading({ eyebrow, title, description, onAdd, addLabel }) {
+  return (
+    <div className="mb-6 flex items-start justify-between gap-4">
+      <div>
+        <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">{eyebrow}</p>
+        <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+        <p className="mt-1 text-sm text-gray-500">{description}</p>
+      </div>
+      {onAdd && <AddButton label={addLabel} onClick={onAdd} />}
     </div>
   )
 }
 
-// Master menu-bar dropdown leaf name → the modal it should open immediately
-// (see App.jsx's TAB_GROUPS['Master']). 'Auditee Details' opens no modal —
-// the page itself IS the Auditee Details view.
-const LEAF_MODAL_TYPE = {
-  'Financial Period': 'period-manage',
-  'Auditor': 'auditor-manage',
-  'Signatory': 'signatory-manage',
-}
-
-export default function Master({ entity, onEntityChange, onOpenMappingRules, activeLeaf }) {
-  const [modal, setModal] = useState(null) // { type: 'select'|'create'|'edit'|'read'|'delete'|'period-create'|'period-manage' }
-
+export default function Master({ entity, onEntityChange, onOpenMappingRules, activeLeaf, onSelectSection }) {
+  const [modal, setModal] = useState(null)
+  const section = SECTIONS.some(item => item.label === activeLeaf) ? activeLeaf : 'Auditee Details'
   const close = () => setModal(null)
 
-  // Opens the matching modal when navigated here via a specific Master
-  // dropdown item (Financial Period / Auditor / Signatory) — re-fires
-  // whenever the leaf changes, even though Master itself doesn't remount.
-  useEffect(() => {
-    const type = LEAF_MODAL_TYPE[activeLeaf]
-    if (type) setModal({ type })
-  }, [activeLeaf])
-
-  const auditeeItems = [
-    { label: 'Select', onClick: () => setModal({ type: 'select' }) },
-    { label: 'Create', onClick: () => setModal({ type: 'create' }) },
-    { label: 'Read', onClick: () => entity ? setModal({ type: 'read' }) : setModal({ type: 'select', then: 'read' }) },
-    { label: 'Edit', onClick: () => entity ? setModal({ type: 'edit' }) : setModal({ type: 'select', then: 'edit' }) },
-    { label: 'Delete', onClick: () => setModal({ type: 'delete' }) },
-  ]
-
-  const periodItems = [
-    { label: 'Create', onClick: () => setModal({ type: 'period-create' }) },
-    { label: 'Manage List', onClick: () => setModal({ type: 'period-manage' }) },
-  ]
-
-  const auditorItems = [
-    { label: 'Add', onClick: () => setModal({ type: 'auditor-create' }) },
-    { label: 'Manage List', onClick: () => setModal({ type: 'auditor-manage' }) },
-  ]
-
-  const signatoryItems = [
-    { label: 'Add', onClick: () => setModal({ type: 'signatory-create' }) },
-    { label: 'Manage List', onClick: () => setModal({ type: 'signatory-manage' }) },
-  ]
-
-  const handleSelected = (e) => {
-    onEntityChange(e)
+  const handleSelected = (selectedEntity) => {
+    onEntityChange(selectedEntity)
     if (modal?.then === 'read') { setModal({ type: 'read' }); return }
     if (modal?.then === 'edit') { setModal({ type: 'edit' }); return }
     close()
   }
 
-  return (
-    <div className="flex flex-col h-full overflow-y-auto p-8 bg-gray-50">
-      <div className="max-w-3xl mx-auto w-full">
-        <h1 className="text-2xl font-bold text-blue-900 mb-1">Master</h1>
-        <p className="text-sm text-gray-500 mb-6">Manage Auditees and Financial Periods. Hover a heading for actions.</p>
+  const selectOrCreateEntity = () => setModal({ type: 'select' })
 
-        <div className="flex items-center gap-4 mb-8">
-          <FlyoutMenu label="Auditee Details" items={auditeeItems} />
-          <FlyoutMenu label="Financial Period" items={periodItems} />
-          <FlyoutMenu label="Auditor" items={auditorItems} />
-          <FlyoutMenu label="Signatory" items={signatoryItems} />
-          {onOpenMappingRules && (
-            <button
-              onClick={onOpenMappingRules}
-              title="Open Mapping Rules (Alt+M, then M)"
-              className="px-5 py-3 text-sm font-semibold rounded-lg bg-white text-blue-900 border border-blue-200 hover:bg-blue-50 transition"
-            >
-              ⚙ Mapping Rules
-            </button>
-          )}
-        </div>
+  const renderSection = () => {
+    if (section === 'Auditee Details') {
+      return (
+        <>
+          <SectionHeading
+            eyebrow="Organization"
+            title="Auditee details"
+            description="Select an organization to work with or manage its profile."
+            addLabel="auditee"
+            onAdd={() => setModal({ type: 'create' })}
+          />
+          <AuditeeListModal
+            embedded
+            mode="manage"
+            selectedId={entity?.id}
+            onSelect={handleSelected}
+            onEdit={selectedEntity => {
+              onEntityChange(selectedEntity)
+              setModal({ type: 'edit', entity: selectedEntity })
+            }}
+            onDetails={selectedEntity => setModal({ type: 'read', entity: selectedEntity })}
+            onDeleted={deleted => { if (entity?.id === deleted.id) onEntityChange(null) }}
+          />
+        </>
+      )
+    }
 
-        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Current Context</h2>
-          {entity ? (
-            <div className="space-y-1">
-              <div className="text-lg font-bold text-gray-900">{entity.name}</div>
-              <div className="text-sm text-gray-500">
-                {entity.constitution_display}{entity.business_type ? ` · ${entity.business_type}` : ''}
-              </div>
-              <div className="flex gap-2 mt-3">
-                <button onClick={() => setModal({ type: 'read' })} className="px-3 py-1.5 text-xs border border-gray-300 rounded text-gray-700 hover:bg-gray-50">View Details</button>
-                <button onClick={() => setModal({ type: 'edit' })} className="px-3 py-1.5 text-xs border border-gray-300 rounded text-gray-700 hover:bg-gray-50">Edit</button>
+    if (section === 'Financial Period') {
+      return (
+        <>
+          <SectionHeading
+            eyebrow="Reporting setup"
+            title="Financial periods"
+            description="Create financial years and manage the periods available across your auditees."
+            addLabel="financial period"
+            onAdd={() => setModal({ type: 'period-create' })}
+          />
+          <FinancialPeriodManageModal embedded startInCreate={modal?.type === 'period-create'} onClose={close} />
+        </>
+      )
+    }
+
+    if (section === 'Auditor' || section === 'Signatory') {
+      const auditor = section === 'Auditor'
+      const title = auditor ? 'Auditors' : 'Signatories'
+      const subject = auditor ? 'auditor' : 'signatory'
+      const available = !!entity
+      return (
+        <>
+          <SectionHeading
+            eyebrow="Engagement details"
+            title={title}
+            description={auditor
+              ? 'Maintain the auditor appointments attached to the selected auditee.'
+              : 'Maintain the people authorized to sign this auditee’s financial statements.'}
+            addLabel={subject}
+            onAdd={available ? () => setModal({ type: auditor ? 'auditor-create' : 'signatory-create' }) : undefined}
+          />
+          {available ? (
+            <div className="mb-5 flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-blue-800" aria-hidden="true">
+                {entity.name?.trim()?.charAt(0)?.toUpperCase() || 'A'}
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500">Managing {subject} records for</p>
+                <p className="truncate text-sm font-semibold text-gray-900">{entity.name}</p>
               </div>
             </div>
           ) : (
-            <p className="text-sm text-gray-400">No Auditee selected. Use <strong>Auditee → Select</strong> or <strong>Create</strong> above to get started.</p>
+            <div className="mb-5 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-amber-900">Select an auditee first to manage its {subject} records.</p>
+              <button onClick={selectOrCreateEntity} className="shrink-0 text-left text-sm font-semibold text-blue-700 hover:text-blue-900">Select auditee →</button>
+            </div>
           )}
+          {available && (auditor
+            ? <AuditorManageModal entity={entity} embedded startInCreate={modal?.type === 'auditor-create'} onClose={close} />
+            : <SignatoryManageModal entity={entity} embedded startInCreate={modal?.type === 'signatory-create'} onClose={close} />)}
+        </>
+      )
+    }
+
+    return (
+      <>
+        <SectionHeading
+          eyebrow="Classification"
+          title="Mapping rules"
+          description="Configure how trial balance ledgers are classified in your financial statements."
+        />
+        <div className="rounded-xl border border-gray-200 bg-white p-5 sm:p-6">
+          <h3 className="text-sm font-semibold text-gray-900">Review your mapping setup</h3>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-500">
+            Open the mapping workspace to manage rule sets, review mapping levels, and keep ledger classification consistent.
+          </p>
+          <button
+            onClick={onOpenMappingRules}
+            title="Open Mapping Rules (Alt+I, then M)"
+            className="mt-5 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
+          >
+            Open mapping rules <span aria-hidden="true">→</span>
+          </button>
         </div>
+      </>
+    )
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-50">
+      <header className="flex shrink-0 flex-col gap-3 border-b border-gray-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Settings</h1>
+          <p className="mt-0.5 text-sm text-gray-500">Manage organizations, reporting setup, and access details.</p>
+        </div>
+        <div className={`inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium ${entity ? 'bg-emerald-50 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${entity ? 'bg-emerald-500' : 'bg-gray-400'}`} aria-hidden="true" />
+          {entity ? entity.name : 'No auditee selected'}
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <nav aria-label="Settings sections" className="shrink-0 border-b border-gray-200 bg-white md:w-60 md:border-b-0 md:border-r">
+          <p className="hidden px-5 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400 md:block">Workspace</p>
+          <div className="flex gap-1 overflow-x-auto p-2 md:flex-col md:overflow-x-visible md:p-3">
+            {SECTIONS.map((item, index) => {
+              const selected = item.label === section
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => item.label === 'Mapping Rules' ? onOpenMappingRules?.() : onSelectSection(item.label)}
+                  aria-current={selected ? 'page' : undefined}
+                  className={`flex min-w-max items-center gap-3 rounded-lg px-3 py-2.5 text-left transition md:w-full md:min-w-0 ${
+                    selected ? 'bg-blue-50 text-blue-900 ring-1 ring-inset ring-blue-100' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[10px] font-bold ${selected ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-500'}`} aria-hidden="true">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block whitespace-nowrap text-sm font-semibold">{item.label}</span>
+                    <span className="hidden text-xs text-gray-400 md:block">{item.description}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </nav>
+
+        <main className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-7 lg:p-9">
+          <div className="mx-auto w-full max-w-5xl">{renderSection()}</div>
+        </main>
       </div>
 
       {modal?.type === 'select' && (
@@ -150,31 +220,13 @@ export default function Master({ entity, onEntityChange, onOpenMappingRules, act
         />
       )}
       {modal?.type === 'create' && (
-        <AuditeeFormModal mode="create" onSaved={(e) => { onEntityChange(e); close() }} onClose={close} />
+        <AuditeeFormModal mode="create" onSaved={(saved) => { onEntityChange(saved); close() }} onClose={close} />
       )}
-      {modal?.type === 'edit' && entity && (
-        <AuditeeFormModal mode="edit" editing={entity} onSaved={(e) => { onEntityChange(e); close() }} onClose={close} />
+      {modal?.type === 'edit' && (modal.entity || entity) && (
+        <AuditeeFormModal mode="edit" editing={modal.entity || entity} onSaved={(saved) => { onEntityChange(saved); close() }} onClose={close} />
       )}
-      {modal?.type === 'read' && entity && (
-        <AuditeeReadModal entity={entity} onClose={close} />
-      )}
-      {modal?.type === 'period-create' && (
-        <FinancialPeriodManageModal startInCreate onClose={close} />
-      )}
-      {modal?.type === 'period-manage' && (
-        <FinancialPeriodManageModal onClose={close} />
-      )}
-      {modal?.type === 'auditor-create' && (
-        <AuditorManageModal entity={entity} startInCreate onClose={close} />
-      )}
-      {modal?.type === 'auditor-manage' && (
-        <AuditorManageModal entity={entity} onClose={close} />
-      )}
-      {modal?.type === 'signatory-create' && (
-        <SignatoryManageModal entity={entity} startInCreate onClose={close} />
-      )}
-      {modal?.type === 'signatory-manage' && (
-        <SignatoryManageModal entity={entity} onClose={close} />
+      {modal?.type === 'read' && (modal.entity || entity) && (
+        <AuditeeReadModal entity={modal.entity || entity} onClose={close} />
       )}
     </div>
   )

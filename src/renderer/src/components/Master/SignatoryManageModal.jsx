@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useModalKeys } from '../../hooks/useModalKeys'
+import RowActionButton from './RowActionButton'
 
 // Default designation + ID-field label by constitution, per constitution_display
 // (Individual/Proprietorship/Partnership all share numeric constitution=1, so
@@ -92,12 +93,12 @@ function SignatoryForm({ entityId, constitutionDisplay, editing, onSaved, onCanc
   )
 }
 
-export default function SignatoryManageModal({ entity, startInCreate = false, onClose }) {
+export default function SignatoryManageModal({ entity, startInCreate = false, onClose, embedded = false }) {
   const [signatories, setSignatories] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
   const [error, setError] = useState('')
-  const containerRef = useModalKeys({ onClose })
+  const containerRef = useModalKeys({ onClose, enabled: !embedded })
   const defaults = defaultsFor(entity?.constitution_display)
 
   const load = () => {
@@ -123,17 +124,21 @@ export default function SignatoryManageModal({ entity, startInCreate = false, on
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className={embedded ? 'w-full' : 'modal-backdrop'} onClick={embedded ? undefined : onClose}>
       <div
-        className="bg-white rounded-xl shadow-2xl p-6 flex flex-col"
-        style={{ width: '560px', maxWidth: '92vw', maxHeight: '82vh' }}
+        className={embedded
+          ? 'flex min-h-[220px] flex-col rounded-xl border border-gray-200 bg-white p-4 sm:p-5'
+          : 'bg-white rounded-xl shadow-2xl p-6 flex flex-col'}
+        style={embedded ? undefined : { width: '560px', maxWidth: '92vw', maxHeight: '82vh' }}
         ref={containerRef}
-        onClick={e => e.stopPropagation()}
+        onClick={embedded ? undefined : e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4 shrink-0">
-          <h2 className="text-base font-bold text-blue-900">Signing Authorities{entity ? ` — ${entity.name}` : ''}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
-        </div>
+        {!embedded && (
+          <div className="flex items-center justify-between mb-4 shrink-0">
+            <h2 className="text-base font-bold text-blue-900">Signing Authorities{entity ? ` — ${entity.name}` : ''}</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+          </div>
+        )}
 
         {!entity && <p className="text-gray-400 text-sm py-6 text-center">Select an Auditee first.</p>}
 
@@ -142,28 +147,34 @@ export default function SignatoryManageModal({ entity, startInCreate = false, on
             entityId={entity.id}
             constitutionDisplay={entity.constitution_display}
             editing={editing.id ? editing : null}
-            onSaved={() => { setEditing(null); load() }}
-            onCancel={() => setEditing(null)}
+            onSaved={() => { setEditing(null); load(); if (embedded) onClose?.() }}
+            onCancel={() => { setEditing(null); if (embedded) onClose?.() }}
           />
         ) : (
-          <div className="flex items-center justify-end mb-3 shrink-0">
-            <button
-              onClick={() => setEditing({})}
-              className="px-3 py-2 bg-blue-700 text-white rounded text-sm font-medium hover:bg-blue-800 whitespace-nowrap"
-            >
-              + Add Signatory
-            </button>
+          <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
+            {embedded && <p className="text-sm font-medium text-gray-700">{signatories.length} {signatories.length === 1 ? 'signatory' : 'signatories'}</p>}
+            {!embedded && (
+              <button
+                onClick={() => setEditing({})}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800 whitespace-nowrap"
+              >
+                <span aria-hidden="true" className="text-lg leading-none">+</span> Add signatory
+              </button>
+            )}
           </div>
         ))}
 
         {error && <p className="text-red-500 text-xs mb-2 shrink-0">{error}</p>}
 
         {entity && (
-          <div className="flex-1 overflow-y-auto -mx-2 px-2">
+          <div className={`${embedded ? 'flex-1' : 'flex-1 overflow-y-auto -mx-2 px-2'}`}>
             {loading ? (
-              <p className="text-gray-400 text-sm py-6 text-center">Loading...</p>
+              <p className="text-gray-400 text-sm py-6 text-center">Loading signatories...</p>
             ) : signatories.length === 0 ? (
-              <p className="text-gray-400 text-sm py-6 text-center">No signing authorities added yet.</p>
+              <div className="rounded-lg border border-dashed border-gray-200 py-10 text-center">
+                <p className="text-sm font-medium text-gray-700">No signatories added yet</p>
+                <p className="mt-1 text-xs text-gray-500">Add a signing authority to keep the engagement setup complete.</p>
+              </div>
             ) : (
               <ul className="divide-y divide-gray-100">
                 {signatories.map(s => (
@@ -174,9 +185,9 @@ export default function SignatoryManageModal({ entity, startInCreate = false, on
                         {s.designation || '—'}{s.din ? ` · ${s.id_type || defaults.idType || defaults.idLabel}: ${s.din}` : ''}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => setEditing(s)} className="px-2 py-1 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-50">Edit</button>
-                      <button onClick={() => handleDelete(s)} className="px-2 py-1 text-xs border border-red-300 rounded text-red-700 hover:bg-red-50">Delete</button>
+                    <div className="flex items-center">
+                      <RowActionButton action="edit" onClick={() => setEditing(s)} />
+                      <RowActionButton action="delete" onClick={() => handleDelete(s)} />
                     </div>
                   </li>
                 ))}
@@ -185,7 +196,7 @@ export default function SignatoryManageModal({ entity, startInCreate = false, on
           </div>
         )}
 
-        <p className="text-xs text-gray-400 text-center mt-3 shrink-0">Esc to close</p>
+        {!embedded && <p className="text-xs text-gray-400 text-center mt-3 shrink-0">Esc to close</p>}
       </div>
     </div>
   )

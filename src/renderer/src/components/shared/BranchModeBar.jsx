@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react'
 import { ConsolidationContext, resolveConsolidationSelection, loadOverride, saveOverride } from '../../utils/consolidationSelection'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 
 // Under "Consolidated": which Trial Balances are added together for the Current Year and for the Previous Year.
 function ConsolidationPicker() {
@@ -12,7 +13,7 @@ function ConsolidationPicker() {
     return () => { dead = true }
   }, [ctx?.entityId, ctx?.entityPeriodId, ctx?.consKey])
   if (!ctx?.entityId || !sel || !sel.tbs.length) return null
-  const label = (t) => `${t.branch_name || 'TB #' + t.id} (${t.period || 'no period'})`
+  const label = (t) => `${t.branch_name || 'TB #' + t.id} (${formatPeriodText(t.period) || 'no period'})`
   const toggle = (side, id) => {
     const cur = side === 'cy' ? sel.cyIds : sel.pyIds
     const next = cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]
@@ -67,7 +68,7 @@ export default function BranchModeBar({ fsMode, onFsModeChange, branchTBList = [
 
   const activeBranch = branchTBList.find(t => t.id === selectedBranchTBId)
   const activeBranchLabel = activeBranch
-    ? (activeBranch.branch_name || activeBranch.period || `TB #${activeBranch.id}`)
+    ? (activeBranch.branch_name || formatPeriodText(activeBranch.period) || `TB #${activeBranch.id}`)
     : null
 
   return (
@@ -104,13 +105,13 @@ export default function BranchModeBar({ fsMode, onFsModeChange, branchTBList = [
         <div className="flex items-center gap-1 px-3 pb-1.5 overflow-x-auto">
           <span className="text-[10px] text-gray-400 mr-1 shrink-0">Branch:</span>
           {branchTBList.map(t => {
-            const label = t.branch_name || t.period || `TB #${t.id}`
+            const label = t.branch_name || formatPeriodText(t.period) || `TB #${t.id}`
             const active = t.id === selectedBranchTBId
             return (
               <button
                 key={t.id}
                 onClick={() => onBranchSelect(t.id)}
-                title={`${label} — ${t.period || ''}${t.filename ? ` (${t.filename})` : ''}`}
+                title={`${label} — ${formatPeriodText(t.period)}${t.filename ? ` (${t.filename})` : ''}`}
                 className={`shrink-0 px-3 py-0.5 rounded-full text-xs font-medium transition border ${
                   active
                     ? 'text-white border-transparent'

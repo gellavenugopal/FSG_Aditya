@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 import { fmtINR, parseSlashOptions } from '../../hooks/useFinancials'
 import { pushAction, snapshotMapping } from '../../utils/undoManager'
 import { resolveFixScope, fixOpensPreviousYear, natureLevelsFor, ledgerNeeds, isComplete, bulkNaturePlan } from '../../utils/fixTargets'
@@ -863,7 +864,7 @@ export default function Exceptions({ entity, activeTB, activeRsId, prevTB, onPre
                 Current Year ({scopeFilter.mappedIds?.length || 0})
               </button>
               <button onClick={() => prevTB?.id && setCategorisePY(true)} disabled={!prevTB?.id}
-                title={prevTB?.id ? `Previous Year Trial Balance (${prevTB.period || ''})` : 'Select a Previous Year Trial Balance first'}
+                title={prevTB?.id ? `Previous Year Trial Balance (${formatPeriodText(prevTB.period)})` : 'Select a Previous Year Trial Balance first'}
                 className={`px-2 py-0.5 border-l border-red-300 disabled:opacity-40 ${categorisePY ? 'bg-amber-600 text-white font-medium' : 'text-gray-700 hover:bg-gray-50'}`}>
                 Previous Year ({scopeFilter.pyMappedIds?.length || 0})
               </button>
@@ -888,7 +889,7 @@ export default function Exceptions({ entity, activeTB, activeRsId, prevTB, onPre
           </h2>
           <p className="text-xs text-gray-500">
             {categorisePY
-              ? `Categorising the comparative Previous Year Trial Balance (${prevTB?.period || ''}) — an un-mapped ledger here is exactly why its figure comes out blank in Notes/Annexures.`
+              ? `Categorising the comparative Previous Year Trial Balance (${formatPeriodText(prevTB?.period)}) — an un-mapped ledger here is exactly why its figure comes out blank in Notes/Annexures.`
               : 'Filter by books hierarchy, select similar ledgers, and apply Schedule III mappings in bulk.'}
           </p>
         </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 import { useFinancials } from '../../hooks/useFinancials'
 import { DEFAULT_RATES } from '../../utils/taxComputation'
 import { resolveGroup, figuresOf } from '../../utils/taxComputationIO'
@@ -188,7 +189,7 @@ export default function DeferredTax({ entity, activeTB, prevTB, activeRsId }) {
   return (
     <div className="flex flex-col h-full overflow-hidden bg-slate-100">
       <div className="flex items-center gap-3 px-6 py-2.5 bg-white border-b border-gray-200 shrink-0 flex-wrap">
-        <span className="text-xs text-gray-500">{label}{entity?.has_branches ? ' · Consolidated' : ''}{activeTB?.period ? ` · ${activeTB.period}` : ''}</span>
+        <span className="text-xs text-gray-500">{label}{entity?.has_branches ? ' · Consolidated' : ''}{activeTB?.period ? ` · ${formatPeriodText(activeTB.period)}` : ''}</span>
         {status && <span className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-0.5">{status}</span>}
         <span className="ml-auto">
           <button onClick={savePdf} className="px-3 py-1.5 text-xs rounded text-white" style={{ background: 'var(--color-primary)' }}>⬇ PDF</button>

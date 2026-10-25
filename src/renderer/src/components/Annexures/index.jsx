@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 import { netCreditPurchasesWorking } from '../../utils/ratios'
 import { useFinancials, fmtINR, displayAmt } from '../../hooks/useFinancials'
 import PYTBSelector from '../shared/PYTBSelector'
@@ -506,7 +507,7 @@ function NoteAnnexure({ note, tbId, getRemark, onRemarkSaved, showZero = false, 
 
 export default function Annexures({ entity, activeTB, prevTB, activeRsId, onPrevTBChange, jumpTarget, onJumpHandled, onFixNavigate }) {
   const { data, loading, error, refresh } = useFinancials(activeTB, prevTB, entity, activeRsId)
-  const period = activeTB?.period || ''
+  const period = formatPeriodText(activeTB?.period)
   // Consolidated view merges every branch's ledgers into one set — show
   // which branch each ledger came from so a CA can trace it back.
   const isConsolidated = activeTB?.id === '__consolidated__'

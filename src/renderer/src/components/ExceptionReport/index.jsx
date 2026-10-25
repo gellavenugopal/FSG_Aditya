@@ -7,6 +7,7 @@
  *   • Property, Plant & Equipment: TB vs Depreciation sheet WDV
  */
 import React, { useState, useEffect, useMemo } from 'react'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 import { useFinancials, fmtINR, displayAmt } from '../../hooks/useFinancials'
 import { indexSavedNoteRows, parsedNoteData } from '../../utils/savedNoteData'
 import PYTBSelector from '../shared/PYTBSelector'
@@ -512,7 +513,7 @@ export default function ExceptionReport({ entity, activeTB, prevTB, activeRsId, 
   }, [data, noteDetails, prevTB, stockCheck, adjSummary, taxComp, defTax, entity, activeTB?.period])
 
   const issueCount = exceptions.filter(r => !r.notFilled && (!isZero(r.cyDiff) || !isZero(r.pyDiff))).length
-  const period = activeTB?.period || ''
+  const period = formatPeriodText(activeTB?.period)
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

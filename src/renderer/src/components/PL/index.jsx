@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 import { useFinancials, fmtINR } from '../../hooks/useFinancials'
 import { useEps } from '../../hooks/useEps'
 import PYTBSelector from '../shared/PYTBSelector'
@@ -322,7 +323,7 @@ export default function PL({ entity, activeTB, prevTB, activeRsId, onPrevTBChang
     window.api?.listManualFaceLines(tbId, 'tax-expense-noncorp').then(rows => setManualTaxLines(rows || [])).catch(() => setManualTaxLines([]))
   }, [isNonCorp1, tbId, manualTaxTick])
   const nonCorpLayout = isNonCorp1 && data ? computeNonCorpPLLayout(data, entity?.constitution_display, manualTaxLines) : null
-  const period = activeTB?.period || ''
+  const period = formatPeriodText(activeTB?.period)
   const subtitle = period ? `for the year ended ${period}` : ''
   // Previous Year not required for this Financial Year (PYModeSelect) - see BS/index.jsx.
   const pyOff = !!data?.pyMode && data.pyMode !== 'required'

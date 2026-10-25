@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
+import { formatPeriodRange } from '../../utils/financialPeriodDisplay'
 
 /**
  * Dropdown to pick one of the active entity's attached Financial Periods.
  * Modeled on PYTBSelector's fetch pattern. Used by TB upload modals to
  * replace the old free-text "Period" input, auto-deriving the period string
- * as "{date_from} To {date_till}".
+ * as "{date_from} To {date_till}". The stored value remains ISO; only labels
+ * shown to the user use the unambiguous DD-MMM-YY format.
  */
 export default function FinancialPeriodPicker({ entity, value, onChange, allowCustom = true }) {
   const [periods, setPeriods] = useState([])
@@ -61,7 +63,7 @@ export default function FinancialPeriodPicker({ entity, value, onChange, allowCu
         <option value="">— Select a Financial Period —</option>
         {periods.map(p => (
           <option key={p.id} value={p.id} disabled={!!p.locked}>
-            {p.year_label} ({p.date_from} To {p.date_till}){p.locked ? ' — Locked' : ''}
+            {p.year_label} ({formatPeriodRange(p.date_from, p.date_till, ' to ')}){p.locked ? ' — Locked' : ''}
           </option>
         ))}
       </select>

@@ -15,7 +15,7 @@ const THEMES = [
   { key: 'pink',  label: 'Soft Pink',     swatch: '#9d174d' },
 ]
 
-export default function TopBar({ onNewWindow, onQuit, entity, onOpenMaster, onManageFinancialPeriods, onSettings, dbOk, theme, onThemeChange, entityPeriods, currentEntityPeriodId, onEntityPeriodChange }) {
+export default function TopBar({ onNewWindow, onQuit, entity, onOpenSettings, onManageFinancialPeriods, onSettings, dbOk, theme, onThemeChange, entityPeriods, currentEntityPeriodId, onEntityPeriodChange }) {
   const [showMastersModal, setShowMastersModal] = useState(false)
   const [showThemeMenu, setShowThemeMenu]     = useState(false)
   const [appVersion, setAppVersion]           = useState('')
@@ -58,18 +58,18 @@ export default function TopBar({ onNewWindow, onQuit, entity, onOpenMaster, onMa
           {dbOk ? 'DB Connected' : 'DB Disconnected — Configure'}
         </div>
 
-        {/* Current Auditee context — read-only; all create/select/edit is done via the Master tab */}
+        {/* Current Auditee context — read-only; all create/select/edit is done via Settings */}
         <button
-          onClick={onOpenMaster}
+          onClick={onOpenSettings}
           className="flex items-center gap-2 rounded-lg px-3 py-1.5 hover:bg-white/10 transition"
           style={{ background: 'var(--color-primary-dark)' }}
-          title="Go to Master tab"
+          title="Go to Settings"
         >
           {entity ? (
             <div className="text-left">
               <div className="text-white font-semibold text-sm leading-tight">{entity.name}</div>
               <div className="text-white/70 text-xs">
-                {entity.constitution_display}{entity.business_type ? ` · ${entity.business_type}` : ''} · Master tab
+                {entity.constitution_display}{entity.business_type ? ` · ${entity.business_type}` : ''} · Settings
               </div>
             </div>
           ) : (

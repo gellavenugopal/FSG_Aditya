@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useModalKeys } from '../../hooks/useModalKeys'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 import { parseTallyTB, parseMasterJSON, buildTBRowsFromTally, parseRealBooksTB, parseRealBooksMaster, buildTBRowsFromRealBooks } from '../../utils/tallyParsers'
 import { parseZohoTB, buildTBRowsFromZoho } from '../../utils/zohoParsers'
 import { parseBusyTB, buildTBRowsFromBusy } from '../../utils/busyParsers'
@@ -688,7 +689,7 @@ function RealBooksUploadModal({ entity, entityId, hasBranches, onUploaded, onCan
           <div>
             <FinancialPeriodPicker entity={entity} value={periodPick} onChange={setPeriodPick} allowCustom={false} />
             {period && !periodPick && (
-              <p className="text-[10px] text-gray-400 mt-1">File suggests period: <strong>{period}</strong> — still requires selecting a real Financial Period above.</p>
+              <p className="text-[10px] text-gray-400 mt-1">File suggests period: <strong>{formatPeriodText(period)}</strong> — still requires selecting a real Financial Period above.</p>
             )}
           </div>
           {hasBranches && (
@@ -810,7 +811,7 @@ function ZohoUploadModal({ entity, entityId, hasBranches, onUploaded, onCancel, 
     const d = isoDatesIn(periodPick.periodText)
     if (d.length < 2) return null
     return (d[0] === parsed.from && d[1] === parsed.to) ? null
-      : `The file covers ${parsed.periodLabel}, but the selected Financial Period is ${periodPick.periodText}.`
+      : `The file covers ${formatPeriodText(parsed.periodLabel)}, but the selected Financial Period is ${formatPeriodText(periodPick.periodText)}.`
   }, [parsed, periodPick])
 
   const handleUpload = async () => {
@@ -1198,7 +1199,7 @@ export default function UploadTB({ entity, activeTB, activeRsId, onTBLoaded, onG
             <option value="">— Select Trial Balance —</option>
             {tbList.map(t => (
               <option key={t.id} value={t.id}>
-                {t.period || 'No period'}{t.branch_name ? ` [${t.branch_name}]` : ''} — {t.filename} ({t.row_count} rows)
+                {formatPeriodText(t.period) || 'No period'}{t.branch_name ? ` [${t.branch_name}]` : ''} — {t.filename} ({t.row_count} rows)
               </option>
             ))}
           </select>
@@ -1250,7 +1251,7 @@ export default function UploadTB({ entity, activeTB, activeRsId, onTBLoaded, onG
 
       {activeTB && (
         <div className="text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded px-3 py-2">
-          Active Trial Balance: <span className="font-semibold">{activeTB.period || activeTB.filename}</span>{activeTB.branch_name ? ` [${activeTB.branch_name}]` : ''} — see it in the <span className="font-semibold">Actual TB</span> tab.
+          Active Trial Balance: <span className="font-semibold">{formatPeriodText(activeTB.period) || activeTB.filename}</span>{activeTB.branch_name ? ` [${activeTB.branch_name}]` : ''} — see it in the <span className="font-semibold">Actual TB</span> tab.
         </div>
       )}
 
@@ -1338,7 +1339,7 @@ export default function UploadTB({ entity, activeTB, activeRsId, onTBLoaded, onG
               This will permanently delete:
             </p>
             <ul className="text-sm text-gray-700 list-disc list-inside mb-4 space-y-0.5">
-              <li>Trial Balance: <span className="font-semibold">{activeTB?.period || activeTB?.filename}</span></li>
+              <li>Trial Balance: <span className="font-semibold">{formatPeriodText(activeTB?.period) || activeTB?.filename}</span></li>
               <li>All {activeTB?.row_count || ''} ledger rows</li>
               <li>All mapping results for this TB</li>
               {deleteAdjCount > 0 && (

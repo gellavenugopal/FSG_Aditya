@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 import { useFinancials } from '../../hooks/useFinancials'
 import PYTBSelector from '../shared/PYTBSelector'
 import ManualPYButton from '../shared/ManualPYButton'
@@ -135,7 +136,7 @@ export default function CFS({ entity, activeTB, prevTB, activeRsId, onPrevTBChan
   }
 
   const cf = useMemo(() => (data ? buildCashFlow(data, saved) : null), [data, saved])
-  const period = activeTB?.period || ''
+  const period = formatPeriodText(activeTB?.period)
   const hasPY = cf ? cf.rows.some(r => r.kind === 'item' && Math.abs(r.py) > 0.005) : false
 
   return (

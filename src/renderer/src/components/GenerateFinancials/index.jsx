@@ -1,5 +1,6 @@
 import { ConsolidationContext } from '../../utils/consolidationSelection'
 import React, { useState, useEffect, useRef, useContext } from 'react'
+import { formatPeriodText } from '../../utils/financialPeriodDisplay'
 import { buildFsSnapshotPayload } from '../../utils/fsSnapshot'
 import * as XLSX from 'xlsx-js-style'
 import { useFinancials, useConsolidatedFinancials, fetchFinancialsData, fmtINR, DENOMINATIONS } from '../../hooks/useFinancials'
@@ -145,7 +146,7 @@ export default function GenerateFinancials({
   }, [entity?.constitution, activeRsId])
 
   // Load masters when entity changes or sigRefreshTick increments
-  // Auditors + Signatories → entity-scoped Master records (Master tab → Auditor / Signatory)
+  // Auditors + Signatories → entity-scoped records (Settings → Auditor / Signatory)
   useEffect(() => {
     if (!entity?.id) return
     Promise.all([
@@ -174,7 +175,7 @@ export default function GenerateFinancials({
   const period = isBranchEntity
     ? 'Consolidated'
     : (activeTB?.period || '')
-  const prevPeriod = prevTB?.period || ''
+  const prevPeriod = formatPeriodText(prevTB?.period)
   // Heading date for the Consolidated exports (see utils/consolidatedPeriod.js).
   const consolidatedPeriod = consolidatedPeriodOf(branchTBList, consCtx?.entityPeriodId ?? activeTB?.entity_period_id ?? null)
 
@@ -445,7 +446,7 @@ export default function GenerateFinancials({
         <h3 className="text-sm font-bold mb-2" style={{ color: 'var(--color-primary)' }}>Summary</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
           <div><div className="text-xs text-gray-500">Entity</div><div className="font-semibold text-gray-800">{entity?.name || '—'}</div></div>
-          <div><div className="text-xs text-gray-500">{isBranchEntity ? 'Branches' : 'Period (CY)'}</div><div className="font-semibold text-gray-800">{isBranchEntity ? (branchTBList.length || '—') : (activeTB?.period || '—')}</div></div>
+          <div><div className="text-xs text-gray-500">{isBranchEntity ? 'Branches' : 'Period (CY)'}</div><div className="font-semibold text-gray-800">{isBranchEntity ? (branchTBList.length || '—') : (formatPeriodText(activeTB?.period) || '—')}</div></div>
           <div>
             <div className="text-xs text-gray-500">Period (PY)</div>
             <div className="font-semibold text-gray-800">{(singleFinancials.data?.pyMode && singleFinancials.data.pyMode !== 'required') ? 'Not required' : (prevPeriod || 'Not selected')}</div>

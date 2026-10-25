@@ -21,7 +21,7 @@ import { createPortal } from 'react-dom'
 
 // Top-level tab -> its key (Alt+key). Unique across the bar.
 export const TOP_SHORTCUTS = {
-  'Master': 'M',
+  'Settings': 'I',
   'Trial Balance': 'T',
   'Stock': 'S',
   'Mapping': 'P',
@@ -39,7 +39,7 @@ export const TOP_SHORTCUTS = {
 
 // Item -> its key, per dropdown (unique within the dropdown it is in)
 const ITEM_SHORTCUTS = {
-  'Master': { 'Auditee Details': 'A', 'Financial Period': 'F', 'Auditor': 'U', 'Signatory': 'S', 'Mapping Rules': 'M' },
+  'Settings': { 'Auditee Details': 'A', 'Financial Period': 'F', 'Auditor': 'U', 'Signatory': 'S', 'Mapping Rules': 'M' },
   'Trial Balance': { 'Upload TB': 'U', 'Actual TB': 'A', 'Mapped TB': 'M', 'Mapped TB (Remarks)': 'R', 'Journal Entry': 'J' },
   'Mapping': { 'Rectification / Recategorisation': 'R', 'Mapped TB': 'M', 'Mapping Rules': 'U' },
   'Dep': { 'Dep (Comp)': 'C', 'Dep (IT)': 'I', 'Dep (Old)': 'O' },

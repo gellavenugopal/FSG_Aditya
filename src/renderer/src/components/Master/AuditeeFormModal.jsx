@@ -3,6 +3,7 @@ import { useModalKeys } from '../../hooks/useModalKeys'
 import UnlockConfirmModal from '../shared/UnlockConfirmModal'
 import GlobalAuditorPicker from '../shared/GlobalAuditorPicker'
 import { isValidPan, normalizePan } from '../../utils/pan'
+import { formatPeriodRange } from '../../utils/financialPeriodDisplay'
 
 const CONSTITUTION_OPTIONS = [
   { label: 'Individual', value: 'Individual', code: 1 },
@@ -15,7 +16,7 @@ const CONSTITUTION_OPTIONS = [
 const BUSINESS_TYPE_OPTIONS = ['Manufacturer', 'Trader', 'Service Provider', 'Mixed']
 
 function fmtPeriod(p) {
-  return `${p.year_label} (${p.date_from} To ${p.date_till})`
+  return `${p.year_label} (${formatPeriodRange(p.date_from, p.date_till, ' to ')})`
 }
 
 // One row for picking/creating a Financial Period to attach.
@@ -264,7 +265,7 @@ export default function AuditeeFormModal({ mode, editing, onSaved, onClose }) {
               <ul className="space-y-1.5 mb-3">
                 {attached.map(ep => (
                   <li key={ep.id} className="flex items-center justify-between text-xs bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5">
-                    <span className="text-gray-700">{ep.year_label} ({ep.date_from} To {ep.date_till})</span>
+                    <span className="text-gray-700">{ep.year_label} ({formatPeriodRange(ep.date_from, ep.date_till, ' to ')})</span>
                     {ep.locked ? (
                       <div className="flex items-center gap-2">
                         <span className="text-red-600 font-medium" title={ep.is_final ? 'Marked Final when the PDF / Excel was generated: Place and Date of Signing are fixed' : undefined}>🔒 Locked{ep.is_final ? ` · Final (signed at ${ep.final_sign_place || ''} on ${ep.final_sign_date || ''})` : ''}</span>
@@ -311,7 +312,7 @@ export default function AuditeeFormModal({ mode, editing, onSaved, onClose }) {
 
       {unlockTarget && (
         <UnlockConfirmModal
-          periodLabel={`${unlockTarget.year_label} (${unlockTarget.date_from} To ${unlockTarget.date_till})`}
+          periodLabel={`${unlockTarget.year_label} (${formatPeriodRange(unlockTarget.date_from, unlockTarget.date_till, ' to ')})`}
           onConfirm={() => doUnlock(unlockTarget)}
           onClose={() => setUnlockTarget(null)}
         />
