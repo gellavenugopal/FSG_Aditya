@@ -3,6 +3,7 @@ export const UAE_DEMO_ACCOUNT_LINES = [
   { id: 'trade_receivables', label: 'Trade receivables', note: 2 },
   { id: 'inventory', label: 'Inventories', note: 3 },
   { id: 'property_plant_equipment', label: 'Property and equipment - cost', note: 4 },
+  { id: 'ppe_revaluation_adjustment', label: 'PPE revaluation adjustment', note: 4 },
   { id: 'accumulated_depreciation', label: 'Accumulated depreciation', note: 4 },
   { id: 'trade_payables', label: 'Trade payables', note: 5 },
   { id: 'borrowings', label: 'Borrowings', note: 6 },
@@ -14,12 +15,14 @@ export const UAE_DEMO_ACCOUNT_LINES = [
   { id: 'operating_expenses', label: 'Operating expenses', note: 9 },
   { id: 'depreciation_expense', label: 'Depreciation expense', note: 9 },
   { id: 'income_tax_expense', label: 'Income tax expense', note: 10 },
+  { id: 'other_comprehensive_income', label: 'Other comprehensive income - revaluation', note: 11 },
+  { id: 'revaluation_surplus', label: 'Revaluation surplus', note: 7 },
   { id: 'dividends', label: 'Dividends', note: 7 },
 ]
 
 const LINE_BY_ID = new Map(UAE_DEMO_ACCOUNT_LINES.map(line => [line.id, line]))
 const DEBIT_NATURED = new Set([
-  'cash', 'trade_receivables', 'inventory', 'property_plant_equipment',
+  'cash', 'trade_receivables', 'inventory', 'property_plant_equipment', 'ppe_revaluation_adjustment',
   'cost_of_sales', 'operating_expenses', 'depreciation_expense', 'income_tax_expense', 'dividends',
 ])
 
@@ -34,6 +37,7 @@ export function suggestUaeDemoAccountLine(accountName) {
     [/receivable|accounts receivable|debtor/, 'trade_receivables'],
     [/inventory|inventories|stock/, 'inventory'],
     [/accumulated depreciation|accumulated amortisation/, 'accumulated_depreciation'],
+    [/revaluation.*(?:ppe|property|plant|equipment)|(?:ppe|property|plant|equipment).*revaluation/, 'ppe_revaluation_adjustment'],
     [/property|plant|equipment|fixed asset|\bppe\b/, 'property_plant_equipment'],
     [/payable|accounts payable|creditor/, 'trade_payables'],
     [/borrow|loan|bank facility/, 'borrowings'],
@@ -43,6 +47,8 @@ export function suggestUaeDemoAccountLine(accountName) {
     [/revenue|sales|service income/, 'revenue'],
     [/other income|interest income/, 'other_income'],
     [/depreciation|amortisation expense/, 'depreciation_expense'],
+    [/other comprehensive income|oci.*revaluation|revaluation.*oci/, 'other_comprehensive_income'],
+    [/revaluation surplus|revaluation reserve/, 'revaluation_surplus'],
     [/income tax|corporate tax/, 'income_tax_expense'],
     [/dividend/, 'dividends'],
     [/expense|salary|rent|utilities|insurance|professional fee/, 'operating_expenses'],
@@ -106,6 +112,8 @@ function profitAndLoss(rows) {
   const depreciation = sumLine(rows, 'depreciation_expense')
   const profitBeforeTax = roundAmount(revenue - costOfSales - operatingExpenses - depreciation)
   const tax = sumLine(rows, 'income_tax_expense')
+  const otherComprehensiveIncome = sumLine(rows, 'other_comprehensive_income')
+  const profitForYear = roundAmount(profitBeforeTax - tax)
   return {
     revenue: roundAmount(sumLine(rows, 'revenue')),
     otherIncome: roundAmount(sumLine(rows, 'other_income')),
@@ -114,7 +122,9 @@ function profitAndLoss(rows) {
     depreciation,
     profitBeforeTax,
     tax,
-    profitForYear: roundAmount(profitBeforeTax - tax),
+    profitForYear,
+    otherComprehensiveIncome,
+    totalComprehensiveIncome: roundAmount(profitForYear + otherComprehensiveIncome),
   }
 }
 
@@ -123,8 +133,9 @@ function statementOfFinancialPosition(rows, profit) {
   const receivables = sumLine(rows, 'trade_receivables')
   const inventory = sumLine(rows, 'inventory')
   const ppeCost = sumLine(rows, 'property_plant_equipment')
+  const ppeRevaluationAdjustment = sumLine(rows, 'ppe_revaluation_adjustment')
   const accumulatedDepreciation = sumLine(rows, 'accumulated_depreciation')
-  const ppeNet = roundAmount(ppeCost - accumulatedDepreciation)
+  const ppeNet = roundAmount(ppeCost + ppeRevaluationAdjustment - accumulatedDepreciation)
   const assets = roundAmount(cash + receivables + inventory + ppeNet)
   const payables = sumLine(rows, 'trade_payables')
   const borrowings = sumLine(rows, 'borrowings')
@@ -133,12 +144,13 @@ function statementOfFinancialPosition(rows, profit) {
   const retainedBroughtForward = sumLine(rows, 'retained_earnings')
   const dividends = sumLine(rows, 'dividends')
   const retainedClosing = roundAmount(retainedBroughtForward + profit.profitForYear - dividends)
-  const equity = roundAmount(shareCapital + retainedClosing)
+  const revaluationSurplus = roundAmount(sumLine(rows, 'revaluation_surplus') + profit.otherComprehensiveIncome)
+  const equity = roundAmount(shareCapital + retainedClosing + revaluationSurplus)
   const totalLiabilitiesAndEquity = roundAmount(liabilities + equity)
   return {
-    cash, receivables, inventory, ppeCost, accumulatedDepreciation, ppeNet, assets,
+    cash, receivables, inventory, ppeCost, ppeRevaluationAdjustment, accumulatedDepreciation, ppeNet, assets,
     payables, borrowings, liabilities, shareCapital, retainedBroughtForward,
-    retainedClosing, equity, totalLiabilitiesAndEquity,
+    retainedClosing, revaluationSurplus, equity, totalLiabilitiesAndEquity,
     difference: roundAmount(assets - totalLiabilitiesAndEquity),
   }
 }
@@ -172,6 +184,7 @@ function cashFlowStatement(rows, previousRows, profit) {
       inventoryChange,
       payablesChange,
       ppeAdditions,
+      noncashPpeRevaluation: changeInLine(rows, previousRows, 'ppe_revaluation_adjustment'),
       borrowingChange,
       shareCapitalChange,
       dividends,
@@ -187,6 +200,14 @@ function equityMovement(rows, profit, position) {
   const otherRetainedMovement = roundAmount(retainedRawClosing - retainedOpening)
   const dividends = sumLine(rows, 'dividends')
   const retainedClosing = roundAmount(retainedOpening + otherRetainedMovement + profit.profitForYear - dividends)
+  const revaluationSurplusOpening = sumLine(rows, 'revaluation_surplus', 'openingAmount')
+  const revaluationSurplusAccountMovement = roundAmount(
+    sumLine(rows, 'revaluation_surplus') - revaluationSurplusOpening
+  )
+  const revaluationSurplusMovement = roundAmount(
+    revaluationSurplusAccountMovement + profit.otherComprehensiveIncome
+  )
+  const revaluationSurplusClosing = roundAmount(revaluationSurplusOpening + revaluationSurplusMovement)
   return {
     shareOpening,
     shareMovement: roundAmount(shareClosing - shareOpening),
@@ -196,8 +217,11 @@ function equityMovement(rows, profit, position) {
     profitForYear: profit.profitForYear,
     dividends,
     retainedClosing,
-    totalClosing: roundAmount(shareClosing + retainedClosing),
-    difference: roundAmount(position.equity - (shareClosing + retainedClosing)),
+    revaluationSurplusOpening,
+    revaluationSurplusMovement,
+    revaluationSurplusClosing,
+    totalClosing: roundAmount(shareClosing + retainedClosing + revaluationSurplusClosing),
+    difference: roundAmount(position.equity - (shareClosing + retainedClosing + revaluationSurplusClosing)),
   }
 }
 
@@ -213,8 +237,34 @@ function noteTotal(number, profit, position) {
     case 8: return roundAmount(profit.revenue + profit.otherIncome)
     case 9: return roundAmount(profit.costOfSales + profit.operatingExpenses + profit.depreciation)
     case 10: return profit.tax
+    case 11: return profit.otherComprehensiveIncome
     default: return 0
   }
+}
+
+export function validateUaeDemoDisclosureTotals(financials, disclosureTotals) {
+  for (const disclosure of disclosureTotals || []) {
+    const noteNumber = Number(disclosure.noteNumber)
+    const note = financials.notes.find(item => item.number === noteNumber)
+    if (!note) throw new Error(`Disclosure total refers to missing UAE Note ${noteNumber}.`)
+    for (const [period, supplied, statementTotal] of [
+      ['current', disclosure.currentTotal, note.currentTotal],
+      ['comparative', disclosure.comparativeTotal, note.comparativeTotal],
+    ]) {
+      if (supplied === undefined) continue
+      const amount = Number(supplied)
+      if (!Number.isFinite(amount)) {
+        throw new Error(`Enter a numeric ${period} total for UAE Note ${noteNumber}.`)
+      }
+      const difference = roundAmount(amount - statementTotal)
+      if (Math.abs(difference) > 0.01) {
+        throw new Error(
+          `UAE Note ${noteNumber} ${period} disclosure total differs from its statement balance by AED ${difference.toFixed(2)}. Reconcile the supporting schedule before reporting.`
+        )
+      }
+    }
+  }
+  return true
 }
 
 export function buildUaeDemoFinancials({
@@ -223,7 +273,11 @@ export function buildUaeDemoFinancials({
   mappings,
   periodEnd,
   comparativePeriodEnd,
+  disclosureTotals,
 }) {
+  if (!Array.isArray(comparativeRows) || comparativeRows.length === 0 || !comparativePeriodEnd) {
+    throw new Error('Import and select a prior-year comparative Trial Balance before generating UAE statements.')
+  }
   const current = mappedRows(currentRows, mappings, periodEnd)
   const comparativeMappings = mappings instanceof Map ? new Map(mappings) : new Map(Object.entries(mappings || {}))
   for (const row of current) {
@@ -267,12 +321,13 @@ export function buildUaeDemoFinancials({
     if (!currentRowsForLine.length && !priorRowsForLine.length) continue
     const existing = noteData.get(line.note) || { number: line.note, title: `Note ${line.note}`, accounts: [] }
     for (const row of currentRowsForLine) {
+      const currentAmount = row.lineId === 'accumulated_depreciation' ? -row.amount : row.amount
       existing.accounts.push({
         name: row.name,
-        current: row.amount,
+        current: currentAmount,
         comparative: roundAmount(priorRowsForLine
           .filter(prior => (row.ledger_code && row.ledger_code === prior.ledger_code) || row.name === prior.name)
-          .reduce((sum, prior) => sum + prior.amount, 0)),
+          .reduce((sum, prior) => sum + (row.lineId === 'accumulated_depreciation' ? -prior.amount : prior.amount), 0)),
       })
     }
     noteData.set(line.note, existing)
@@ -286,6 +341,8 @@ export function buildUaeDemoFinancials({
       { name: 'Other retained earnings movements', current: currentEquity.otherRetainedMovement, comparative: priorEquity.otherRetainedMovement },
       { name: 'Profit for the year', current: currentEquity.profitForYear, comparative: priorEquity.profitForYear },
       { name: 'Dividends', current: -currentEquity.dividends, comparative: -priorEquity.dividends },
+      { name: 'Revaluation surplus at start of year', current: currentEquity.revaluationSurplusOpening, comparative: priorEquity.revaluationSurplusOpening },
+      { name: 'Other comprehensive income - revaluation', current: currentEquity.revaluationSurplusMovement, comparative: priorEquity.revaluationSurplusMovement },
     ]
   }
 
@@ -294,7 +351,7 @@ export function buildUaeDemoFinancials({
     note.comparativeTotal = noteTotal(note.number, priorProfit, priorPosition)
   }
 
-  return {
+  const financials = {
     sourceBalance,
     comparativeSourceBalance,
     current: {
@@ -312,6 +369,8 @@ export function buildUaeDemoFinancials({
     notes: [...noteData.values()].sort((left, right) => left.number - right.number),
     periods: { current: periodEnd, comparative: comparativePeriodEnd },
   }
+  validateUaeDemoDisclosureTotals(financials, disclosureTotals)
+  return financials
 }
 
 function escapeHtml(value) {
@@ -332,8 +391,8 @@ function statementTable(rows, currentLabel, priorLabel) {
     .join('')}</tbody></table>`
 }
 
-function page(title, content, number, totalPages) {
-  return `<section class="report-page"><div class="draft">DRAFT FOR DEMONSTRATION</div><h1>${escapeHtml(title)}</h1>${content}<footer>UAE Sample 01 · AED · Draft for demonstration · Page ${number} of ${totalPages}</footer></section>`
+function page(title, content, number, totalPages, engagementName) {
+  return `<section class="report-page"><div class="draft">DRAFT FOR DEMONSTRATION</div><h1>${escapeHtml(title)}</h1>${content}<footer>${escapeHtml(engagementName)} · AED · Draft for demonstration · Page ${number} of ${totalPages}</footer></section>`
 }
 
 export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bundle }) {
@@ -370,8 +429,8 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
         { label: 'Profit before tax', current: current.profit.profitBeforeTax, comparative: prior.profit.profitBeforeTax, total: true },
         { label: 'Income tax expense · Note 10', current: -current.profit.tax, comparative: -prior.profit.tax },
         { label: 'Profit for the year', current: current.profit.profitForYear, comparative: prior.profit.profitForYear, total: true },
-        { label: 'Other comprehensive income', current: 0, comparative: 0 },
-        { label: 'Total comprehensive income', current: current.profit.profitForYear, comparative: prior.profit.profitForYear, total: true },
+        { label: 'Other comprehensive income · Note 11', current: current.profit.otherComprehensiveIncome, comparative: prior.profit.otherComprehensiveIncome },
+        { label: 'Total comprehensive income', current: current.profit.totalComprehensiveIncome, comparative: prior.profit.totalComprehensiveIncome, total: true },
       ],
     },
     {
@@ -385,6 +444,9 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
         { label: 'Profit for the year', current: current.equity.profitForYear, comparative: prior.equity.profitForYear },
         { label: 'Dividends', current: -current.equity.dividends, comparative: -prior.equity.dividends },
         { label: 'Retained earnings at year end', current: current.equity.retainedClosing, comparative: prior.equity.retainedClosing, total: true },
+        { label: 'Revaluation surplus at start of year', current: current.equity.revaluationSurplusOpening, comparative: prior.equity.revaluationSurplusOpening },
+        { label: 'Other comprehensive income - revaluation', current: current.equity.revaluationSurplusMovement, comparative: prior.equity.revaluationSurplusMovement },
+        { label: 'Revaluation surplus at year end', current: current.equity.revaluationSurplusClosing, comparative: prior.equity.revaluationSurplusClosing, total: true },
         { label: 'Total equity at year end', current: current.equity.totalClosing, comparative: prior.equity.totalClosing, total: true },
       ],
     },
@@ -402,6 +464,7 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
         { label: 'Borrowings and share capital movements', current: current.cashFlow.details.borrowingChange + current.cashFlow.details.shareCapitalChange, comparative: prior.cashFlow.details.borrowingChange + prior.cashFlow.details.shareCapitalChange },
         { label: 'Dividends paid', current: -current.cashFlow.details.dividends, comparative: -prior.cashFlow.details.dividends },
         { label: 'Net cash from financing activities', current: current.cashFlow.financing, comparative: prior.cashFlow.financing, total: true },
+        { label: 'Non-cash PPE revaluation (excluded from cash flows)', current: current.cashFlow.details.noncashPpeRevaluation, comparative: prior.cashFlow.details.noncashPpeRevaluation },
         { label: 'Net increase in cash', current: current.cashFlow.netMovement, comparative: prior.cashFlow.netMovement, total: true },
         { label: 'Cash at start of year', current: current.cashFlow.openingCash, comparative: prior.cashFlow.openingCash },
         { label: 'Cash at end of year', current: current.cashFlow.closingCash, comparative: prior.cashFlow.closingCash, total: true },
@@ -484,6 +547,7 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
       header{text-align:center;margin-bottom:8mm}
       footer{position:absolute;bottom:4mm;left:4mm;right:4mm;border-top:1px solid #cbd5e1;padding-top:2mm;color:#7c2d12;font-size:8pt}
     </style>`
-  const renderedPages = pages.map((item, index) => page(item.title, item.content, index + 1, pages.length)).join('')
-  return `<!doctype html><html><head><meta charset="utf-8"><title>UAE Sample 01 - Draft for demonstration</title>${styles}</head><body>${renderedPages}</body></html>`
+  const engagementName = engagement.name || 'UAE synthetic engagement'
+  const renderedPages = pages.map((item, index) => page(item.title, item.content, index + 1, pages.length, engagementName)).join('')
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(engagementName)} - Draft for demonstration</title>${styles}</head><body>${renderedPages}</body></html>`
 }

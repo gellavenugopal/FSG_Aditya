@@ -1561,7 +1561,15 @@ export function registerEngagementHandlers(ipcMain, database) {
     })
     const debit = entries.filter(entry => entry.side === 'Dr').reduce((total, entry) => total + entry.cents, 0)
     const credit = entries.filter(entry => entry.side === 'Cr').reduce((total, entry) => total + entry.cents, 0)
-    if (debit !== credit) throw new Error('Journal entry must balance exactly before it can be posted.')
+    if (debit !== credit) {
+      const formatTotal = cents => (cents / 100).toFixed(2)
+      const imbalance = debit - credit
+      const difference = Math.abs(imbalance)
+      const direction = imbalance > 0 ? 'debits exceed credits' : 'credits exceed debits'
+      throw new Error(
+        `Journal entry must balance exactly before it can be posted: debit total ${formatTotal(debit)}, credit total ${formatTotal(credit)}; ${direction} by ${formatTotal(difference)}.`
+      )
+    }
 
     return runInTransaction(async () => {
       const { rows: [locked] } = await query(

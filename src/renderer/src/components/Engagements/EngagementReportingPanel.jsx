@@ -405,7 +405,7 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
       : 'Mapped India financial data is not ready.')
     if (!approval.approvalDate || !approval.approvalPlace.trim()) throw new Error('Enter the financial-statement approval date and place.')
     if (!approval.signatoryIds.length) throw new Error('Select at least one active client signatory.')
-    if (isUaeDemo && !bundle.comparativeTrialBalance) throw new Error('Import and select the 2024 comparative Trial Balance before generating the UAE demonstration.')
+    if (isUaeDemo && !bundle.comparativeTrialBalance) throw new Error('Import and select the prior-year comparative Trial Balance before generating the UAE demonstration.')
     await saveSelections()
     const savedSettings = await window.api.saveEngagementAuditReportSettings({ engagementId: engagement.id, fields })
     const currentFields = { ...fields, ...(savedSettings.fields || {}) }
@@ -459,7 +459,7 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
         reportIdentitySnapshot: mappedBundle.reportIdentitySnapshot,
       })
       await load()
-      setMessage(`UAE Sample 01 combined PDF v${saved.version} saved as a draft for demonstration.`)
+      setMessage(`${engagement.name} combined PDF v${saved.version} saved as a draft for demonstration.`)
       return saved
     }
     const auditor = {
@@ -530,7 +530,7 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
     <section className="mt-5 rounded-xl border border-indigo-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">{isUaeDemo ? 'UAE Sample 01 reporting demonstration' : 'India reporting pack'}</h3>
+          <h3 className="text-lg font-semibold text-gray-900">{isUaeDemo ? 'UAE reporting demonstration' : 'India reporting pack'}</h3>
           <p className="mt-1 max-w-3xl text-sm text-gray-600">{isUaeDemo
             ? 'Synthetic UAE LLC · AED source balances · 2025 with 2024 comparatives. This limited demonstration is not a validated IFRS reporting pack.'
             : 'Import → post journals → create an immutable final Trial Balance → map → generate one audit report, financial statements and notes PDF.'}</p>

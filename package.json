@@ -8,6 +8,8 @@
     "build": "electron-vite build",
     "engagement:server": "node src/server/engagement-server.js",
     "engagement:test": "node tools/selftest-engagement-service.mjs",
+    "uae:test": "node tools/selftest-uae-ifrs-testbed.mjs",
+    "uae:pdf": "node tools/render-uae-ifrs-testbed-pdfs.mjs",
     "isolation:test": "npm run build && node tools/selftest-test-isolation.mjs",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win"

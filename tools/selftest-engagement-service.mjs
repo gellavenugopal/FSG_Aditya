@@ -668,7 +668,13 @@ try {
   await fails('journal/post', journalInput, partnerToken, /edit access/i)
   await fails('journal/post', journalInput, adminToken, /edit access/i)
   await fails('journal/post', journalInput, outsiderToken, /not found|access/i)
-  await fails('journal/post', { ...journalInput, entries: [{ ...journalInput.entries[0], amount: '15.00' }, { ...journalInput.entries[1], amount: '14.99' }] }, ownerToken, /balance exactly/i)
+  const unbalancedJournal = await fails('journal/post', {
+    ...journalInput,
+    entries: [{ ...journalInput.entries[0], amount: '15.00' }, { ...journalInput.entries[1], amount: '14.99' }],
+  }, ownerToken, /balance exactly/i)
+  check(unbalancedJournal.body.error.includes('debit total 15.00, credit total 14.99')
+    && unbalancedJournal.body.error.includes('debits exceed credits by 0.01'),
+  'unbalanced-journal validation shows totals and the exact difference')
   const postedJournal = await ok('journal/post', journalInput, ownerToken)
   check(postedJournal.data.entryNumber === 1, 'engagement owner can post a balanced journal without approval')
   const journalHistory = await ok('journals', { engagementId }, readerToken)
@@ -794,6 +800,15 @@ try {
     && savedDetails.rows[0].retained_report_date === '2026-05-01'
     && savedDetails.rows[0].approval_place === 'Approval City',
   'audit report date/place are separately retained from financial-statement approval date/place')
+  const revisedPdf = await PDFDocument.create()
+  revisedPdf.addPage().drawText('Synthetic revised combined reporting pack')
+  const revisedPdfBase64 = Buffer.from(await revisedPdf.save()).toString('base64')
+  const revisedOutput = await ok('reporting/output/save', {
+    ...reportPayload,
+    pdfContentBase64: revisedPdfBase64,
+  }, ownerToken)
+  check(revisedOutput.data.version === 2 && revisedOutput.data.id !== savedOutput.data.id,
+    'a changed PDF is stored as a new immutable output version')
   const identityBeforeMasterEdit = await pool.query(
     `SELECT audit_report_fields->>'firmName' AS firm_name,
             audit_report_fields->>'auditorName' AS partner_name,
@@ -1001,6 +1016,17 @@ try {
   const loggedBackIn = await login('admin@example.test', 'Synthetic-Admin-Password!')
   const persistent = await ok('list', { scope: 'all' }, loggedBackIn.sessionToken)
   check(persistent.data.some(item => Number(item.id) === engagementId), 'saved engagement survives service restart and schema migration is repeatable')
+  const persistedOutputs = await ok('reporting/outputs', { engagementId }, loggedBackIn.sessionToken)
+  const persistedVersionOne = persistedOutputs.data.find(output => Number(output.id) === Number(savedOutput.data.id))
+  check(persistedVersionOne?.version === 1
+    && persistedVersionOne.approval_date === '2026-04-30'
+    && persistedVersionOne.approval_place === 'Approval City'
+    && JSON.stringify(persistedVersionOne.approval_signatory_ids) === JSON.stringify(orderedSignatoryIds)
+    && persistedOutputs.data.some(output => Number(output.id) === Number(revisedOutput.data.id) && output.version === 2),
+  'saved PDF versions and selections survive service restart')
+  const persistedPdf = await ok('reporting/output/read', { outputId: revisedOutput.data.id }, loggedBackIn.sessionToken)
+  check(persistedPdf.data.pdfContentBase64 === revisedPdfBase64,
+    'saved PDF bytes are unchanged after service restart')
   const persistedImports = await ok('trial-balances', { engagementId }, loggedBackIn.sessionToken)
   const persistedRows = await ok('trial-balance/rows', {
     engagementId, trialBalanceId: importedTBId, offset: 0, limit: 10,

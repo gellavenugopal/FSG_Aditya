@@ -85,7 +85,7 @@ assert.equal(equityNote.accounts.reduce((sum, account) => sum + account.comparat
 
 assert.throws(() => buildUaeDemoFinancials({
   currentRows: [{ id: 1, name: 'Unmapped account', closing_balance: -1, opening_balance: 0 }],
-  comparativeRows: [],
+  comparativeRows: [{ id: 2, name: 'Comparative cash', closing_balance: -1, opening_balance: -1 }],
   mappings: {},
   periodEnd: '2025-12-31',
   comparativePeriodEnd: '2024-12-31',
