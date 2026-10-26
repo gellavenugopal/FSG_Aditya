@@ -7,17 +7,20 @@ import { isDisposableTestMode, resolveDisposableTestTarget } from '../src/main/t
 
 const repositoryRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const electronViteCli = path.join(repositoryRoot, 'node_modules', 'electron-vite', 'bin', 'electron-vite.js')
+const outputGuardPreload = path.join(repositoryRoot, 'tools', 'dev-vite-output-guard.cjs')
 const maximumLogBytes = 4 * 1024 * 1024
 const maximumLogFiles = 3
-const launcherVersion = 2
+const launcherVersion = 3
 
 if (!fs.existsSync(electronViteCli)) throw new Error(`electron-vite CLI was not found at ${electronViteCli}`)
+if (!fs.existsSync(outputGuardPreload)) throw new Error(`Development output guard was not found at ${outputGuardPreload}`)
 
 const logDirectory = isDisposableTestMode()
   ? resolveDisposableTestTarget().target.userDataPath
   : path.resolve(process.env.FSG_DEV_LOG_DIRECTORY || path.join(os.tmpdir(), 'fsg-bharat-dev'))
 fs.mkdirSync(logDirectory, { recursive: true })
 const logFile = path.join(logDirectory, 'dev-launcher.log')
+const outputGuardLogFile = path.join(logDirectory, 'dev-vite-output.log')
 let child
 
 function rotateLog(incomingBytes) {
@@ -88,6 +91,7 @@ function forwardOutput(streamName, chunk) {
   }
 }
 
+const packageVersion = JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8')).version
 appendLog('launcher', `${JSON.stringify({
   event: 'startup',
   pid: process.pid,
@@ -95,11 +99,19 @@ appendLog('launcher', `${JSON.stringify({
   timestamp: new Date().toISOString(),
   sourceCheckout: repositoryRoot,
   launcherVersion,
-  packageVersion: JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8')).version,
+  packageVersion,
 })}\n`)
-child = spawn(process.execPath, [electronViteCli, 'dev'], {
+const childEnvironment = {
+  ...process.env,
+  FSG_DEV_OUTPUT_GUARD_ENABLED: '1',
+  FSG_DEV_OUTPUT_GUARD_LOG_FILE: outputGuardLogFile,
+  FSG_DEV_SOURCE_CHECKOUT: repositoryRoot,
+  FSG_DEV_LAUNCHER_VERSION: String(launcherVersion),
+  FSG_DEV_PACKAGE_VERSION: packageVersion,
+}
+child = spawn(process.execPath, ['--require', outputGuardPreload, electronViteCli, 'dev'], {
   cwd: repositoryRoot,
-  env: process.env,
+  env: childEnvironment,
   stdio: ['inherit', 'pipe', 'pipe'],
   windowsHide: false,
 })

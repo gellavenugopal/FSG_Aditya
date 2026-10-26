@@ -53,6 +53,10 @@ npm run isolation:test
 
 That command builds the desktop and provisions a disposable PostgreSQL cluster under the system temporary directory. It uses SCRAM password authentication and a restricted runtime role; validates missing/conflicting configuration, production-target rejection, saved-profile non-fallback, Electron `userData`, legacy-startup disabling, and service identity/schema startup; then launches the Electron main process in a no-window startup probe and removes only its own temporary cluster. It is not a reporting workflow or UI UAT. Never use the saved Settings profile or the live `vera_financial` server for tests. The prior database-isolation incident remains unresolved; this test does not establish impact to existing data or authorise a restore/reversal.
 
+### Development output diagnostics
+
+Start development through `npm run dev` (or `.\tools\engagement-demo.ps1 launch` for the isolated sample); both use the project-owned launcher. It preloads an EPIPE-only guard into the `electron-vite` process before Vite starts. When a terminal or output consumer disconnects, subsequent CLI diagnostics are written to bounded `dev-vite-output.log` in the application profile alongside `dev-launcher.log`. The Electron main process retains its separate bounded `dev-output.log`. Normal console output is unchanged, and unrelated stream errors remain uncaught. To verify the launcher boundary through the isolated desktop route, run `.\tools\engagement-demo.ps1 epipe-ui`, then close the FSG Bharat window when prompted; the test confirms file fallback, continued desktop operation and normal shutdown. Repeated renderer HMR is verified separately by updating a watched renderer file during `.\tools\engagement-demo.ps1 launch`.
+
 ## Run on the firm server
 
 Use a trusted Windows firm server with Node.js and PostgreSQL network access. The server process, not a desktop client, must receive the engagement-service database credentials. Keep the database name `vera_financial`; do not point the service at a separate production database.

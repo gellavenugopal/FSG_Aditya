@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true, Position = 0)]
-  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch')]
+  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui')]
   [string]$Action
 )
 
@@ -238,6 +238,32 @@ switch ($Action) {
     try {
       npm run dev
       if ($LASTEXITCODE -ne 0) { throw 'Desktop application exited with an error.' }
+    } finally { Pop-Location }
+  }
+  'epipe-ui' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    $electronViteCli = Join-Path $RepositoryRoot 'node_modules\electron-vite\bin\electron-vite.js'
+    $devLauncher = Join-Path $RepositoryRoot 'tools\dev-launcher.mjs'
+    $electronExecutable = Join-Path $RepositoryRoot 'node_modules\electron\dist\electron.exe'
+    $activeDevelopmentProcesses = Get-CimInstance Win32_Process | Where-Object {
+      $_.CommandLine -and (
+        $_.CommandLine.Contains($electronViteCli) -or
+        $_.CommandLine.Contains($devLauncher) -or
+        $_.ExecutablePath -eq $electronExecutable
+      )
+    }
+    if ($activeDevelopmentProcesses) {
+      $activeDevelopmentProcesses | Select-Object ProcessId, ParentProcessId, ExecutablePath, CommandLine | Format-List
+      throw 'Close all existing development processes from this checkout before starting the EPIPE verification.'
+    }
+    Set-DisposableTestEnvironment $state
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\selftest-dev-launcher-disconnect.mjs')
+      if ($LASTEXITCODE -ne 0) { throw 'Isolated launcher output-disconnect verification failed.' }
     } finally { Pop-Location }
   }
 }
