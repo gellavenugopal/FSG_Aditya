@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('api', {
   getEngagementFinalTrialBalanceRows: (data) => inv('engagement:finalTrialBalanceRows', data),
   correctEngagementMapping: (data) => inv('engagement:mappingOverride', data),
   getEngagementReportingData:  (data) => inv('engagement:reportingData', data),
+  saveEngagementUaeDemoMappings: (data) => inv('engagement:uaeDemoMappingsSave', data),
   saveEngagementAuditReportSettings: (data) => inv('engagement:reportingSettingsSave', data),
   saveEngagementReportingSelections: (data) => inv('engagement:reportingSelectionsSave', data),
   createEngagementReportSignatory: (data) => inv('engagement:reportingSignatoryCreate', data),

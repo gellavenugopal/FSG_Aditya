@@ -182,6 +182,24 @@ async function assertIndiaScheduleIII(engagement) {
   }
 }
 
+async function assertUaeDemoPack(engagement) {
+  const { rows: [pack] } = await query(
+    `SELECT processing_status,jurisdiction FROM reporting_pack_catalog WHERE pack_id=$1`,
+    [engagement.reporting_pack_id]
+  )
+  if (engagement.reporting_pack_id !== 'AE_UAE_DEMO' || pack?.processing_status !== 'implemented'
+    || pack.jurisdiction !== 'AE' || engagement.jurisdiction !== 'AE'
+    || engagement.trial_balance_currency !== 'AED' || engagement.presentation_currency !== 'AED') {
+    throw new Error('The limited UAE demonstration workflow requires the AE_UAE_DEMO pack with AED trial-balance and presentation currencies.')
+  }
+}
+
+async function assertSupportedReportingWorkflow(engagement) {
+  if (engagement.reporting_pack_id === 'IN_SCHEDULE_III_LEGACY') return assertIndiaScheduleIII(engagement)
+  if (engagement.reporting_pack_id === 'AE_UAE_DEMO') return assertUaeDemoPack(engagement)
+  throw new Error('This engagement reporting basis is not implemented in the current workflow.')
+}
+
 function assertEngagementEditable(engagement, period) {
   if (engagement.status === 'finalised' || engagement.status === 'archived' || period.locked || period.is_final) {
     throw new Error('This engagement reporting period is locked or finalised and cannot be changed.')
@@ -1595,7 +1613,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.sourceTrialBalanceId)
     await assertCanEdit(user, context.engagement)
     assertEngagementEditable(context.engagement, context.period)
-    await assertIndiaScheduleIII(context.engagement)
+    await assertSupportedReportingWorkflow(context.engagement)
     return runInTransaction(async () => {
       const { rows: [locked] } = await query(
         `SELECT e.status,ep.locked,ep.is_final
@@ -1610,7 +1628,7 @@ export function registerEngagementHandlers(ipcMain, database) {
       assertEngagementEditable({ ...context.engagement, status: locked.status }, { locked: locked.locked, is_final: locked.is_final })
       const currentEngagement = await fetchEngagement(user.firmId, context.engagement.id)
       await assertCanEdit(user, currentEngagement)
-      await assertIndiaScheduleIII(currentEngagement)
+      await assertSupportedReportingWorkflow(currentEngagement)
       const { rows: [sourceLink] } = await query(
         `SELECT 1 FROM engagement_trial_balance_imports WHERE engagement_id=$1 AND trial_balance_id=$2
          UNION ALL
@@ -1929,6 +1947,120 @@ export function registerEngagementHandlers(ipcMain, database) {
     const user = await authenticated(event)
     const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
     const { engagement, trialBalance } = context
+    if (engagement.reporting_pack_id === 'AE_UAE_DEMO') {
+      await assertUaeDemoPack(engagement)
+      const { rows: [snapshot] } = await query(
+        `SELECT s.id,s.version,s.source_trial_balance_id,s.trial_balance_id,s.journal_watermark,
+                s.mapping_rule_set_id,s.created_at
+         FROM engagement_final_tb_snapshots s
+         WHERE s.engagement_id=$1 AND s.trial_balance_id=$2`,
+        [engagement.id, trialBalance.id]
+      )
+      if (!snapshot) throw new Error('Generate a final Trial Balance before preparing the UAE demonstration.')
+      const { rows: [priorSelection] } = await query(
+        `SELECT rs.prior_trial_balance_id,tb.id,tb.period,tb.filename,tb.row_count,
+                fp.date_from,fp.date_till
+         FROM engagement_reporting_sets rs
+         LEFT JOIN trial_balances tb ON tb.id=rs.prior_trial_balance_id AND tb.entity_id=$2
+         LEFT JOIN engagement_trial_balance_imports i
+           ON i.engagement_id=rs.engagement_id AND i.trial_balance_id=tb.id
+         LEFT JOIN financial_periods fp ON fp.id=(
+           SELECT ep.financial_period_id FROM entity_periods ep WHERE ep.id=tb.entity_period_id
+         )
+         WHERE rs.id=$1 AND (rs.prior_trial_balance_id IS NULL OR i.trial_balance_id IS NOT NULL)`,
+        [engagement.reporting_set_id, engagement.entity_id]
+      )
+      if (!priorSelection) throw new Error('The selected UAE comparative Trial Balance is not linked to this engagement.')
+      const { rows: [entity] } = await query(
+        `SELECT id,name,constitution,constitution_display,business_type,address,cin,pan,jurisdiction,legal_form
+         FROM entities WHERE id=$1`,
+        [engagement.entity_id]
+      )
+      const { rows: currentRows } = await query(
+        `SELECT id,name,ledger_code,opening_balance,closing_balance
+         FROM tb_rows WHERE tb_id=$1 ORDER BY id`,
+        [trialBalance.id]
+      )
+      let comparativeRows = []
+      if (priorSelection.id) {
+        const { rows } = await query(
+          `SELECT id,name,ledger_code,opening_balance,closing_balance
+           FROM tb_rows WHERE tb_id=$1 ORDER BY id`,
+          [priorSelection.id]
+        )
+        comparativeRows = rows
+      }
+      const { rows: comparativeTrialBalances } = await query(
+        `SELECT tb.id,tb.period,tb.filename,tb.row_count,fp.date_from,fp.date_till
+         FROM engagement_trial_balance_imports i
+         JOIN trial_balances tb ON tb.id=i.trial_balance_id
+         JOIN entity_periods ep ON ep.id=tb.entity_period_id AND ep.entity_id=tb.entity_id
+         JOIN financial_periods fp ON fp.id=ep.financial_period_id
+         WHERE i.engagement_id=$1 AND tb.entity_id=$2 AND fp.date_till < $3
+         ORDER BY fp.date_till DESC,tb.uploaded_at DESC`,
+        [engagement.id, engagement.entity_id, context.period.date_from]
+      )
+      const { rows: noteDetails } = await query(
+        `SELECT note_num,note_title,data FROM note_details WHERE tb_id=$1 ORDER BY note_num`,
+        [trialBalance.id]
+      )
+      const { rows: noteDisclosures } = await query(
+        `SELECT note_num,note_title,text FROM note_disclosures WHERE tb_id=$1 AND text<>'' ORDER BY note_num`,
+        [trialBalance.id]
+      )
+      const { rows: uaeMappings } = await query(
+        `SELECT tb_row_id,line_key FROM engagement_uae_demo_mappings
+         WHERE engagement_id=$1 AND trial_balance_id=$2`,
+        [engagement.id, trialBalance.id]
+      )
+      const { rows: [reportSettings] } = await query(
+        `SELECT template_id,revision,fields,updated_at FROM engagement_audit_report_settings WHERE engagement_id=$1`,
+        [engagement.id]
+      )
+      const identity = await reportingIdentity(engagement)
+      const { rows: signatories } = await query(
+        `SELECT * FROM signatories WHERE entity_id=$1 AND is_active=TRUE ORDER BY id`,
+        [entity.id]
+      )
+      return {
+        engagement: {
+          id: Number(engagement.id), reference: engagement.reference, name: engagement.name,
+          status: engagement.status, periodStart: dateOnly(engagement.period_start),
+          periodEnd: dateOnly(engagement.period_end), periodLabel: engagement.period_label,
+        },
+        entity,
+        activeTB: { ...trialBalance, id: Number(trialBalance.id), entity_period_id: context.period.id },
+        comparativeTrialBalance: priorSelection.id ? {
+          id: Number(priorSelection.id), period: priorSelection.period, filename: priorSelection.filename,
+          dateFrom: dateOnly(priorSelection.date_from), dateTill: dateOnly(priorSelection.date_till),
+        } : null,
+        comparativeTrialBalances: comparativeTrialBalances.map(row => ({ ...row, id: Number(row.id) })),
+        comparativeRows,
+        snapshot: { ...snapshot, id: Number(snapshot.id), version: Number(snapshot.version) },
+        currentRows,
+        uaeMappings: uaeMappings.map(row => ({ trialBalanceRowId: Number(row.tb_row_id), lineKey: row.line_key })),
+        noteDetails: noteDetails.map(row => ({ ...row, data: JSON.parse(row.data || '{}') })),
+        noteDisclosures,
+        signatories,
+        firmSettings: {
+          professionalFirms: identity.firms.map(row => ({ ...row, id: Number(row.id) })),
+          offices: identity.offices.map(row => ({ ...row, id: Number(row.id), auditor_firm_id: Number(row.auditor_firm_id) })),
+          partners: identity.partners.map(row => ({ ...row, id: Number(row.id) })),
+          branding: identity.brandingFirm ? {
+            id: Number(identity.brandingFirm.id),
+            name: identity.brandingFirm.firm_name,
+            logoMimeType: identity.brandingFirm.logo_mime_type || null,
+            logoBase64: identity.brandingFirm.logo_base64 || null,
+          } : null,
+        },
+        reportingSelections: identity.selection,
+        reportIdentitySnapshot: identity.identitySnapshot,
+        auditReport: {
+          ...(reportSettings || { template_id: 'uae-demo-v1', revision: 0, fields: {} }),
+          fields: { ...validateAuditReportFields(reportSettings?.fields || {}), ...identity.fields },
+        },
+      }
+    }
     await assertIndiaScheduleIII(engagement)
     const { rows: [snapshot] } = await query(
       `SELECT s.id,s.version,s.source_trial_balance_id,s.trial_balance_id,s.journal_watermark,
@@ -2092,6 +2224,65 @@ export function registerEngagementHandlers(ipcMain, database) {
     }
   })
 
+  ipcMain.handle('engagement:uaeDemoMappingsSave', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    await assertUaeDemoPack(context.engagement)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    if (!Array.isArray(input.mappings) || input.mappings.length < 1 || input.mappings.length > 1000) {
+      throw new Error('Save between 1 and 1,000 UAE demonstration account mappings.')
+    }
+    const allowedLines = new Set([
+      'cash','trade_receivables','inventory','property_plant_equipment','accumulated_depreciation',
+      'trade_payables','borrowings','share_capital','retained_earnings','revenue','other_income',
+      'cost_of_sales','operating_expenses','depreciation_expense','income_tax_expense','dividends',
+    ])
+    const mappings = input.mappings.map(item => ({
+      tbRowId: Number(item?.tbRowId),
+      lineKey: String(item?.lineKey || ''),
+    }))
+    if (mappings.some(item => !Number.isSafeInteger(item.tbRowId) || item.tbRowId <= 0 || !allowedLines.has(item.lineKey))
+      || new Set(mappings.map(item => item.tbRowId)).size !== mappings.length) {
+      throw new Error('Each UAE demonstration mapping must identify a unique Trial Balance row and supported statement line.')
+    }
+    const { rows: [snapshot] } = await query(
+      `SELECT id FROM engagement_final_tb_snapshots
+       WHERE engagement_id=$1 AND trial_balance_id=$2`,
+      [context.engagement.id, context.trialBalance.id]
+    )
+    if (!snapshot) throw new Error('UAE account mappings are available only for a final engagement Trial Balance.')
+    const { rows: validRows } = await query(
+      `SELECT id FROM tb_rows WHERE tb_id=$1 AND id=ANY($2::int[])`,
+      [context.trialBalance.id, mappings.map(item => item.tbRowId)]
+    )
+    if (validRows.length !== mappings.length) throw new Error('One or more mapped accounts are not in this final Trial Balance.')
+    await runInTransaction(async () => {
+      await query(
+        `DELETE FROM engagement_uae_demo_mappings
+         WHERE engagement_id=$1 AND trial_balance_id=$2`,
+        [context.engagement.id, context.trialBalance.id]
+      )
+      const values = []
+      const params = []
+      mappings.forEach((item, index) => {
+        const base = index * 5
+        values.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},now())`)
+        params.push(context.engagement.id, context.trialBalance.id, item.tbRowId, item.lineKey, user.id)
+      })
+      await query(
+        `INSERT INTO engagement_uae_demo_mappings
+           (engagement_id,trial_balance_id,tb_row_id,line_key,updated_by,updated_at)
+         VALUES ${values.join(',')}`,
+        params
+      )
+      await logAudit(user, 'report.uae_demo_mappings_updated', context.engagement.id, {
+        trialBalanceId: context.trialBalance.id, mappingCount: mappings.length,
+      })
+    })
+    return { ok: true, mappingCount: mappings.length }
+  })
+
   ipcMain.handle('engagement:reportingSelectionsSave', async (event, input = {}) => {
     const user = await authenticated(event)
     const context = await assertEngagementTBContext(user, input.engagementId)
@@ -2160,18 +2351,21 @@ export function registerEngagementHandlers(ipcMain, database) {
   ipcMain.handle('engagement:reportingSettingsSave', async (event, input = {}) => {
     const user = await authenticated(event)
     const { engagement } = await assertEngagementTBContext(user, input.engagementId)
+    await assertSupportedReportingWorkflow(engagement)
     await assertCanEdit(user, engagement)
     assertEngagementEditable(engagement, { locked: engagement.locked, is_final: engagement.is_final })
     const fields = { ...validateAuditReportFields(input.fields), ...(await reportingIdentity(engagement)).fields }
+    const templateId = engagement.reporting_pack_id === 'AE_UAE_DEMO' ? 'uae-demo-v1' : 'india-basic-v1'
     return runInTransaction(async () => {
       const { rows: [settings] } = await query(
         `INSERT INTO engagement_audit_report_settings (engagement_id,template_id,revision,fields,updated_by)
-         VALUES ($1,'india-basic-v1',1,$2::jsonb,$3)
+         VALUES ($1,$2,1,$3::jsonb,$4)
          ON CONFLICT (engagement_id) DO UPDATE SET
+           template_id=EXCLUDED.template_id,
            revision=engagement_audit_report_settings.revision+1,
            fields=EXCLUDED.fields,updated_by=EXCLUDED.updated_by,updated_at=now()
          RETURNING engagement_id,template_id,revision,fields,updated_at`,
-        [engagement.id, JSON.stringify(fields), user.id]
+        [engagement.id, templateId, JSON.stringify(fields), user.id]
       )
       await logAudit(user, 'audit_report.template_updated', engagement.id, { revision: settings.revision })
       return settings
@@ -2205,7 +2399,8 @@ export function registerEngagementHandlers(ipcMain, database) {
     const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
     await assertCanEdit(user, context.engagement)
     assertEngagementEditable(context.engagement, context.period)
-    await assertIndiaScheduleIII(context.engagement)
+    if (context.engagement.reporting_pack_id === 'AE_UAE_DEMO') await assertUaeDemoPack(context.engagement)
+    else await assertIndiaScheduleIII(context.engagement)
     const noteNum = Number(input.noteNum)
     const noteTitle = String(input.noteTitle || '').trim()
     const text = String(input.text || '')
@@ -2248,7 +2443,8 @@ export function registerEngagementHandlers(ipcMain, database) {
     const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
     await assertCanEdit(user, context.engagement)
     assertEngagementEditable(context.engagement, context.period)
-    await assertIndiaScheduleIII(context.engagement)
+    if (context.engagement.reporting_pack_id === 'AE_UAE_DEMO') await assertUaeDemoPack(context.engagement)
+    else await assertIndiaScheduleIII(context.engagement)
     const noteNum = Number(input.noteNum)
     const noteTitle = String(input.noteTitle || '').trim()
     if (!Number.isInteger(noteNum) || noteNum < 1 || noteNum > 500 || !noteTitle || noteTitle.length > 500
@@ -2296,6 +2492,7 @@ export function registerEngagementHandlers(ipcMain, database) {
   ipcMain.handle('engagement:reportOutputSave', async (event, input = {}) => {
     const user = await authenticated(event)
     const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    await assertSupportedReportingWorkflow(context.engagement)
     await assertCanEdit(user, context.engagement)
     assertEngagementEditable(context.engagement, context.period)
     const pdfBase64 = input.pdfContentBase64
@@ -2321,17 +2518,30 @@ export function registerEngagementHandlers(ipcMain, database) {
       [context.engagement.id, context.trialBalance.id]
     )
     if (!snapshot) throw new Error('The selected Trial Balance is not a final engagement snapshot.')
-    const { rows: financialRows } = await query(
-      `SELECT tr.id,tr.name,tr.opening_balance,tr.closing_balance,mt.mapping1_resultant,
-              mt.mapping2_resultant,mt.mapping3_resultant,mt.alie,mt.status
-       FROM tb_rows tr LEFT JOIN mapped_tb mt ON mt.tb_row_id=tr.id AND mt.tb_id=tr.tb_id
-       WHERE tr.tb_id=$1 ORDER BY tr.id`,
-      [context.trialBalance.id]
-    )
+    const { rows: financialRows } = context.engagement.reporting_pack_id === 'AE_UAE_DEMO'
+      ? await query(
+        `SELECT tr.id,tr.name,tr.ledger_code,tr.opening_balance,tr.closing_balance,m.line_key
+         FROM tb_rows tr
+         LEFT JOIN engagement_uae_demo_mappings m
+           ON m.engagement_id=$2 AND m.trial_balance_id=tr.tb_id AND m.tb_row_id=tr.id
+         WHERE tr.tb_id=$1 ORDER BY tr.id`,
+        [context.trialBalance.id, context.engagement.id]
+      )
+      : await query(
+        `SELECT tr.id,tr.name,tr.opening_balance,tr.closing_balance,mt.mapping1_resultant,
+                mt.mapping2_resultant,mt.mapping3_resultant,mt.alie,mt.status
+         FROM tb_rows tr LEFT JOIN mapped_tb mt ON mt.tb_row_id=tr.id AND mt.tb_id=tr.tb_id
+         WHERE tr.tb_id=$1 ORDER BY tr.id`,
+        [context.trialBalance.id]
+      )
     const settings = (await query(
       `SELECT template_id,revision,fields FROM engagement_audit_report_settings WHERE engagement_id=$1`,
       [context.engagement.id]
-    )).rows[0] || { template_id: 'india-basic-v1', revision: 0, fields: {} }
+    )).rows[0] || {
+      template_id: context.engagement.reporting_pack_id === 'AE_UAE_DEMO' ? 'uae-demo-v1' : 'india-basic-v1',
+      revision: 0,
+      fields: {},
+    }
     const identity = await reportingIdentity(context.engagement)
     const fields = { ...validateAuditReportFields(settings.fields), ...identity.fields }
     if (!fields.opinion || !fields.reportDate || !fields.reportPlace) {

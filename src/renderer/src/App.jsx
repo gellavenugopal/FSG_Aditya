@@ -1152,7 +1152,7 @@ export default function App() {
           <button disabled={signingOut} onClick={signOut} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out'}</button>
         </header>
         <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-5 py-2 text-xs text-blue-900">
-          Service-connected desktop: no local PostgreSQL connection is opened. Trial Balance import and inspection are available; mapping, journals, notes and reporting are disabled until migrated to the trusted service.
+          Service-connected desktop: no local PostgreSQL connection is opened. Engagement imports, journals, final Trial Balances, mapping, notes and reporting use the trusted service; legacy standalone financial operations remain unavailable. UAE reporting is a synthetic demonstration only.
         </div>
         <main className="min-h-0 flex-1">
           <EngagementHub key={auth.user.id} user={auth.user} serviceOnlyMode />

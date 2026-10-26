@@ -3,6 +3,12 @@ import { buildEngagementFinancials } from '../../hooks/useFinancials'
 import { buildFinancialsHTML } from '../GenerateFinancials/buildHTML'
 import { formatPeriodDate, formatPeriodRange } from '../../utils/financialPeriodDisplay'
 import { makeAuditReportPage, prependAuditReport } from './engagementReportHtml'
+import {
+  buildUaeDemoFinancials,
+  buildUaeDemoFinancialsHtml,
+  suggestUaeDemoAccountLine,
+  UAE_DEMO_ACCOUNT_LINES,
+} from './uaeDemoReporting'
 
 const EMPTY_ENTRY = () => ({ ledgerName: '', ledgerCode: '', side: 'Dr', amount: '' })
 const EMPTY_SHARE_CLASS = () => ({
@@ -92,9 +98,12 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
-  const supported = engagement.reporting_pack_id === 'IN_SCHEDULE_III_LEGACY'
+  const isUaeDemo = engagement.reporting_pack_id === 'AE_UAE_DEMO'
+    && engagement.trial_balance_currency === 'AED'
+    && engagement.presentation_currency === 'AED'
+  const supported = (engagement.reporting_pack_id === 'IN_SCHEDULE_III_LEGACY'
     && engagement.trial_balance_currency === 'INR'
-    && engagement.presentation_currency === 'INR'
+    && engagement.presentation_currency === 'INR') || isUaeDemo
   const editable = engagement.canEdit && !['finalised', 'archived'].includes(engagement.status)
     && !engagement.locked && !engagement.is_final
   const canFinaliseOutput = Number(engagement.partner_user_id) === Number(user.id)
@@ -154,7 +163,9 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
       setDisclosures(Object.fromEntries((reportingData.noteDisclosures || []).map(note => [note.note_title, note.text])))
       setStructuredDetails(Object.fromEntries((reportingData.noteDetails || []).map(note => [note.note_title, note.data])))
       setComparativeId(String(reportingData.comparativeTrialBalance?.id || ''))
-      setMappingSelections({})
+      setMappingSelections(Object.fromEntries((reportingData.uaeMappings || []).map(item => [
+        String(item.trialBalanceRowId), item.lineKey,
+      ])))
       setError('')
     }).catch(fetchError => {
       if (!cancelled) {
@@ -167,10 +178,26 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
     return () => { cancelled = true }
   }, [engagement.id, finalId, supported])
 
-  const financialData = useMemo(() => bundle ? buildEngagementFinancials({
-    ...bundle,
-    generalNotes: bundle.generalNotes,
-  }) : null, [bundle])
+  const financialData = useMemo(() => {
+    if (!bundle) return null
+    if (isUaeDemo) {
+      try {
+        return buildUaeDemoFinancials({
+          currentRows: bundle.currentRows || [],
+          comparativeRows: bundle.comparativeRows || [],
+          mappings: mappingSelections,
+          periodEnd: bundle.engagement.periodEnd,
+          comparativePeriodEnd: bundle.comparativeTrialBalance?.dateTill,
+        })
+      } catch (reportingError) {
+        return { reportingError: reportingError.message || 'UAE demonstration figures are not reconciled.' }
+      }
+    }
+    return buildEngagementFinancials({
+      ...bundle,
+      generalNotes: bundle.generalNotes,
+    })
+  }, [bundle, isUaeDemo, mappingSelections])
 
   const changeField = (key, value) => setFields(current => ({ ...current, [key]: value }))
   const run = async operation => {
@@ -211,7 +238,9 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
       sourceTrialBalanceId: Number(sourceId),
     })
     setFinalId(String(result.trialBalance.id))
-    setMessage(`Final Trial Balance v${result.version} created and mapped. Balance difference: ${Number(result.balanceDifference).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`)
+    setMessage(isUaeDemo
+      ? `UAE final Trial Balance v${result.version} created. Review and save the UAE statement mappings below.`
+      : `Final Trial Balance v${result.version} created and mapped. Balance difference: ${Number(result.balanceDifference).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`)
     return result
   })
 
@@ -279,6 +308,28 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
   })
 
   const correctMapping = row => run(async () => {
+    if (isUaeDemo) {
+      const lineKey = mappingSelections[row.id] || suggestUaeDemoAccountLine(row.name)
+      if (!lineKey) throw new Error(`Choose a UAE statement line for ${row.name}.`)
+      const nextMappings = { ...mappingSelections, [row.id]: lineKey }
+      const allMappings = finalRows
+        .filter(item => Math.abs(Number(item.closing_balance || 0)) >= 0.005)
+        .map(item => ({
+          tbRowId: Number(item.id),
+          lineKey: String(nextMappings[item.id] || suggestUaeDemoAccountLine(item.name) || ''),
+        }))
+      if (allMappings.some(item => !item.lineKey)) throw new Error('Choose a UAE statement line for every non-zero account before saving mappings.')
+      await window.api.saveEngagementUaeDemoMappings({
+        engagementId: engagement.id,
+        trialBalanceId: Number(finalId),
+        mappings: allMappings,
+      })
+      setMappingSelections(nextMappings)
+      const updated = await window.api.getEngagementReportingData({ engagementId: engagement.id, trialBalanceId: Number(finalId) })
+      setBundle(updated)
+      setMessage(`UAE statement mapping saved for ${row.name}.`)
+      return
+    }
     const levelFormatId = Number(mappingSelections[row.id] || row.lf_id)
     if (!Number.isInteger(levelFormatId)) throw new Error('Choose a valid statement mapping.')
     await window.api.correctEngagementMapping({
@@ -311,6 +362,7 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
   const saveReportSettings = async () => {
     const result = await window.api.saveEngagementAuditReportSettings({ engagementId: engagement.id, fields })
     setBundle(current => current ? { ...current, auditReport: result } : current)
+    setFields(current => ({ ...current, ...(result.fields || {}) }))
     return result
   }
 
@@ -332,9 +384,13 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
   })
 
   const generateReport = () => run(async () => {
-    if (!bundle || !financialData) throw new Error('Mapped India financial data is not ready.')
+    if (financialData?.reportingError) throw new Error(financialData.reportingError)
+    if (!bundle || !financialData) throw new Error(isUaeDemo
+      ? 'UAE demonstration financial data is not ready.'
+      : 'Mapped India financial data is not ready.')
     if (!approval.approvalDate || !approval.approvalPlace.trim()) throw new Error('Enter the financial-statement approval date and place.')
     if (!approval.signatoryIds.length) throw new Error('Select at least one active client signatory.')
+    if (isUaeDemo && !bundle.comparativeTrialBalance) throw new Error('Import and select the 2024 comparative Trial Balance before generating the UAE demonstration.')
     await saveSelections()
     const savedSettings = await window.api.saveEngagementAuditReportSettings({ engagementId: engagement.id, fields })
     const currentFields = { ...fields, ...(savedSettings.fields || {}) }
@@ -343,6 +399,54 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
     setBundle(reportBundle)
     const signatories = approval.signatoryIds.map(id => bundle.signatories.find(item => Number(item.id) === Number(id))).filter(Boolean)
     if (signatories.length !== approval.signatoryIds.length) throw new Error('A selected client signatory is no longer available.')
+    if (isUaeDemo) {
+      const currentMappings = finalRows
+        .filter(row => Math.abs(Number(row.closing_balance || 0)) >= 0.005)
+        .map(row => ({
+          tbRowId: Number(row.id),
+          lineKey: String(mappingSelections[row.id] || suggestUaeDemoAccountLine(row.name) || ''),
+        }))
+      if (currentMappings.some(item => !item.lineKey)) throw new Error('Map every non-zero account to a UAE statement line before generating the PDF.')
+      await window.api.saveEngagementUaeDemoMappings({
+        engagementId: engagement.id,
+        trialBalanceId: Number(finalId),
+        mappings: currentMappings,
+      })
+      const mappedBundle = await window.api.getEngagementReportingData({
+        engagementId: engagement.id,
+        trialBalanceId: Number(finalId),
+      })
+      const uaeFinancials = buildUaeDemoFinancials({
+        currentRows: mappedBundle.currentRows || [],
+        comparativeRows: mappedBundle.comparativeRows || [],
+        mappings: Object.fromEntries(currentMappings.map(item => [String(item.tbRowId), item.lineKey])),
+        periodEnd: mappedBundle.engagement.periodEnd,
+        comparativePeriodEnd: mappedBundle.comparativeTrialBalance?.dateTill,
+      })
+      const html = buildUaeDemoFinancialsHtml({
+        financials: uaeFinancials,
+        entity: mappedBundle.entity,
+        engagement: mappedBundle.engagement,
+        bundle: {
+          ...mappedBundle,
+          approvalDate: approval.approvalDate,
+          approvalPlace: approval.approvalPlace,
+          approvalSignatories: signatories,
+        },
+      })
+      const pdfBytes = new Uint8Array(await window.api.renderEngagementPDF(html))
+      const saved = await window.api.saveEngagementReportOutput({
+        engagementId: engagement.id,
+        trialBalanceId: Number(finalId),
+        pdfContentBase64: bytesToBase64(pdfBytes),
+        signingDetails: approval,
+        auditReportFields: currentFields,
+        reportIdentitySnapshot: mappedBundle.reportIdentitySnapshot,
+      })
+      await load()
+      setMessage(`UAE Sample 01 combined PDF v${saved.version} saved as a draft for demonstration.`)
+      return saved
+    }
     const auditor = {
       name: currentFields.auditorName,
       membership_number: currentFields.auditorMembershipNumber,
@@ -403,23 +507,28 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
 
   const selectedSource = trialBalances.find(row => String(row.id) === sourceId)
   const selectedFinal = snapshots.find(row => String(row.id) === finalId)
-  const notes = financialData?.activeNotes || Object.values(financialData?.notes || {})
+  const notes = isUaeDemo
+    ? (financialData?.notes || []).map(note => ({ num: note.number, title: note.title, displayTitle: note.title }))
+    : financialData?.activeNotes || Object.values(financialData?.notes || {})
 
   return (
     <section className="mt-5 rounded-xl border border-indigo-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">India reporting pack</h3>
-          <p className="mt-1 max-w-3xl text-sm text-gray-600">Import → post journals → create an immutable final Trial Balance → map → generate one audit report, financial statements and notes PDF.</p>
+          <h3 className="text-lg font-semibold text-gray-900">{isUaeDemo ? 'UAE Sample 01 reporting demonstration' : 'India reporting pack'}</h3>
+          <p className="mt-1 max-w-3xl text-sm text-gray-600">{isUaeDemo
+            ? 'Synthetic UAE LLC · AED source balances · 2025 with 2024 comparatives. This limited demonstration is not a validated IFRS reporting pack.'
+            : 'Import → post journals → create an immutable final Trial Balance → map → generate one audit report, financial statements and notes PDF.'}</p>
           <p className="mt-1 max-w-3xl text-xs text-gray-500">Generation saves a draft PDF. The assigned partner or authorised substitute must explicitly finalise it. Finalised engagements are never reopened automatically.</p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${supported ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-900'}`}>
-          {supported ? 'India legacy · INR' : 'Processing unavailable'}
+          {isUaeDemo ? 'Draft for demonstration · AED' : supported ? 'India legacy · INR' : 'Processing unavailable'}
         </span>
       </div>
-      {!supported && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">This first pack supports only the existing India legacy Schedule III workflow with trial-balance and presentation currency both set to INR. No currency translation is applied.</p>}
+      {!supported && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">This reporting workflow is not implemented for the selected basis and currencies.</p>}
       {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {message && <p role="status" className="mt-4 rounded-lg bg-green-50 p-3 text-sm text-green-800">{message}</p>}
+      {isUaeDemo && financialData?.reportingError && <p role="alert" className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{financialData.reportingError}</p>}
       {loading && <p className="mt-3 text-sm text-gray-500">Loading engagement reporting data…</p>}
 
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
@@ -484,8 +593,10 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
         </div>
 
         <div className="rounded-lg border border-gray-200 p-4">
-          <h4 className="font-semibold text-gray-900">2. Final Trial Balance &amp; mapping</h4>
-          <p className="mt-1 text-xs text-gray-500">Each version is a separate snapshot of the selected import plus posted journals through its recorded journal watermark.</p>
+          <h4 className="font-semibold text-gray-900">{isUaeDemo ? '2. Final Trial Balance &amp; UAE statement mapping' : '2. Final Trial Balance &amp; mapping'}</h4>
+          <p className="mt-1 text-xs text-gray-500">{isUaeDemo
+            ? 'Source debit balances are stored negative and credits positive. Each UAE line mapping is saved separately from the imported Trial Balance.'
+            : 'Each version is a separate snapshot of the selected import plus posted journals through its recorded journal watermark.'}</p>
           <label className="mt-3 block text-xs font-medium text-gray-700">Final Trial Balance
             <select value={finalId} onChange={event => setFinalId(event.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-2 text-sm" disabled={!snapshots.length}>
               {!snapshots.length && <option value="">No final Trial Balance yet</option>}
@@ -493,19 +604,33 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
             </select>
           </label>
           {selectedFinal && <div className="mt-3 rounded-md bg-gray-50 p-3 text-sm">
-            <div className="font-medium text-gray-800">Version {selectedFinal.version} · {selectedFinal.mapped_count} mapped rows · {selectedFinal.unmapped_count} unmapped</div>
+            <div className="font-medium text-gray-800">{isUaeDemo
+              ? `Version ${selectedFinal.version} · ${finalRows.length} final rows · ${bundle?.uaeMappings?.length || 0} saved UAE mappings`
+              : `Version ${selectedFinal.version} · ${selectedFinal.mapped_count} mapped rows · ${selectedFinal.unmapped_count} unmapped`}</div>
             <div className="mt-1 text-xs text-gray-500">Created {new Date(selectedFinal.created_at).toLocaleString()} · journal watermark {selectedFinal.journal_watermark}</div>
           </div>}
           {!!finalRows.length && <details className="mt-3">
-            <summary className="cursor-pointer text-sm font-medium text-gray-700">Inspect mapped rows ({finalRows.length})</summary>
+            <summary className="cursor-pointer text-sm font-medium text-gray-700">{isUaeDemo ? 'Inspect and map UAE statement accounts' : `Inspect mapped rows (${finalRows.length})`}</summary>
             <div className="mt-2 max-h-64 overflow-auto rounded border">
               <table className="w-full text-left text-xs">
                 <thead className="sticky top-0 bg-gray-50"><tr><th className="p-2">Ledger</th><th className="p-2">Mapping</th><th className="p-2 text-right">Closing</th></tr></thead>
                 <tbody className="divide-y">{finalRows.map(row => <tr key={row.id}>
                   <td className="p-2">{row.name}</td>
                   <td className="p-2">
-                    <div>{[row.mapping1_resultant, row.mapping2_resultant, row.mapping3_resultant].filter(Boolean).join(' · ') || row.status || 'Unmapped'}</div>
-                    {editable && bundle?.levelFormat?.length > 0 && <div className="mt-1 flex gap-1">
+                    {isUaeDemo
+                      ? <div>{UAE_DEMO_ACCOUNT_LINES.find(item => item.id === (mappingSelections[row.id] || suggestUaeDemoAccountLine(row.name)))?.label || 'Choose a line'}</div>
+                      : <div>{[row.mapping1_resultant, row.mapping2_resultant, row.mapping3_resultant].filter(Boolean).join(' · ') || row.status || 'Unmapped'}</div>}
+                    {isUaeDemo && editable && <div className="mt-1 flex gap-1">
+                      <select aria-label={`Correct mapping for ${row.name}`} value={mappingSelections[row.id] || suggestUaeDemoAccountLine(row.name) || ''}
+                        onChange={event => setMappingSelections(current => ({ ...current, [row.id]: event.target.value }))}
+                        className="min-w-0 flex-1 rounded border border-gray-300 px-1 py-1 text-[10px]">
+                        <option value="">Select UAE statement line…</option>
+                        {UAE_DEMO_ACCOUNT_LINES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                      </select>
+                      <button disabled={busy || !(mappingSelections[row.id] || suggestUaeDemoAccountLine(row.name))} onClick={() => correctMapping(row)}
+                        className="rounded border px-2 py-1 text-[10px] disabled:opacity-40">Save</button>
+                    </div>}
+                    {!isUaeDemo && editable && bundle?.levelFormat?.length > 0 && <div className="mt-1 flex gap-1">
                       <select aria-label={`Correct mapping for ${row.name}`} value={mappingSelections[row.id] || row.level_format_id || ''}
                         onChange={event => setMappingSelections(current => ({ ...current, [row.id]: event.target.value }))}
                         className="min-w-0 flex-1 rounded border border-gray-300 px-1 py-1 text-[10px]">
@@ -518,7 +643,7 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
                         className="rounded border px-2 py-1 text-[10px] disabled:opacity-40">Save</button>
                     </div>}
                   </td>
-                  <td className="p-2 text-right">{Number(row.closing_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="p-2 text-right">{isUaeDemo ? 'AED ' : ''}{Number(row.closing_balance || 0).toLocaleString(isUaeDemo ? 'en-AE' : 'en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>)}</tbody>
               </table>
             </div>
@@ -584,6 +709,7 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
               await saveSelections()
               const updated = await window.api.getEngagementReportingData({ engagementId: engagement.id, trialBalanceId: Number(finalId) })
               setBundle(updated)
+              setFields({ ...EMPTY_FIELDS, ...(updated.auditReport?.fields || {}) })
               setMessage('Firm, office, branding and ordered signatory selections saved.')
             })} className="mt-3 rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-800 disabled:opacity-40">Save engagement selections</button>}
           </section>

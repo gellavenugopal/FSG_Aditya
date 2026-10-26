@@ -53,6 +53,7 @@ const OPERATIONS = {
   'engagement:finalTrialBalanceCreate': { path: 'final-trial-balance/create', args: input => [input] },
   'engagement:finalTrialBalanceRows': { path: 'final-trial-balance/rows', args: input => [input] },
   'engagement:reportingData': { path: 'reporting/data', args: input => [input] },
+  'engagement:uaeDemoMappingsSave': { path: 'reporting/uae-demo-mappings/save', args: input => [input] },
   'engagement:reportingSettingsSave': { path: 'reporting/settings/save', args: input => [input] },
   'engagement:reportingSelectionsSave': { path: 'reporting/selections/save', args: input => [input] },
   'engagement:reportingSignatoryCreate': { path: 'reporting/signatory/create', args: input => [input] },

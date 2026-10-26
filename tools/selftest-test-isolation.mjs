@@ -314,6 +314,7 @@ try {
     CREATE TABLE entity_periods (id SERIAL PRIMARY KEY, entity_id INTEGER REFERENCES entities(id),
       financial_period_id INTEGER REFERENCES financial_periods(id));
     CREATE TABLE trial_balances (id SERIAL PRIMARY KEY);
+    CREATE TABLE tb_rows (id SERIAL PRIMARY KEY);
     CREATE TABLE mapping_rule_sets (id SERIAL PRIMARY KEY);
   `)
 

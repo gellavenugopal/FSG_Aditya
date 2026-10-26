@@ -9,7 +9,7 @@ const SCOPE_OPTIONS = [
   ['compilation', 'Compilation'],
   ['tax', 'Tax services'],
 ]
-const LEGAL_FORMS = ['Company', 'LLP', 'Partnership', 'Proprietorship', 'Individual', 'Other']
+const LEGAL_FORMS = ['Company', 'LLC', 'LLP', 'Partnership', 'Proprietorship', 'Individual', 'Other']
 const COMMON_CURRENCIES = ['INR', 'AED', 'USD', 'EUR', 'GBP', 'SAR', 'AUD', 'CAD', 'CHF', 'CNY', 'JPY', 'NZD', 'SGD', 'ZAR']
 
 function Field({ label, children, hint }) {
@@ -523,10 +523,18 @@ function CreateEngagement({ user, onCancel, onCreated, onOpen, initialEngagement
                 setForm(prev => ({ ...prev, reportingPackId: e.target.value, jurisdiction: pack?.jurisdiction || '', framework: pack?.framework || '' }))
               }}>
                 <option value="">Choose a reporting pack…</option>
-                {options.packs.map(pack => <option key={pack.pack_id} value={pack.pack_id}>{pack.jurisdiction} · {pack.framework}{pack.processing_status !== 'implemented' ? ' — not implemented' : ' — legacy workflow'}</option>)}
+                {options.packs.map(pack => <option key={pack.pack_id} value={pack.pack_id}>
+                  {pack.jurisdiction} · {pack.framework}{pack.processing_status !== 'implemented'
+                    ? ' — not implemented'
+                    : pack.pack_id === 'AE_UAE_DEMO' ? ' — synthetic demo' : ' — legacy workflow'}
+                </option>)}
               </Select>
             </Field>
-            {selectedPack && <ShieldNotice>{selectedPack.processing_status === 'implemented' ? 'Existing India workflow selected. Confirm that it is appropriate for this client and engagement; India-specific output is not being asserted as validated for another framework.' : `${selectedPack.framework} is catalogue-only. Drafts may record this basis, but this reporting pack cannot be activated or processed.`}</ShieldNotice>}
+            {selectedPack && <ShieldNotice>{selectedPack.pack_id === 'AE_UAE_DEMO'
+              ? 'Limited synthetic AED demonstration only. The output is not a validated IFRS reporting pack.'
+              : selectedPack.processing_status === 'implemented'
+                ? 'Existing India workflow selected. Confirm that it is appropriate for this client and engagement; India-specific output is not being asserted as validated for another framework.'
+                : `${selectedPack.framework} is catalogue-only. Drafts may record this basis, but this reporting pack cannot be activated or processed.`}</ShieldNotice>}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Trial balance currency" hint="ISO 4217 three-letter code."><Input required maxLength={3} pattern="[A-Za-z]{3}" list="engagement-currency-codes" value={form.trialBalanceCurrency} onChange={e => set('trialBalanceCurrency', e.target.value.toUpperCase())} placeholder="INR" /></Field>
               <Field label="Presentation currency" hint="ISO 4217 three-letter code."><Input required maxLength={3} pattern="[A-Za-z]{3}" list="engagement-currency-codes" value={form.presentationCurrency} onChange={e => set('presentationCurrency', e.target.value.toUpperCase())} placeholder="INR" /></Field>
@@ -537,7 +545,9 @@ function CreateEngagement({ user, onCancel, onCreated, onOpen, initialEngagement
               <Field label="Display scale"><Select value={form.displayScale} onChange={e => set('displayScale', e.target.value)}><option value="units">Units</option><option value="thousands">Thousands</option><option value="millions">Millions</option></Select></Field>
               <Field label="Decimal places"><Select value={form.decimalPlaces} onChange={e => set('decimalPlaces', e.target.value)}>{[0,1,2,3,4,5,6].map(number => <option key={number} value={number}>{number}</option>)}</Select></Field>
             </div>
-            <label className="flex items-start gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.compatibilityConfirmed} onChange={e => set('compatibilityConfirmed', e.target.checked)} /><span>I have confirmed the reporting basis and checked that any existing India legacy data is appropriate to link. Unknown legacy ownership/framework will not be inferred.</span></label>
+            <label className="flex items-start gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.compatibilityConfirmed} onChange={e => set('compatibilityConfirmed', e.target.checked)} /><span>{form.reportingPackId === 'AE_UAE_DEMO'
+              ? 'I confirm this is a synthetic AED demonstration engagement and that no existing legacy balances will be inferred or linked.'
+              : 'I have confirmed the reporting basis and checked that any existing India legacy data is appropriate to link. Unknown legacy ownership/framework will not be inferred.'}</span></label>
             <Field label="Legacy setup note (optional)" hint="Record setup uncertainty or the basis used to confirm existing period data."><Input value={form.legacyConfirmationNote} onChange={e => set('legacyConfirmationNote', e.target.value)} /></Field>
           </div>
         )}
@@ -574,7 +584,7 @@ function CreateEngagement({ user, onCancel, onCreated, onOpen, initialEngagement
               <Summary label="Reference" value={form.reference || 'Generated when saved'} />
               <Summary label="Reporting period" value={form.periodStart && form.periodEnd ? formatPeriodRange(form.periodStart, form.periodEnd) : 'Not set (Draft only)'} />
               <Summary label="Service scope" value={SCOPE_OPTIONS.filter(([key]) => form.serviceScope.includes(key)).map(([, label]) => label).join(', ') || 'None selected'} />
-              <Summary label="Reporting basis" value={`${form.jurisdiction || '—'} · ${form.framework || 'Not selected'} · ${selectedPack?.processing_status === 'implemented' ? 'legacy engine' : 'not implemented'}`} />
+              <Summary label="Reporting basis" value={`${form.jurisdiction || '—'} · ${form.framework || 'Not selected'} · ${selectedPack?.pack_id === 'AE_UAE_DEMO' ? 'synthetic demo' : selectedPack?.processing_status === 'implemented' ? 'legacy engine' : 'not implemented'}`} />
               <Summary label="Currencies" value={`${form.trialBalanceCurrency || '—'} / ${form.presentationCurrency || '—'}`} />
               <Summary label="Owner / partner" value={`${ownerOptions.find(candidate => String(candidate.id) === form.ownerUserId)?.displayName || user.displayName} / ${partners.find(candidate => String(candidate.id) === form.partnerUserId)?.displayName || 'Unassigned'}`} />
               <Summary label="Participants" value={form.participants.map(p => `${options.users.find(candidate => Number(candidate.id) === Number(p.userId))?.displayName || 'Firm user'} (${p.accessLevel})`).join(', ') || 'None'} />
@@ -831,7 +841,7 @@ function ProtectedTrialBalancePanel({ engagement, onImported }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold text-gray-900">Trial Balance</h3>
-          <p className="mt-1 text-sm text-gray-500">Protected engagement import and read-only inspection. Mapping, journals and reporting remain disabled in service-only mode.</p>
+          <p className="mt-1 text-sm text-gray-500">Protected imports, journals, final Trial Balances, mapping, disclosures and saved reporting are service-backed. Legacy standalone financial operations remain unavailable in service-only mode.</p>
         </div>
         {canImport && <button disabled={busy} onClick={importFile} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{busy ? 'Importing…' : '+ Import Excel'}</button>}
       </div>

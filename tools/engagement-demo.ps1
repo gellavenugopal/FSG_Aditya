@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true, Position = 0)]
-  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui')]
+  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'generate-uae-tbs', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui')]
   [string]$Action
 )
 
@@ -124,6 +124,18 @@ switch ($Action) {
     try {
       & node (Join-Path $RepositoryRoot 'tools\provision-engagement-demo-users.mjs')
       if ($LASTEXITCODE -ne 0) { throw 'Isolated demo account provisioning or authentication checks failed.' }
+    } finally { Pop-Location }
+  }
+  'generate-uae-tbs' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    Set-DisposableTestEnvironment $state
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\generate-uae-demo-tbs.mjs')
+      if ($LASTEXITCODE -ne 0) { throw 'Synthetic UAE demonstration Trial Balances could not be generated.' }
     } finally { Pop-Location }
   }
   'verify-ui' {

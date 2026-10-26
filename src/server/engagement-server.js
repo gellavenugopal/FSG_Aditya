@@ -53,6 +53,7 @@ const ROUTES = {
   'final-trial-balance/create': { channel: 'engagement:finalTrialBalanceCreate', args: body => [body] },
   'final-trial-balance/rows': { channel: 'engagement:finalTrialBalanceRows', args: body => [body] },
   'reporting/data': { channel: 'engagement:reportingData', args: body => [body] },
+  'reporting/uae-demo-mappings/save': { channel: 'engagement:uaeDemoMappingsSave', args: body => [body] },
   'reporting/settings/save': { channel: 'engagement:reportingSettingsSave', args: body => [body] },
   'reporting/selections/save': { channel: 'engagement:reportingSelectionsSave', args: body => [body] },
   'reporting/signatory/create': { channel: 'engagement:reportingSignatoryCreate', args: body => [body] },

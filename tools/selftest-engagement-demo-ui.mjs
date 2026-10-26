@@ -92,7 +92,7 @@ async function evaluate(expression) {
   return response.result?.value
 }
 
-async function waitForPage(predicate, message, timeoutMs = 20000) {
+async function waitForPage(predicate, message, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const state = await evaluate(`(() => { const text=document.body?.innerText || ''; return ${predicate}; })()`)

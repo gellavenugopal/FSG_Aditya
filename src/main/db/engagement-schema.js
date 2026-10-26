@@ -101,6 +101,7 @@ export async function ensureEngagementSchema(query) {
     INSERT INTO reporting_pack_catalog (pack_id, jurisdiction, framework, pack_version, processing_status, description)
     VALUES
       ('IN_SCHEDULE_III_LEGACY', 'IN', 'India legacy Schedule III', 'legacy-1', 'implemented', 'Existing India workflow; compatibility is retained and must be confirmed for each engagement.'),
+      ('AE_UAE_DEMO', 'AE', 'UAE demonstration (synthetic)', 'demo-1', 'implemented', 'Limited synthetic AED demonstration; not a validated IFRS reporting pack.'),
       ('IN_IND_AS', 'IN', 'Ind AS', 'catalog-1', 'not_implemented', 'Reporting engine not implemented.'),
       ('AE_IFRS', 'AE', 'IFRS', 'catalog-1', 'not_implemented', 'Reporting engine not implemented.'),
       ('US_GAAP', 'US', 'US GAAP', 'catalog-1', 'not_implemented', 'Reporting engine not implemented.')
@@ -271,6 +272,21 @@ export async function ensureEngagementSchema(query) {
       created_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (engagement_id, version)
+    )
+  `)
+  await query(`
+    CREATE TABLE IF NOT EXISTS engagement_uae_demo_mappings (
+      engagement_id BIGINT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+      trial_balance_id INTEGER NOT NULL REFERENCES trial_balances(id) ON DELETE CASCADE,
+      tb_row_id INTEGER NOT NULL REFERENCES tb_rows(id) ON DELETE CASCADE,
+      line_key TEXT NOT NULL CHECK (line_key IN (
+        'cash','trade_receivables','inventory','property_plant_equipment','accumulated_depreciation',
+        'trade_payables','borrowings','share_capital','retained_earnings','revenue','other_income',
+        'cost_of_sales','operating_expenses','depreciation_expense','income_tax_expense','dividends'
+      )),
+      updated_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (engagement_id,trial_balance_id,tb_row_id)
     )
   `)
   await query(`
