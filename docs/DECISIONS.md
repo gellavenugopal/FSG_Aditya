@@ -90,3 +90,10 @@ This log separates user-approved product/scope decisions from engineering propos
 - **Choice:** Restore approval date/place and ordered signatory IDs from the saved output for the selected final-TB version. Render the synthetic wordmark within aspect-safe preview and PDF boxes sized to preserve report pagination.
 - **Rationale:** Reopening and saving a report must not silently clear approved signing details, and branding should be readable without distortion or breaking the combined PDF's contents numbering.
 - **Status:** Implemented and verified: values restored after restart; v5 saved/reopened with 17 pages and aligned contents/footer numbering.
+
+### 2026-10-27 — Bound the first controlled non-zero OCI fixture
+
+- **Engineering proposal for test-fixture scope only; not a user-approved accounting policy:** Use an IAS 16 revaluation increase for an entire class of property, plant and equipment as the controlled non-zero OCI example. Assume no prior revaluation decrease recognised in profit or loss, no tax effect, and no subsequent depreciation transfer in the fixture period. Present the increase in OCI and a separate revaluation-surplus equity reserve; exclude the non-cash revaluation from cash flows. Total comprehensive income is profit for the year plus this OCI.
+- **Rationale:** This gives the test bed a bounded, traceable OCI movement that does not route unsupported amounts through profit or loss. It exercises statement, equity and cash-flow reconciliation without currency translation or an unmodelled fair-value instrument.
+- **Limitations:** The fixture is not a complete IAS 16 implementation. Revaluation decreases, prior-loss reversals, deferred tax, subsequent depreciation transfers, valuation-frequency/class-wide policy controls and related disclosures remain unsupported. The scenario must remain clearly identified as synthetic and test-only.
+- **Status:** Policy documented before implementation. Add the fixture only if its calculations can be kept separate from ordinary profit-or-loss account treatment; otherwise report the gap rather than force it through the existing calculation.
