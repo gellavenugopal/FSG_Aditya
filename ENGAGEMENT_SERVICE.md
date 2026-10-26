@@ -160,6 +160,7 @@ The repeatable demo harness provisions users only after verifying its dedicated 
 ```powershell
 $env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
 .\tools\engagement-demo.ps1 init
+node .\tools\create-engagement-demo-fixture.mjs
 .\tools\engagement-demo.ps1 start-db
 .\tools\engagement-demo.ps1 provision-users
 ```
