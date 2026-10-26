@@ -19,14 +19,14 @@ The reporting foundation is the imported trial balance, immutable posted-journal
 
 Reporting uses versioned template selections and application-generated paper books. A saved reporting output contains the audit report, financial statements and notes in one printable PDF. Auditor-entered wording controls the audit opinion; the application must not infer an opinion from financial figures.
 
-The currently implemented protected reporting basis is the existing India legacy Schedule III workflow in INR, without currency translation. Existing India calculations and disclosure behavior must be preserved while the engagement workflow is completed and maintained.
+The existing protected India basis remains legacy Schedule III in INR, without currency translation. A separate, limited **UAE Sample 01** synthetic AED demonstration path now exists; it does not constitute general UAE IFRS support or a validated production reporting pack. Preserve India calculations and disclosure behavior while maintaining both workflows.
 
 ## Jurisdiction sequence and deployment scope
 
 The intended sequence is:
 
 1. Preserve and complete the existing India reporting workflow.
-2. Implement the UAE IFRS workflow, beginning with **UAE Sample 01** as its first synthetic case.
+2. Validate and implement the UAE IFRS workflow, beginning with **UAE Sample 01** as its first synthetic case. The current synthetic demonstration is not that validation.
 3. Implement India Ind AS.
 4. Implement US GAAP.
 

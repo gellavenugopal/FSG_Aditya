@@ -9,7 +9,7 @@ This log separates user-approved product/scope decisions from engineering propos
 - **Decision:** Build one complete UAE client demonstration using a synthetic AED dataset. Supplied client documents may be used as references only and must not be committed. Preserve the verified India workflow and its finalised PDFs. Keep UAE output explicitly identified as demonstration material until reporting coverage is validated.
 - **Rationale:** A UAE demonstration is scheduled in two days; a reliable saved, repeatable application walkthrough is more valuable than additional infrastructure in the immediate milestone.
 - **Scope:** UAE LLC; year ended 31 December 2025 with 2024 comparatives; separate statements, notes, editable auditor-entered report, selected firm/office/logo/partner/signatories, and a combined saved PDF. Use an AED trial balance with explicit debit/credit sign normalization; do not implement currency translation.
-- **Status:** Active and not yet implemented. UAE is not supported by the current India-only reporting panel. Use synthetic data if references are unavailable or unreconciled; do not represent synthetic figures as client accounts or claim complete IFRS compliance.
+- **Status at decision:** Active and not yet implemented; the India-only reporting panel did not support UAE at that point. See the later 2026-10-26 status entry “Keep UAE Sample 01 synthetic and demonstration-only” for the limited demo delivery. Use synthetic data if references are unavailable or unreconciled; do not represent synthetic figures as client accounts or claim complete IFRS compliance.
 
 ### 2026-10-26 — Finish one-client reporting before deployment expansion
 
@@ -46,6 +46,12 @@ This log separates user-approved product/scope decisions from engineering propos
 - **Decision:** For the UAE demonstration window, defer broad legacy IPC/database migration and extended EPIPE investigation unless they block the isolated demonstration. Preserve their known gaps and prior findings.
 - **Rationale:** Protect the short-term demonstration schedule and avoid unrelated scope expansion.
 - **Status:** Active for this milestone only. This does not resolve the production-data incident, remove legacy authorization bypasses, or establish that the historical EPIPE popup is resolved.
+
+### 2026-10-26 — Keep UAE Sample 01 synthetic and demonstration-only
+
+- **Decision:** Use a separate synthetic UAE LLC engagement with AED balances for the demonstration; keep the output labelled “Draft for demonstration.” Do not present the sample as client accounts, complete IFRS compliance or a production-validated reporting pack.
+- **Rationale:** The saved desktop workflow is useful for demonstration, but its reporting coverage has not been validated against UAE client records or a complete IFRS requirements set.
+- **Status:** Implemented and verified as a limited draft-only path. The saved v3 PDF was reopened after restart and visually inspected. Broader UAE/IFRS validation remains planned; this entry does not supersede the earlier India → UAE IFRS → India Ind AS → US GAAP sequence.
 
 ## Engineering proposals and operational choices
 

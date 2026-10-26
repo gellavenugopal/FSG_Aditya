@@ -70,6 +70,28 @@ Get-FileHash -LiteralPath $pdf -Algorithm SHA256
 
 Expected SHA-256: `059865a857f2dc5086e9a7d5765d89cc72201fce3ada3d539a776686ddf0e075`.
 
+## Reopen UAE Sample 01 and its saved draft PDF
+
+The same persistent isolated cluster/profile contains the synthetic UAE demonstration. Do not run `init` or regenerate its data for routine review. From the repository root, close the desktop normally first, then:
+
+```powershell
+Set-Location 'D:\Programs\FinancialStatements\AdityaTool\FSG_Bharat_Source'
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 start-db
+.\tools\engagement-demo.ps1 launch
+```
+
+Sign in through the normal desktop screen with the harness administrator account, open **UAE-SAMPLE-01-2025**, and use **Saved combined PDF versions → Version 3 → Download PDF** to retrieve the saved output. This reads the saved engagement; it does not regenerate or finalise the PDF. The verified draft fallback is:
+
+```powershell
+$pdf = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v3.pdf'
+Get-FileHash -LiteralPath $pdf -Algorithm SHA256
+```
+
+Expected SHA-256: `916d0d08603132e564ddde93deaa2f922617f4480a5d3708910588b5e4179237`.
+
+The stored PDF was retrieved through the desktop after an application restart against the same database/profile; its bytes matched this fallback. It has 17 visually inspected pages and remains **Draft for demonstration**. Use synthetic AED figures only; this path is not a validated IFRS or production pack. See [CURRENT_STATUS.md](./CURRENT_STATUS.md) for reconciliations and limitations.
+
 ## EPIPE test
 
 With the isolated PostgreSQL instance running and no app/dev process from this checkout active:

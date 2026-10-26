@@ -221,7 +221,9 @@ $env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
 .\tools\engagement-demo.ps1 firm-settings-reopen-ui
 ```
 
-The current demo has a finalised version 5 plus an unfinalised version 6 from a repeat attempt. Before trying to finalise a new output after a finalised engagement, reopen the engagement through the assigned-partner interface. The demo cluster and profile remain in place; do not rerun `init`.
+The India demo has a finalised version 5 plus an unfinalised version 6 from a repeat attempt. Before trying to finalise a new output after a finalised engagement, reopen the engagement through the assigned-partner interface. The demo cluster and profile remain in place; do not rerun `init`.
+
+The same persistent isolated database also contains `UAE-SAMPLE-01-2025`, a separate synthetic UAE LLC demonstration using AED current/prior Trial Balances and `AE_UAE_DEMO` mappings. The desktop produces a separate 17-page combined draft; v1–v3 remain drafts. Version 3 is retrieved after restart and retained as `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v3.pdf` with SHA-256 `916d0d08603132e564ddde93deaa2f922617f4480a5d3708910588b5e4179237`. Do not represent this as an IFRS-validated or production pack. Exact restart and reopen instructions are in [DEVELOPMENT_SETUP.md](./docs/DEVELOPMENT_SETUP.md#reopen-uae-sample-01-and-its-saved-draft-pdf).
 
 For the same-machine development path, `npm run dev` starts the embedded HTTPS service on loopback when `ENGAGEMENT_SERVICE_URL` is unset or loopback. The service uses the database settings already saved by the app and applies its additive engagement migration at service startup. Use a disposable development database; do not point this procedure at the live firm database. A remote firm service can also be used with `ENGAGEMENT_SERVICE_URL`, without desktop PostgreSQL credentials.
 

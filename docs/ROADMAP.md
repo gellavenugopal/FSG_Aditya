@@ -11,11 +11,14 @@ Order reflects the current user-approved delivery priority. Acceptance requires 
 
 ## 2. Build UAE Sample 01 — immediate milestone
 
+- **Status: delivered for demonstration, not validated for production or IFRS compliance.** A synthetic UAE LLC engagement `UAE-SAMPLE-01-2025` now has an isolated service-backed AED reporting path, separate from India Schedule III.
 - Create one separate synthetic UAE LLC engagement and reporting set for year ended 31 December 2025 with 2024 comparatives, AED functional/source/presentation currency, selected firm identity and separate financial statements.
 - Keep UAE report generation separate from the India Schedule III path. Use explicit AED debit/credit sign normalization; do not translate currency or hardcode totals in the renderer.
 - Derive statements and notes from the saved final TB, journals and reconciled supporting schedules. Include financial position, profit or loss and OCI, changes in equity, cash flows, notes, editable audit narrative and combined PDF.
 - Clearly label the output **Draft for demonstration**; do not claim full IFRS compliance or a production-validated pack. Use supplied client materials only as references; do not commit those files. If references are missing/inconsistent, document the inconsistency and use disclosed synthetic data.
-- Acceptance: the actual desktop walkthrough saves the UAE engagement; journal and narrative disclosure edits appear after PDF regeneration; totals, comparatives, equity movements, cash flows, note references and UAE/AED captions reconcile; restart/reopen retrieves the same saved output; every PDF page is visually inspected; India regressions still pass.
+- **Verified acceptance:** the actual desktop workflow saved current/prior synthetic AED TBs, two balanced journals, final TB v2, 16 manual mappings, firm/report identity, wording and narrative edits. Regenerated v3 reflects the second journal and revised Note 1 narrative. Statement, comparative, equity, cash-flow and note totals reconcile. After restart, the engagement and v3 bytes were retrieved through the normal desktop UI and matched the fallback SHA-256 in [CURRENT_STATUS.md](./CURRENT_STATUS.md). All 17 pages were visually inspected; India regressions passed.
+- Fallback: `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v3.pdf`, SHA-256 `916d0d08603132e564ddde93deaa2f922617f4480a5d3708910588b5e4179237`.
+- Remaining within this milestone: rehearse the walkthrough, improve the small synthetic logo if time allows, and preserve the draft state. Non-zero OCI coverage, broader UAE reporting/IFRS validation, currency translation and production use are not claimed.
 
 ## 3. Resume India product corrections
 

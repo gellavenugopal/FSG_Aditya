@@ -36,6 +36,7 @@ The additive definitions and upgrades live in `src/main/db/engagement-schema.js`
 - `engagement_memberships` grants engagement-specific `read` or `edit` access. Access requests are separate records.
 - `engagement_trial_balance_imports` links an immutable import's source metadata to the existing `trial_balances` row. Imported ledger lines remain in `tb_rows`.
 - `engagement_journals` and `engagement_journal_lines` preserve posted journal history. Final-TB snapshots are stored separately in `engagement_final_tb_snapshots`, with journal watermark/version information.
+- `engagement_uae_demo_mappings` stores separate, engagement-authorized statement mappings for the limited UAE demonstration; it does not change India mapping rules.
 - `engagement_audit_report_settings` stores editable auditor-authored report inputs. `engagement_report_outputs` persists versioned PDF bytes and output identity/signing snapshots.
 - `engagement_audit_log` records protected workflow actions. Legacy links are explicit (`engagement_legacy_links`, `engagement_legacy_tb_links`); shared entity/period membership does not create access by itself.
 - Professional firm/office/partner selections extend existing firm masters and snapshot selected identity in saved outputs so later master edits do not rewrite finalized output.
@@ -50,9 +51,17 @@ The protected path imports current/prior TBs, posts balanced journals without an
 
 The desktop reuses the India financial statement/notes builders and Electron PDF renderer. It persists combined PDF versions through the service. The existing protected pack is India legacy Schedule III with INR/INR only and performs no currency translation. Generated PDFs are drafts until the assigned partner or authorised substitute explicitly finalises them; the UI marks draft and finalised outputs distinctly. Finalised engagement state is not reopened automatically.
 
+### Limited UAE demonstration
+
+- `AE_UAE_DEMO` is implemented only as a synthetic UAE LLC demonstration path; it is not a general UAE or IFRS reporting engine.
+- `src/renderer/src/components/Engagements/uaeDemoReporting.js` derives its supported statement totals, cash flows and notes from saved current/prior final-TB rows plus the saved UAE account mappings. It normalizes the repository's negative-debit/positive-credit convention, checks balance/reconciliation, and builds a separate AED report layout rather than relabelling the India report.
+- The mapping save operation is authorized by the engagement service and persists to `engagement_uae_demo_mappings`. Report output uses the selected firm/office/branding/signatories and saved auditor inputs; the resulting combined PDF remains a versioned service output.
+- UAE Sample 01 is synthetic AED data, clearly marked “Draft for demonstration.” All three saved outputs are drafts. The current v3 fallback and verification are recorded in [CURRENT_STATUS.md](./CURRENT_STATUS.md).
+- The final-TB snapshot mechanism still records the existing default India mapping-rule-set reference. UAE statement mapping and rendering are separate; do not interpret that internal reference as UAE accounting support.
+
 ### Planned
 
-New reporting frameworks and localization remain governed by [ROADMAP.md](./ROADMAP.md). UAE Sample 01 is the immediate synthetic demonstration milestone, but no UAE reporting engine is implemented yet. UAE IFRS validation, India Ind AS, US GAAP and currency translation are not implemented.
+New reporting frameworks and localization remain governed by [ROADMAP.md](./ROADMAP.md). General UAE IFRS reporting and validation, India Ind AS, US GAAP and currency translation are not implemented.
 
 ## Known legacy database/IPC bypasses
 
