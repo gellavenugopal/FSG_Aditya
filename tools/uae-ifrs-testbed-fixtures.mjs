@@ -31,7 +31,7 @@ const sample01PriorAccounts = [
 ]
 
 const sample01CurrentAccounts = [
-  ['1000', 'Cash and cash equivalents', 'cash', -100000, -129250],
+  ['1000', 'Cash and cash equivalents', 'cash', -100000, -133000],
   ['1100', 'Trade receivables', 'trade_receivables', -20000, -30000],
   ['1200', 'Inventories', 'inventory', -15000, -20000],
   ['1500', 'Property and equipment - cost', 'property_plant_equipment', -60000, -80000],
@@ -42,7 +42,7 @@ const sample01CurrentAccounts = [
   ['3100', 'Retained earnings brought forward', 'retained_earnings', 103000, 103000],
   ['4000', 'Revenue', 'revenue', 0, 200000],
   ['5000', 'Cost of sales', 'cost_of_sales', 0, -80000],
-  ['6000', 'Operating expenses', 'operating_expenses', 0, -63750],
+  ['6000', 'Operating expenses', 'operating_expenses', 0, -60000],
   ['6100', 'Depreciation expense', 'depreciation_expense', 0, -10000],
   ['6200', 'Income tax expense', 'income_tax_expense', 0, -10000],
   ['3200', 'Dividends', 'dividends', 0, -25000],
@@ -72,13 +72,13 @@ const tradingCurrentAccounts = [
   ['1200', 'Inventories', 'inventory', -18000, -22000],
   ['1500', 'Property and equipment - cost', 'property_plant_equipment', -40000, -60000],
   ['1590', 'Accumulated depreciation', 'accumulated_depreciation', 10000, 17000],
-  ['2000', 'Trade payables', 'trade_payables', 12000, 17000],
+  ['2000', 'Trade payables', 'trade_payables', 12000, 16000],
   ['2100', 'Borrowings', 'borrowings', 0, 20000],
   ['3000', 'Share capital', 'share_capital', 40000, 40000],
   ['3100', 'Retained earnings brought forward', 'retained_earnings', 40000, 40000],
   ['4000', 'Revenue', 'revenue', 0, 220000],
   ['5000', 'Cost of sales', 'cost_of_sales', 0, -120000],
-  ['6000', 'Operating expenses', 'operating_expenses', 0, -40000],
+  ['6000', 'Operating expenses', 'operating_expenses', 0, -39000],
   ['6100', 'Depreciation expense', 'depreciation_expense', 0, -7000],
   ['6200', 'Income tax expense', 'income_tax_expense', 0, -8000],
   ['3200', 'Dividends', 'dividends', 0, -5000],
@@ -107,7 +107,10 @@ function journal(id, date, description, debitLedger, creditLedger, amount) {
   }
 }
 
-function makeCase({ id, name, entityName, currentAccounts, priorAccounts, currentId, priorId, journals, narrative, expected, noteTotals }) {
+function makeCase({
+  id, name, entityName, currentAccounts, priorAccounts, currentId, priorId, journals, narrative,
+  narrativeNoteNum = 3, narrativeNoteTitle = 'Inventories', expected, noteTotals,
+}) {
   const currentTrialBalance = trialBalance(currentId, currentAccounts)
   const comparativeTrialBalance = trialBalance(priorId, priorAccounts)
   return {
@@ -132,7 +135,7 @@ function makeCase({ id, name, entityName, currentAccounts, priorAccounts, curren
     comparativeTrialBalance,
     journals,
     disclosures: {
-      narrative: [{ note_num: 3, note_title: 'Inventories', text: narrative }],
+      narrative: [{ note_num: narrativeNoteNum, note_title: narrativeNoteTitle, text: narrative }],
       expectedTotals: noteTotals,
     },
     expected,
@@ -235,8 +238,8 @@ const scenarioB = makeCase({
 })
 
 const revaluationAccounts = [
-  ['1515', 'PPE revaluation adjustment', 'ppe_revaluation_adjustment', 0, -10000],
-  ['4190', 'Other comprehensive income - IAS 16 revaluation', 'other_comprehensive_income', 0, 10000],
+  ['1515', 'PPE revaluation adjustment', 'ppe_revaluation_adjustment', 0, 0],
+  ['4190', 'Other comprehensive income - IAS 16 revaluation', 'other_comprehensive_income', 0, 0],
   ['3205', 'Revaluation surplus reserve', 'revaluation_surplus', 0, 0],
 ]
 const scenarioC = makeCase({
@@ -252,6 +255,8 @@ const scenarioC = makeCase({
     journal('C-JE-OCI-01', '2025-12-31', 'Synthetic PPE class revaluation; OCI treatment per fixture assumptions', 'PPE revaluation adjustment', 'Other comprehensive income - IAS 16 revaluation', 10000),
   ],
   narrative: 'Test-only IAS 16 assumption: a revaluation increase for an entire PPE class is recognised in OCI and the revaluation surplus; the AED 10,000 movement is non-cash.',
+  narrativeNoteNum: 11,
+  narrativeNoteTitle: 'Other comprehensive income',
   expected: {
     sourceBalance: 0,
     comparativeSourceBalance: 0,
@@ -287,4 +292,31 @@ const scenarioC = makeCase({
 
 export function createUaeIfrsTestBedFixtures() {
   return [scenarioA, scenarioB, scenarioC].map(fixture => structuredClone(fixture))
+}
+
+export function applyUaeIfrsFixtureJournals(fixture) {
+  const rows = structuredClone(fixture.currentTrialBalance.rows)
+  for (const journal of fixture.journals) {
+    for (const entry of journal.entries) {
+      const amount = Number(entry.amount)
+      if (!Number.isFinite(amount) || amount <= 0 || !['Dr', 'Cr'].includes(entry.side)) {
+        throw new Error(`${journal.id} contains an invalid ${entry.side} journal amount.`)
+      }
+      const name = String(entry.ledgerName || '').trim().toLocaleLowerCase()
+      const code = String(entry.ledgerCode || '').trim().toLocaleLowerCase()
+      const matches = rows.filter(row => code
+        ? String(row.ledger_code || '').trim().toLocaleLowerCase() === code
+        : String(row.name || '').trim().toLocaleLowerCase() === name)
+      if (matches.length !== 1) {
+        throw new Error(`${journal.id} must resolve "${entry.ledgerName}" to exactly one source Trial Balance row.`)
+      }
+      const row = matches[0]
+      const signedDelta = entry.side === 'Dr' ? -amount : amount
+      row.closing_balance = Math.round((Number(row.closing_balance || 0) + signedDelta + Number.EPSILON) * 100) / 100
+      row.trail_balance = row.closing_balance
+      row.debit = Math.round((Number(row.debit || 0) + (entry.side === 'Dr' ? amount : 0) + Number.EPSILON) * 100) / 100
+      row.credit = Math.round((Number(row.credit || 0) + (entry.side === 'Cr' ? amount : 0) + Number.EPSILON) * 100) / 100
+    }
+  }
+  return rows
 }

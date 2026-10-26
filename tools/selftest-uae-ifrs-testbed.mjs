@@ -3,7 +3,10 @@ import {
   buildUaeDemoFinancials,
   buildUaeDemoFinancialsHtml,
 } from '../src/renderer/src/components/Engagements/uaeDemoReporting.js'
-import { createUaeIfrsTestBedFixtures } from './uae-ifrs-testbed-fixtures.mjs'
+import {
+  applyUaeIfrsFixtureJournals,
+  createUaeIfrsTestBedFixtures,
+} from './uae-ifrs-testbed-fixtures.mjs'
 
 let assertions = 0
 function check(condition, message) {
@@ -13,7 +16,7 @@ function check(condition, message) {
 
 function calculate(fixture, overrides = {}) {
   return buildUaeDemoFinancials({
-    currentRows: fixture.currentTrialBalance.rows,
+    currentRows: applyUaeIfrsFixtureJournals(fixture),
     comparativeRows: fixture.comparativeTrialBalance.rows,
     mappings: fixture.currentTrialBalance.mappings,
     periodEnd: fixture.engagement.settings.currentPeriodEnd,
@@ -56,6 +59,7 @@ function assertResults(fixture, financials) {
   const expected = fixture.expected
   check(financials.sourceBalance === expected.sourceBalance, `${fixture.id} current TB balances`)
   check(financials.comparativeSourceBalance === expected.comparativeSourceBalance, `${fixture.id} comparative TB balances`)
+  check(sourceBalance(applyUaeIfrsFixtureJournals(fixture)) === 0, `${fixture.id} journal-adjusted final TB balances`)
 
   for (const [period, statement] of [['current', financials.current], ['comparative', financials.comparative]]) {
     const values = expected[period]
@@ -132,6 +136,10 @@ for (const fixture of fixtures) {
 
 const [baseline, trading, oci] = fixtures
 const ociFinancials = calculated.get(oci.id)
+check(!htmlByScenario.get(trading.id).includes('Other comprehensive income - Note 11'),
+  'a zero-OCI statement does not reference an omitted Note 11')
+check(htmlByScenario.get(oci.id).includes('Other comprehensive income - Note 11'),
+  'a non-zero OCI statement references its rendered Note 11')
 check(ociFinancials.current.profit.profitForYear === calculated.get(trading.id).current.profit.profitForYear,
   'the revaluation OCI is not forced through profit or loss')
 check(ociFinancials.current.profit.otherComprehensiveIncome === 10000,
@@ -177,10 +185,6 @@ check(remappedHtml !== htmlByScenario.get(trading.id)
 'a mapping correction changes report line presentation without changing total profit')
 
 const journalAdjusted = structuredClone(trading)
-const expense = journalAdjusted.currentTrialBalance.rows.find(row => row.ledger_code === '6000')
-const payables = journalAdjusted.currentTrialBalance.rows.find(row => row.ledger_code === '2000')
-expense.closing_balance -= 1000
-payables.closing_balance += 1000
 journalAdjusted.journals.push({
   id: 'B-JE-02',
   date: '2025-12-31',
@@ -198,7 +202,7 @@ check(journalHtml !== htmlByScenario.get(trading.id)
   && journalFinancials.current.position.payables === 18000,
 'a balanced journal adjustment changes the next report content and reconciles')
 
-const displayRows = structuredClone(trading.currentTrialBalance.rows)
+const displayRows = applyUaeIfrsFixtureJournals(trading)
 const originalCash = displayRows.find(row => row.ledger_code === '1000').closing_balance
 const displayFinancials = calculate(trading)
 const displayHtml = buildHtml(trading, displayFinancials)

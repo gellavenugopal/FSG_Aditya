@@ -5,20 +5,18 @@ Last updated: **2026-10-27**
 ## Repository state
 
 - Branch: `feature/engagement-foundation`
-- Previous context checkpoint: `9e91bbb` — `Document verified UAE Sample 01 demo`.
-- Current UAE demo implementation checkpoint: `52d6440` — `Build synthetic UAE Sample 01 reporting demo`.
-- Relevant application commits remain present: `6dea749` reporting workflow, `a683914` firm settings, and `666b110` EPIPE guard.
-- Previous relevant checkpoint: `a683914ce057df67691e04efe709073bb90fad9e` — Firm Settings and report identity.
-- Latest application checkpoint: `dd154c0` — `Fix UAE demo report persistence and layout`.
-- UAE IFRS test-bed implementation checkpoint: `a5785c8` — `test: add synthetic UAE IFRS test bed`.
-- UAE access/list UX and corrected PDF review checkpoint: `5ccdf38` — `Fix UAE demo access and PDF corrections` (local; no push or merge).
+- Base HEAD before the current test-bed checkpoint: `4cb550d` — `Record UAE access and PDF checkpoint`.
+- Earlier milestones remain in history: `6dea749` reporting workflow, `a683914` firm settings, `666b110` EPIPE guard, `a5785c8` synthetic UAE test bed, and `5ccdf38` UAE access/list and PDF review.
+- Current test-bed application, harness and documentation changes are pending a local checkpoint commit.
 - No push or merge has been performed.
 
 ## Current task and next action
 
+The current task completed the first-cut synthetic UAE IFRS test bed. Cases B and C now exist as separate engagements in the persistent isolated database; their reporting selections and saved PDFs were reopened through the normal desktop UI after an application restart. The exact commands, paths and hashes are in [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md). The immediate next action is a local commit of only this task's source, harness and documentation changes.
+
 The empty UAE engagement list was reproduced and diagnosed as a firm-scope mismatch, not an authentication, service, or loading failure. The protected UI now identifies the signed-in firm and defaults administrators/partners to the firm-scoped list. Normal login and visible navigation reached `UAE-SAMPLE-01-2025`, and the saved v5 bytes were downloaded through the application.
 
-UAE Sample 01 v5 remains preserved and unchanged. A corrected draft v6 was generated and downloaded through the normal desktop UI; every page, contents destination and printed page number was checked. Next action: provision test-bed cases B and C as separate isolated engagement records, then exercise their saved outputs through the desktop and an application restart. The current A/B/C renderer fixtures are not saved engagement outputs. See [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md) and [ROADMAP.md](./ROADMAP.md).
+UAE Sample 01 v5 and India finalised v5 remain unchanged. A corrected UAE Sample 01 draft v6 was generated and downloaded through the normal desktop UI; every page, contents destination and printed page number was checked. See [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md) and [ROADMAP.md](./ROADMAP.md) for the B/C status and remaining test-bed gaps.
 
 The broad legacy migration and extended EPIPE investigation are deferred for this window unless they block the isolated demonstration. Their unresolved status is retained below.
 
@@ -54,10 +52,11 @@ The saved engagement includes current/prior TBs, balanced journals, final TB, a 
 ### First-cut UAE IFRS test bed
 
 - Deterministic synthetic fixtures cover A) a Sample 01 baseline-calibrated recalculation, B) a simple trading LLC and C) a controlled IAS 16 revaluation-OCI example. The A fixture matches documented Sample 01 headline results but is not an export of saved TB ledger rows.
-- The case calculations, notes, selected comparatives, journal/mapping/narrative changes and actionable failure cases passed `npm run uae:test` (232 assertions). `npm run engagement:test` passed 99 assertions, including edit permission denial, exact journal imbalance detail, versioned output data and signing-selection retrieval after a service restart.
-- `npm run build` passed with the existing `tallyParsers.js` mixed import warning. The latest `npm run uae:pdf` generated A/B/C renderer-fixture PDFs (11/11/11 pages) in `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-IFRS-Testbed\run-2026-10-26T21-24-11-842Z`. Each contents destination resolves to its titled page, printed numbers and all footers match, and all pages were visually inspected. India-specific terms, replacement glyphs and the old adjustment label were absent.
-- These PDFs are generated from the production statement HTML by local Edge; they are not application/service-saved report outputs. Separate B/C engagement records, editable structured disclosure schedules and desktop restart/reopen coverage for these cases remain unverified/unsupported. Coverage matrix and details: [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md).
-- Preserved UAE v3, UAE v5 and India finalised v5 were rehashed after test-bed PDF generation; all match their recorded SHA-256 values. Keep them unchanged.
+- The case calculations, notes, selected comparatives, journal/mapping/narrative changes and actionable failure cases passed `npm run uae:test` (237 assertions). `npm run engagement:test` passed 99 assertions against temporary PostgreSQL 18, including edit permission denial, journal imbalance detail, versioned output data and signing-selection retrieval after a service restart.
+- The protected desktop created/reused B (engagement 3) and C (engagement 4), saved v1/v2 outputs, restarted against the same isolated database and reopened v2. Both v2 PDFs have 11 pages; all pages were visually inspected, correct notes/contents were checked, and earlier v1 hashes remained unchanged. Exact hashes and locations are in [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md).
+- C's controlled OCI mappings required an additive UAE-specific mapping-constraint update. The narrative save now retains the caller's stable note number and reports a conflict rather than silently assigning another; the restarted B/C v2 PDFs verified the corrected note placement.
+- `npm run uae:pdf` generated renderer-fixture PDFs for A/B/C (11/11/11 pages) in `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-IFRS-Testbed\run-2026-10-26T22-41-40-405Z`. These are not service-saved outputs. `npm run build` passed with the existing `tallyParsers.js` mixed import warning.
+- `node tools/selftest-fs-snapshot.mjs` and `node tools/selftest-final-signing.mjs` passed against disposable data. UAE Sample 01 v5 and India finalised v5 were rehashed and remain at their recorded SHA-256 values. Structured disclosure editing, post-output journal/mapping changes reaching a new saved version, and B/C finalisation remain unverified or unsupported as detailed in the coverage matrix.
 
 ## EPIPE
 

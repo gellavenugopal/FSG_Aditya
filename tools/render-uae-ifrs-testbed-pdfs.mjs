@@ -8,7 +8,10 @@ import {
   buildUaeDemoFinancials,
   buildUaeDemoFinancialsHtml,
 } from '../src/renderer/src/components/Engagements/uaeDemoReporting.js'
-import { createUaeIfrsTestBedFixtures } from './uae-ifrs-testbed-fixtures.mjs'
+import {
+  applyUaeIfrsFixtureJournals,
+  createUaeIfrsTestBedFixtures,
+} from './uae-ifrs-testbed-fixtures.mjs'
 
 const demoHome = process.env.FSG_DEMO_HOME || path.join(os.homedir(), 'FSG-Aditya-engagement-demo')
 const manifestPath = path.join(demoHome, 'target.json')
@@ -54,7 +57,7 @@ const results = []
 try {
   for (const fixture of createUaeIfrsTestBedFixtures()) {
     const financials = buildUaeDemoFinancials({
-      currentRows: fixture.currentTrialBalance.rows,
+      currentRows: applyUaeIfrsFixtureJournals(fixture),
       comparativeRows: fixture.comparativeTrialBalance.rows,
       mappings: fixture.currentTrialBalance.mappings,
       periodEnd: fixture.engagement.settings.currentPeriodEnd,

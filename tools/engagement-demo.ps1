@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true, Position = 0)]
-  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'generate-uae-tbs', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'uae-access-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui')]
+  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'generate-uae-tbs', 'generate-ifrs-testbed-tbs', 'ifrs-cases-create-ui', 'ifrs-cases-reopen-ui', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'uae-access-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui')]
   [string]$Action
 )
 
@@ -136,6 +136,44 @@ switch ($Action) {
     try {
       & node (Join-Path $RepositoryRoot 'tools\generate-uae-demo-tbs.mjs')
       if ($LASTEXITCODE -ne 0) { throw 'Synthetic UAE demonstration Trial Balances could not be generated.' }
+    } finally { Pop-Location }
+  }
+  'generate-ifrs-testbed-tbs' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    Set-DisposableTestEnvironment $state
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\generate-uae-ifrs-testbed-tbs.mjs')
+      if ($LASTEXITCODE -ne 0) { throw 'Synthetic UAE IFRS test-bed Trial Balances could not be generated.' }
+    } finally { Pop-Location }
+  }
+  'ifrs-cases-create-ui' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    Set-DisposableTestEnvironment $state
+    Wait-ForDemoDesktop
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-ifrs-cases.mjs') create
+      if ($LASTEXITCODE -ne 0) { throw 'The isolated B/C test-bed engagement workflow failed.' }
+    } finally { Pop-Location }
+  }
+  'ifrs-cases-reopen-ui' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    Set-DisposableTestEnvironment $state
+    Wait-ForDemoDesktop
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-ifrs-cases.mjs') reopen
+      if ($LASTEXITCODE -ne 0) { throw 'The saved B/C engagement restart and reopening verification failed.' }
     } finally { Pop-Location }
   }
   'verify-ui' {

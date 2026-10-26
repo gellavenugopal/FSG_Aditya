@@ -2262,6 +2262,7 @@ export function registerEngagementHandlers(ipcMain, database) {
       'cash','trade_receivables','inventory','property_plant_equipment','accumulated_depreciation',
       'trade_payables','borrowings','share_capital','retained_earnings','revenue','other_income',
       'cost_of_sales','operating_expenses','depreciation_expense','income_tax_expense','dividends',
+      'ppe_revaluation_adjustment','other_comprehensive_income','revaluation_surplus',
     ])
     const mappings = input.mappings.map(item => ({
       tbRowId: Number(item?.tbRowId),
@@ -2433,27 +2434,30 @@ export function registerEngagementHandlers(ipcMain, database) {
       throw new Error('Enter a valid note number, title and disclosure of no more than 12,000 characters.')
     }
     await runInTransaction(async () => {
-      const { rows: [existing] } = await query(
-        `SELECT note_num FROM note_disclosures
-         WHERE tb_id=$1 AND lower(btrim(note_title))=lower(btrim($2))
-         ORDER BY note_num LIMIT 1 FOR UPDATE`,
-        [context.trialBalance.id, noteTitle]
+      const { rows: existingRows } = await query(
+        `SELECT note_num,note_title FROM note_disclosures
+         WHERE tb_id=$1 AND (
+           note_num=$2 OR lower(btrim(note_title))=lower(btrim($3))
+         ) FOR UPDATE`,
+        [context.trialBalance.id, noteNum, noteTitle]
       )
+      const existing = existingRows.find(row => String(row.note_title).trim().toLowerCase() === noteTitle.toLowerCase())
+      const conflicting = existingRows.find(row => Number(row.note_num) === noteNum
+        && String(row.note_title).trim().toLowerCase() !== noteTitle.toLowerCase())
+      if (conflicting) {
+        throw new Error(`Note number ${noteNum} is already assigned to "${conflicting.note_title}".`)
+      }
       if (existing) {
         await query(
-          `UPDATE note_disclosures SET text=$1,updated_at=now()
-           WHERE tb_id=$2 AND note_num=$3`,
-          [text, context.trialBalance.id, existing.note_num]
+          `UPDATE note_disclosures SET note_num=$1,note_title=$2,text=$3,updated_at=now()
+           WHERE tb_id=$4 AND note_num=$5`,
+          [noteNum, noteTitle, text, context.trialBalance.id, existing.note_num]
         )
       } else {
-        const { rows: [last] } = await query(
-          `SELECT COALESCE(MAX(note_num),0)::integer AS note_num FROM note_disclosures WHERE tb_id=$1`,
-          [context.trialBalance.id]
-        )
         await query(
           `INSERT INTO note_disclosures (tb_id,note_num,note_title,text,updated_at)
            VALUES ($1,$2,$3,$4,now())`,
-          [context.trialBalance.id, Number(last.note_num) + 1, noteTitle, text]
+          [context.trialBalance.id, noteNum, noteTitle, text]
         )
       }
       await logAudit(user, 'report.note_disclosure_updated', context.engagement.id, {

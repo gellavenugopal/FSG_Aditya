@@ -282,13 +282,34 @@ export async function ensureEngagementSchema(query) {
       line_key TEXT NOT NULL CHECK (line_key IN (
         'cash','trade_receivables','inventory','property_plant_equipment','accumulated_depreciation',
         'trade_payables','borrowings','share_capital','retained_earnings','revenue','other_income',
-        'cost_of_sales','operating_expenses','depreciation_expense','income_tax_expense','dividends'
+        'cost_of_sales','operating_expenses','depreciation_expense','income_tax_expense','dividends',
+        'ppe_revaluation_adjustment','other_comprehensive_income','revaluation_surplus'
       )),
       updated_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (engagement_id,trial_balance_id,tb_row_id)
     )
   `)
+  const { rows: mappingConstraints } = await query(`
+    SELECT pg_get_constraintdef(oid) AS definition
+    FROM pg_constraint
+    WHERE conrelid='engagement_uae_demo_mappings'::regclass
+      AND conname='engagement_uae_demo_mappings_line_key_check'
+  `)
+  const mappingConstraint = mappingConstraints[0]?.definition || ''
+  const ociMappingKeys = ['ppe_revaluation_adjustment', 'other_comprehensive_income', 'revaluation_surplus']
+  if (!ociMappingKeys.every(key => mappingConstraint.includes(`'${key}'`))) {
+    await query(`
+      ALTER TABLE engagement_uae_demo_mappings
+        DROP CONSTRAINT IF EXISTS engagement_uae_demo_mappings_line_key_check,
+        ADD CONSTRAINT engagement_uae_demo_mappings_line_key_check CHECK (line_key IN (
+          'cash','trade_receivables','inventory','property_plant_equipment','accumulated_depreciation',
+          'trade_payables','borrowings','share_capital','retained_earnings','revenue','other_income',
+          'cost_of_sales','operating_expenses','depreciation_expense','income_tax_expense','dividends',
+          'ppe_revaluation_adjustment','other_comprehensive_income','revaluation_surplus'
+        ))
+    `)
+  }
   await query(`
     CREATE TABLE IF NOT EXISTS engagement_audit_report_settings (
       engagement_id BIGINT PRIMARY KEY REFERENCES engagements(id) ON DELETE CASCADE,

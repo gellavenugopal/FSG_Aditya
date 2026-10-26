@@ -419,6 +419,8 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
   const priorLabel = `31 December ${String(financials.periods.comparative).slice(0, 4)}`
   const current = financials.current
   const prior = financials.comparative
+  const hasOtherComprehensiveIncome = current.profit.otherComprehensiveIncome !== 0
+    || prior.profit.otherComprehensiveIncome !== 0
   const statementPages = [
     {
       title: 'Statement of financial position',
@@ -448,7 +450,11 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
         { label: 'Profit before tax', current: current.profit.profitBeforeTax, comparative: prior.profit.profitBeforeTax, total: true },
         { label: 'Income tax expense - Note 10', current: -current.profit.tax, comparative: -prior.profit.tax },
         { label: 'Profit for the year', current: current.profit.profitForYear, comparative: prior.profit.profitForYear, total: true },
-        { label: 'Other comprehensive income - Note 11', current: current.profit.otherComprehensiveIncome, comparative: prior.profit.otherComprehensiveIncome },
+        {
+          label: `Other comprehensive income${hasOtherComprehensiveIncome ? ' - Note 11' : ''}`,
+          current: current.profit.otherComprehensiveIncome,
+          comparative: prior.profit.otherComprehensiveIncome,
+        },
         { label: 'Total comprehensive income', current: current.profit.totalComprehensiveIncome, comparative: prior.profit.totalComprehensiveIncome, total: true },
       ],
     },
