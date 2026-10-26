@@ -117,6 +117,7 @@ assert.match(html, /Statement of changes in equity/)
 assert.match(html, /Statement of cash flows/)
 assert.match(html, /html,body\{margin:0\}/)
 assert.match(html, /\.report-page\{position:relative;min-height:260mm/)
+assert.match(html, /\.logo\{display:block;width:60mm;height:15mm;object-fit:contain/)
 assert.doesNotMatch(html, /Schedule III|Companies Act|INR|India/i)
 assert.equal((html.match(/class="report-page"/g) || []).length, financials.notes.length + 7)
 

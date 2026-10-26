@@ -230,7 +230,7 @@ export default function FirmSettingsPanel({ user }) {
                   }
                 }} className="w-full text-xs text-gray-600 file:mr-2 file:rounded-md file:border file:border-gray-300 file:bg-white file:px-2 file:py-1.5" />
               </label>
-              {firm.logoBase64 && <img alt="Selected firm logo" src={`data:${firm.logoMimeType};base64,${firm.logoBase64}`} className="max-h-20 max-w-48 object-contain object-left" />}
+              {firm.logoBase64 && <img alt="Selected firm logo" src={`data:${firm.logoMimeType};base64,${firm.logoBase64}`} className="h-20 w-48 object-contain object-left" />}
               {firm.logoBase64 && data.canManage && <button type="button" onClick={() => {
                 updateFirm('logoMimeType', '')
                 updateFirm('logoBase64', '')

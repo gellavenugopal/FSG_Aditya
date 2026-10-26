@@ -50,22 +50,60 @@ function pngChunk(type, data) {
 }
 
 function makeSyntheticLogo() {
+  const width = 400
+  const height = 96
+  const scale = 8
+  const background = [255, 255, 255, 255]
+  const ink = [25, 73, 128, 255]
+  const accent = [19, 130, 125, 255]
+  const glyphs = {
+    F: ['11111', '10000', '10000', '11110', '10000', '10000', '10000'],
+    S: ['01111', '10000', '10000', '01110', '00001', '00001', '11110'],
+    G: ['01110', '10001', '10000', '10111', '10001', '10001', '01110'],
+    D: ['11110', '10001', '10001', '10001', '10001', '10001', '11110'],
+    E: ['11111', '10000', '10000', '11110', '10000', '10000', '11111'],
+    M: ['10001', '11011', '10101', '10101', '10001', '10001', '10001'],
+    O: ['01110', '10001', '10001', '10001', '10001', '10001', '01110'],
+  }
+  const pixels = Buffer.alloc(width * height * 4)
+  for (let index = 0; index < width * height; index++) {
+    pixels.set(background, index * 4)
+  }
+  const drawRect = (x, y, w, h, color) => {
+    for (let row = Math.max(0, y); row < Math.min(height, y + h); row++) {
+      for (let column = Math.max(0, x); column < Math.min(width, x + w); column++) {
+        pixels.set(color, (row * width + column) * 4)
+      }
+    }
+  }
+  const word = 'FSG DEMO'
+  let cursorX = 18
+  for (const character of word) {
+    if (character === ' ') {
+      cursorX += scale * 2
+      continue
+    }
+    glyphs[character].forEach((row, rowIndex) => {
+      for (let column = 0; column < row.length; column++) {
+        if (row[column] === '1') {
+          drawRect(cursorX + column * scale, 12 + rowIndex * scale, scale, scale, ink)
+        }
+      }
+    })
+    cursorX += 6 * scale
+  }
+  drawRect(18, 82, width - 36, 5, accent)
+
   const header = Buffer.alloc(13)
-  header.writeUInt32BE(16, 0)
-  header.writeUInt32BE(16, 4)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
   header[8] = 8
   header[9] = 6
   const rows = []
-  for (let y = 0; y < 16; y++) {
-    const row = Buffer.alloc(1 + 16 * 4)
+  for (let y = 0; y < height; y++) {
+    const row = Buffer.alloc(1 + width * 4)
     row[0] = 0
-    for (let x = 0; x < 16; x++) {
-      const offset = 1 + x * 4
-      row[offset] = 25
-      row[offset + 1] = 73
-      row[offset + 2] = 128
-      row[offset + 3] = 255
-    }
+    pixels.copy(row, 1, y * width * 4, (y + 1) * width * 4)
     rows.push(row)
   }
   return Buffer.concat([

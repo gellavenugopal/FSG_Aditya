@@ -771,6 +771,12 @@ try {
   check(savedOutput.data.version === 1 && savedOutput.data.template_revision === 2
     && savedOutput.data.financial_data_sha256.length === 64,
   'combined PDF output is versioned with the exact template revision and final-TB data hash')
+  const savedOutputs = await ok('reporting/outputs', { engagementId }, ownerToken)
+  const listedOutput = savedOutputs.data.find(output => Number(output.id) === Number(savedOutput.data.id))
+  check(listedOutput?.approval_date === '2026-04-30'
+    && listedOutput?.approval_place === 'Approval City'
+    && JSON.stringify(listedOutput?.approval_signatory_ids) === JSON.stringify(orderedSignatoryIds),
+  'report output list restores its saved financial-statement approval date, place and ordered signatories')
   const storedOutput = await ok('reporting/output/read', { outputId: savedOutput.data.id }, readerToken)
   const storedPdf = Buffer.from(storedOutput.data.pdfContentBase64, 'base64')
   const parsedPdf = await PDFDocument.load(storedPdf)

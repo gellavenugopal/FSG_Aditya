@@ -135,6 +135,21 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
+    const snapshot = snapshots.find(item => String(item.id) === String(finalId))
+    if (!snapshot) return
+    const savedOutput = outputs.find(item => Number(item.final_tb_version) === Number(snapshot.version))
+    if (!savedOutput) return
+    setApproval(current => ({
+      ...current,
+      approvalDate: savedOutput.approval_date || '',
+      approvalPlace: savedOutput.approval_place || '',
+      signatoryIds: Array.isArray(savedOutput.approval_signatory_ids)
+        ? savedOutput.approval_signatory_ids.map(Number)
+        : current.signatoryIds,
+    }))
+  }, [finalId, outputs, snapshots])
+
+  useEffect(() => {
     let cancelled = false
     if (!finalId || !supported) {
       setBundle(null)
@@ -702,7 +717,7 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
               </label>
             </div>
             {bundle.firmSettings?.branding?.logoBase64 && <div className="mt-3 flex items-center gap-3 text-xs text-gray-600">
-              <img alt="Selected report branding" src={`data:${bundle.firmSettings.branding.logoMimeType};base64,${bundle.firmSettings.branding.logoBase64}`} className="max-h-12 max-w-40 object-contain" />
+              <img alt="Selected report branding" src={`data:${bundle.firmSettings.branding.logoMimeType};base64,${bundle.firmSettings.branding.logoBase64}`} className="h-20 w-64 object-contain" />
               <span>{bundle.firmSettings.branding.name} logo</span>
             </div>}
             {editable && <button type="button" disabled={busy} onClick={() => run(async () => {

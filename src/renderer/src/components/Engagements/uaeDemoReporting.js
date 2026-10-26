@@ -480,7 +480,7 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
       th{background:#f1f5f9}
       tr.total{font-weight:700;border-top:1px solid #334155}
       .signature{margin-top:12mm}
-      .logo{display:block;max-width:45mm;max-height:20mm;object-fit:contain;margin:0 auto 4mm}
+      .logo{display:block;width:60mm;height:15mm;object-fit:contain;margin:0 auto 4mm}
       header{text-align:center;margin-bottom:8mm}
       footer{position:absolute;bottom:4mm;left:4mm;right:4mm;border-top:1px solid #cbd5e1;padding-top:2mm;color:#7c2d12;font-size:8pt}
     </style>`

@@ -1462,7 +1462,7 @@ export function registerEngagementHandlers(ipcMain, database) {
       throw new Error('Choose a valid prior-year Trial Balance.')
     }
     return runInTransaction(async () => {
-      if (tbId != null) {
+      if (tbId != null && context.engagement.reporting_pack_id !== 'AE_UAE_DEMO') {
         const { rows: [prior] } = await query(
           `SELECT tb.id
            FROM trial_balances tb
@@ -1656,16 +1656,20 @@ export function registerEngagementHandlers(ipcMain, database) {
          FROM engagement_journals WHERE engagement_id=$1 AND source_trial_balance_id=$2`,
         [context.engagement.id, context.trialBalance.id]
       )
-      const { rows: [ruleSet] } = await query(
-        `SELECT mrs.id
-         FROM mapping_rule_sets mrs
-         JOIN entities e ON e.id=$1
-         WHERE (mrs.entity_id=e.id OR mrs.is_default=TRUE)
-         ORDER BY (mrs.entity_id=e.id) DESC,mrs.is_default DESC,mrs.id
-         LIMIT 1`,
-        [context.engagement.entity_id]
-      )
-      if (!ruleSet) throw new Error('No India mapping rule set is available for this client. Configure the existing India mapping rules before processing.')
+      let mappingRuleSetId = null
+      if (currentEngagement.reporting_pack_id !== 'AE_UAE_DEMO') {
+        const { rows: [ruleSet] } = await query(
+          `SELECT mrs.id
+           FROM mapping_rule_sets mrs
+           JOIN entities e ON e.id=$1
+           WHERE (mrs.entity_id=e.id OR mrs.is_default=TRUE)
+           ORDER BY (mrs.entity_id=e.id) DESC,mrs.is_default DESC,mrs.id
+           LIMIT 1`,
+          [context.engagement.entity_id]
+        )
+        if (!ruleSet) throw new Error('No India mapping rule set is available for this client. Configure the existing India mapping rules before processing.')
+        mappingRuleSetId = Number(ruleSet.id)
+      }
 
       const { rows: journalRows } = await query(
         `SELECT l.ledger_name,l.ledger_code,l.entry_side,l.amount
@@ -1786,24 +1790,28 @@ export function registerEngagementHandlers(ipcMain, database) {
         `INSERT INTO engagement_final_tb_snapshots
            (engagement_id,source_trial_balance_id,trial_balance_id,version,journal_watermark,mapping_rule_set_id,created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [context.engagement.id, context.trialBalance.id, tb.id, versionRow.next_version, watermark.journal_id, ruleSet.id, user.id]
+        [context.engagement.id, context.trialBalance.id, tb.id, versionRow.next_version, watermark.journal_id, mappingRuleSetId, user.id]
       )
-      let queryQueue = Promise.resolve()
-      const mappingDatabase = {
-        query(sql, params) {
-          const result = queryQueue.then(() => query(sql, params))
-          queryQueue = result.then(() => undefined, () => undefined)
-          return result
-        },
-        runInTransaction,
+      let mappedRows = 0
+      if (mappingRuleSetId != null) {
+        let queryQueue = Promise.resolve()
+        const mappingDatabase = {
+          query(sql, params) {
+            const result = queryQueue.then(() => query(sql, params))
+            queryQueue = result.then(() => undefined, () => undefined)
+            return result
+          },
+          runInTransaction,
+        }
+        const mapped = await runMappingEngine(
+          Number(tb.id),
+          mappingRuleSetId,
+          Number(context.engagement.constitution),
+          { businessType: context.engagement.business_type, database: mappingDatabase }
+        )
+        await persistMappingResults(mapped, mappingDatabase)
+        mappedRows = mapped.length
       }
-      const mapped = await runMappingEngine(
-        Number(tb.id),
-        Number(ruleSet.id),
-        Number(context.engagement.constitution),
-        { businessType: context.engagement.business_type, database: mappingDatabase }
-      )
-      await persistMappingResults(mapped, mappingDatabase)
       const { rows: [priorTb] } = await query(
         `SELECT tb.id,tb.entity_id,tb.entity_period_id,priorFp.date_from,priorFp.date_till,
                 currentFp.date_from AS current_date_from,currentFp.date_till AS current_date_till
@@ -1820,7 +1828,7 @@ export function registerEngagementHandlers(ipcMain, database) {
            AND priorFp.date_till=(currentFp.date_till - interval '1 year')::date`,
         [context.engagement.id, context.engagement.entity_id]
       )
-      if (priorTb) {
+      if (priorTb && mappingRuleSetId != null) {
         const { rows: [existingPriorMappings] } = await query(
           `SELECT COUNT(*)::integer AS count FROM mapped_tb WHERE tb_id=$1`,
           [priorTb.id]
@@ -1828,7 +1836,7 @@ export function registerEngagementHandlers(ipcMain, database) {
         if (Number(existingPriorMappings.count) === 0) {
           const priorMapped = await runMappingEngine(
             Number(priorTb.id),
-            Number(ruleSet.id),
+            mappingRuleSetId,
             Number(context.engagement.constitution),
             { businessType: context.engagement.business_type, database: mappingDatabase }
           )
@@ -1842,14 +1850,14 @@ export function registerEngagementHandlers(ipcMain, database) {
         journalWatermark: Number(watermark.journal_id),
         rowCount: resultRows.length,
         balanceDifference: Number(balanceDifference.toFixed(2)),
-        mappingRuleSetId: Number(ruleSet.id),
+        mappingRuleSetId,
       })
       return {
         trialBalance: { ...tb, id: Number(tb.id), row_count: Number(tb.row_count) },
         version: versionRow.next_version,
         journalWatermark: Number(watermark.journal_id),
         balanceDifference: Number(balanceDifference.toFixed(2)),
-        mappedRows: mapped.length,
+        mappedRows,
       }
     })
   })
@@ -2637,7 +2645,14 @@ export function registerEngagementHandlers(ipcMain, database) {
       `SELECT o.id,o.version,o.template_id,o.template_revision,o.financial_data_sha256,
               o.created_by,u.display_name AS created_by_name,o.created_at,o.finalised_by,
               o.finalised_at,f.display_name AS finalised_by_name,
-              s.version AS final_tb_version,tb.filename AS final_tb_filename
+              s.version AS final_tb_version,tb.filename AS final_tb_filename,
+              o.signing_details->>'approvalDate' AS approval_date,
+              o.signing_details->>'approvalPlace' AS approval_place,
+              COALESCE((
+                SELECT json_agg((signatory.item->>'id')::integer ORDER BY signatory.ordinality)
+                FROM jsonb_array_elements(COALESCE(o.signing_details->'signatories','[]'::jsonb))
+                  WITH ORDINALITY AS signatory(item,ordinality)
+              ),'[]'::json) AS approval_signatory_ids
        FROM engagement_report_outputs o
        JOIN firm_users u ON u.id=o.created_by
        LEFT JOIN firm_users f ON f.id=o.finalised_by
