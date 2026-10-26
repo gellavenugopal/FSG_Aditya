@@ -40,6 +40,7 @@ The additive definitions and upgrades live in `src/main/db/engagement-schema.js`
 - `engagement_audit_report_settings` stores editable auditor-authored report inputs. `engagement_report_outputs` persists versioned PDF bytes and output identity/signing snapshots.
 - `engagement_audit_log` records protected workflow actions. Legacy links are explicit (`engagement_legacy_links`, `engagement_legacy_tb_links`); shared entity/period membership does not create access by itself.
 - Professional firm/office/partner selections extend existing firm masters and snapshot selected identity in saved outputs so later master edits do not rewrite finalized output.
+- Saved report-output listing returns the approval date, approval place and ordered signatory IDs from each output's signing snapshot. The renderer restores these values for the selected final-TB version after restart; it does not infer them from current master settings.
 
 Schema changes are additive. Do not replace the legacy accounting tables or infer historical ownership/period relationships.
 
@@ -56,8 +57,9 @@ The desktop reuses the India financial statement/notes builders and Electron PDF
 - `AE_UAE_DEMO` is implemented only as a synthetic UAE LLC demonstration path; it is not a general UAE or IFRS reporting engine.
 - `src/renderer/src/components/Engagements/uaeDemoReporting.js` derives its supported statement totals, cash flows and notes from saved current/prior final-TB rows plus the saved UAE account mappings. It normalizes the repository's negative-debit/positive-credit convention, checks balance/reconciliation, and builds a separate AED report layout rather than relabelling the India report.
 - The mapping save operation is authorized by the engagement service and persists to `engagement_uae_demo_mappings`. Report output uses the selected firm/office/branding/signatories and saved auditor inputs; the resulting combined PDF remains a versioned service output.
-- UAE Sample 01 is synthetic AED data, clearly marked “Draft for demonstration.” All three saved outputs are drafts. The current v3 fallback and verification are recorded in [CURRENT_STATUS.md](./CURRENT_STATUS.md).
-- The final-TB snapshot mechanism still records the existing default India mapping-rule-set reference. UAE statement mapping and rendering are separate; do not interpret that internal reference as UAE accounting support.
+- UAE Sample 01 is synthetic AED data, clearly marked “Draft for demonstration.” Saved v5 is the current visually inspected 17-page draft; v3 is preserved as the original baseline. Verification and hashes are recorded in [CURRENT_STATUS.md](./CURRENT_STATUS.md).
+- New `AE_UAE_DEMO` final-TB snapshots leave `mapping_rule_set_id` null and skip the India mapping engine, including for prior-year TB selection. UAE statement mappings remain separately authorized and persisted in `engagement_uae_demo_mappings`. Historic v1/v2 snapshots retain their prior reference; it did not drive UAE calculations or authorization.
+- The UAE wordmark is rendered in fixed aspect-safe preview and PDF boxes using `object-fit: contain`. PDF box dimensions are chosen to preserve the auditor-report page break and contents/footer numbering.
 
 ### Planned
 

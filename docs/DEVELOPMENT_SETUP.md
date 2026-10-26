@@ -36,7 +36,7 @@ The verified non-secret target is loopback PostgreSQL `127.0.0.1:64023`, databas
 1. Close the FSG Bharat window normally. Wait for the associated launcher to exit and record `electron-vite exited; code=0; signal=none.` in the isolated `dev-launcher.log`.
 2. If the database was stopped, start it with `.\tools\engagement-demo.ps1 start-db`.
 3. From the repository root, run `.\tools\engagement-demo.ps1 provision-users` if account verification is needed, then run `.\tools\engagement-demo.ps1 launch`.
-4. For the saved-output check, run `.\tools\engagement-demo.ps1 reopen-ui` from a second PowerShell window while the desktop is open.
+4. For the saved India workflow-output check, run `.\tools\engagement-demo.ps1 reopen-ui` from a second PowerShell window while the desktop is open. For India finalised v5 or UAE v5, use the workflow-specific instructions below.
 
 Do not run a second app process against the same profile. Do not run `init` to fix an ordinary startup issue; first inspect the manifest, exact process tree and logs.
 
@@ -81,16 +81,32 @@ $env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
 .\tools\engagement-demo.ps1 launch
 ```
 
-Sign in through the normal desktop screen with the harness administrator account, open **UAE-SAMPLE-01-2025**, and use **Saved combined PDF versions → Version 3 → Download PDF** to retrieve the saved output. This reads the saved engagement; it does not regenerate or finalise the PDF. The verified draft fallback is:
+Sign in through the normal desktop screen with the harness administrator account, open **UAE-SAMPLE-01-2025**, then use **Saved combined PDF versions → Version 5 → Download PDF**. This reads the saved engagement; it does not regenerate or finalise the PDF. The verified current walkthrough fallback is:
 
 ```powershell
-$pdf = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v3.pdf'
+$pdf = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v5.pdf'
 Get-FileHash -LiteralPath $pdf -Algorithm SHA256
 ```
 
-Expected SHA-256: `916d0d08603132e564ddde93deaa2f922617f4480a5d3708910588b5e4179237`.
+Expected SHA-256: `29936ef746e59428080ccc119e392678bcd0374b6ad88046523b647cf248ea7a`.
 
-The stored PDF was retrieved through the desktop after an application restart against the same database/profile; its bytes matched this fallback. It has 17 visually inspected pages and remains **Draft for demonstration**. Use synthetic AED figures only; this path is not a validated IFRS or production pack. See [CURRENT_STATUS.md](./CURRENT_STATUS.md) for reconciliations and limitations.
+The saved output was retrieved through the desktop after an application/service restart against the same database/profile; stored and downloaded bytes matched this fallback. It has 17 visually inspected pages and remains **Draft for demonstration**. Use synthetic AED figures only; this path is not a validated IFRS or production pack. See [CURRENT_STATUS.md](./CURRENT_STATUS.md) for reconciliations and limitations.
+
+The earlier UAE Sample 01 v3 remains the preserved baseline at `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v3.pdf`, SHA-256 `916d0d08603132e564ddde93deaa2f922617f4480a5d3708910588b5e4179237`. Do not overwrite it. Version 4 is an intermediate, unfinalised output with a page-break/pagination defect; use v5 for the walkthrough.
+
+### Copyable UAE startup and reopen commands
+
+Use the same command block for startup and after a normal close/restart; do not run `init`:
+
+```powershell
+Set-Location 'D:\Programs\FinancialStatements\AdityaTool\FSG_Bharat_Source'
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 status
+.\tools\engagement-demo.ps1 start-db
+.\tools\engagement-demo.ps1 launch
+```
+
+Then sign in normally, open **UAE-SAMPLE-01-2025**, and download saved output v5. The cluster is `127.0.0.1:64023/fsg_engagement_demo`; its data and Electron profile persist across these restarts. Do not launch a second app process against this profile.
 
 ## EPIPE test
 

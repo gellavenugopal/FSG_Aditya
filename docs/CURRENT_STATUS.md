@@ -1,26 +1,27 @@
 # Current status
 
-Last updated: **2026-10-26**
+Last updated: **2026-10-27**
 
 ## Repository state
 
 - Branch: `feature/engagement-foundation`
-- Last substantive context checkpoint: `9e91bbb` — `Document verified UAE Sample 01 demo`.
+- Previous context checkpoint: `9e91bbb` — `Document verified UAE Sample 01 demo`.
 - Current UAE demo implementation checkpoint: `52d6440` — `Build synthetic UAE Sample 01 reporting demo`.
 - Relevant application commits remain present: `6dea749` reporting workflow, `a683914` firm settings, and `666b110` EPIPE guard.
 - Previous relevant checkpoint: `a683914ce057df67691e04efe709073bb90fad9e` — Firm Settings and report identity.
-- The UAE implementation and context updates are committed; the worktree was clean at the last verification.
+- Latest application checkpoint: `dd154c0` — `Fix UAE demo report persistence and layout`.
+- The UAE implementation and earlier context updates are committed. Application changes for this bounded readiness pass are committed; this documentation follow-up records its verified state.
 - No push or merge has been performed.
 
 ## Current task and next action
 
-Immediate task: deliver **UAE Sample 01**, a synthetic UAE LLC demonstration, within the two-day demonstration window. A separate service-backed AED reporting path has now generated and reopened a saved draft pack through the desktop. The next action is presentation/rehearsal using the saved pack; do not expand this into general UAE/IFRS implementation. The preserved India engagement and version 5 output remain unchanged. See [ROADMAP.md](./ROADMAP.md).
+The bounded UAE Sample 01 readiness pass is complete. Next action: rehearse the saved v5 walkthrough; do not expand this into general UAE/IFRS implementation. The preserved India engagement and finalised version 5 output remain unchanged. See [ROADMAP.md](./ROADMAP.md).
 
 The broad legacy migration and extended EPIPE investigation are deferred for this window unless they block the isolated demonstration. Their unresolved status is retained below.
 
 ## Verified reporting outcome
 
-**Yes:** a saved synthetic engagement has generated, persisted, finalised and reopened a combined report PDF through the actual desktop/service workflow. The finalised Firm Settings review output is:
+**Yes:** the India engagement has a finalised and reopened combined PDF. UAE Sample 01 has generated and reopened a separate demonstration-only draft through the actual desktop/service workflow.
 
 - Local path: `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\FSG-DEMO-2025-26-firm-settings-pack-v5.pdf`
 - SHA-256: `059865a857f2dc5086e9a7d5765d89cc72201fce3ada3d539a776686ddf0e075`
@@ -35,12 +36,16 @@ The saved engagement includes current/prior TBs, balanced journals, final TB, a 
 
 - Engagement `UAE-SAMPLE-01-2025` is a separate synthetic UAE LLC set to AED/AED for 2025 with 2024 comparatives. No supplied client files were used as account data.
 - The desktop imported current/prior synthetic AED TBs, posted two balanced journals, created final TB v2 (16 rows, journal watermark 4), and saved 16 separate UAE statement mappings.
-- Saved output: draft version 3, generated from final TB v2 and retrieved from the reopened engagement through the desktop UI after a clean application restart against the same isolated PostgreSQL cluster and Electron profile.
-- Fallback PDF: `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v3.pdf`; SHA-256 `916d0d08603132e564ddde93deaa2f922617f4480a5d3708910588b5e4179237` (89,392 bytes, 17 pages). The stored bytes retrieved after restart match this hash. All 17 pages were visually inspected.
+- Current saved output: draft version 5, generated from final TB v3. The normal desktop login reopened it after an application/service restart against the same isolated database/profile; the approval date, place, signatory and 400×96 firm logo were restored, and the downloaded PDF bytes matched the stored output.
+- Recommended demo/fallback PDF: `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v5.pdf`; SHA-256 `29936ef746e59428080ccc119e392678bcd0374b6ad88046523b647cf248ea7a` (90,330 bytes, 17 pages). Every page was visually inspected; the contents and footer page numbers align, and no India-specific statutory wording appears.
+- Preserved v3 baseline: `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v3.pdf`; SHA-256 `916d0d08603132e564ddde93deaa2f922617f4480a5d3708910588b5e4179237` (89,392 bytes). The saved service bytes still match. It remains unchanged.
+- Draft v4 was an intermediate layout attempt. It produced 18 physical pages because the larger fixed logo box pushed the auditor address onto an extra page, misaligning the contents. It remains an unfinalised historical output; use v5, not v4, for the walkthrough. The logo box was corrected and v5 regenerated as a new output.
 - Reconciliation from the saved final TB and selected prior TB: 2025 assets AED 239,250 equal liabilities and equity AED 239,250; 2024 assets AED 185,000 equal liabilities and equity AED 185,000. Profit is AED 36,250 for 2025 and AED 38,000 for 2024. Closing equity is AED 182,250. Current cash flow reconciles AED 100,000 opening cash + AED 29,250 net movement = AED 129,250 closing cash. The notes reconcile, including Note 1 cash and Note 7 equity totals.
 - The generated pack contains the assets-first statement of financial position, profit or loss and OCI, changes in equity, cash flows, notes, editable auditor narrative, selected synthetic firm/office/partner/logo and management signatory. The report reflects the second balanced AED 1,250 journal and the revised Note 1 narrative. India-specific captions/statutory terms were absent from extracted PDF text.
-- Versions 1–3 are all drafts; UAE Sample 01 was not finalised. This limited synthetic example is not a validated IFRS or production reporting pack. The synthetic logo is visually small. Financial-statement approval date/place are retained in each saved output but are not prefilled in the edit form after restart; re-enter them before generating another version.
-- The source trial-balance generator is explicitly test-mode-only. The final-TB creation path still records the existing default India mapping-rule-set reference; UAE statement mappings/output remain separate. Do not treat that internal reference as UAE accounting support.
+- Versions 1–5 are drafts; UAE Sample 01 was not finalised. The approval date/place persistence issue is fixed: values from the saved output for the selected final-TB version prefill after restart, and v5 was generated without re-entering them. The synthetic wordmark is rendered in aspect-safe preview/PDF boxes.
+- Final-TB v3 has `mapping_rule_set_id = NULL`; UAE creation skipped India rule-set selection and India mapping-engine side effects. Its 16 AED statement mappings remain stored separately. Older final-TB v1/v2 retain their historic India rule-set reference; that reference did not determine UAE statement calculations or permissions.
+- `UAESample1.zip` and its listed `Notes.docx`, `AR .docx`, `Schedules & PL.xlsx`, `GL v2 full.xlsx`, and `Finanicals.pdf` were not found in the repository, isolated demo files, session files, or the checked Downloads/Desktop/Documents locations. Those exact files could not be examined for suitability. Earlier handover notes mention an Emirates-named flight-ticket PDF and an India/Rupee charitable-trust workbook, but their exact filenames were not preserved; they cannot be attributed to `UAESample1.zip`. The synthetic demonstration remains unchanged and does not claim to use those client records.
+- This limited synthetic example is not a validated IFRS or production reporting pack. The narrow source-TB generator remains test-mode-only; there is no currency translation.
 
 ## EPIPE
 
@@ -56,13 +61,14 @@ Verified for the current implementation or recent reporting checkpoints:
 - `node tools/selftest-dev-vite-output-guard.mjs` — passed (Vite logger EPIPE fallback, bounded file logging, unrelated `EIO`, process survival).
 - `node tools/selftest-dev-output-guard.mjs` — passed.
 - `npm run build` — passed; Vite emits the existing `tallyParsers.js` dynamic/static import chunk warning.
-- `npm run engagement:test` — passed in this checkpoint, 94 assertions against PostgreSQL 18.
+- `npm run engagement:test` — passed, 95 assertions against PostgreSQL 18, including persisted approval date/place and ordered signatory metadata.
 - `npm run isolation:test` — passed, 23 assertions after adding the missing `tb_rows` fixture to the disposable schema in this checkpoint.
-- `node tools/selftest-uae-demo-reporting.mjs` — passed; validates UAE AED/current-comparative reconciliation, cash flow/equity/notes and draft-only HTML.
-- `node tools/selftest-fs-snapshot.mjs` and `node tools/selftest-final-signing.mjs` — passed in this checkpoint against disposable test data.
+- `node tools/selftest-uae-demo-reporting.mjs` — passed; validates UAE AED/current-comparative reconciliation, cash flow/equity/notes and the 60×15 mm aspect-safe PDF logo box.
+- `node tools/selftest-fs-snapshot.mjs` and `node tools/selftest-final-signing.mjs` — passed against disposable test data.
 - `.\tools\engagement-demo.ps1 verify-ui` — passed through the normal screen: administrator, contributor, reader and partner sign-in/sign-out, and incorrect-password rejection.
-- `.\tools\engagement-demo.ps1 firm-settings-reopen-ui` — passed after the UAE shared-code changes; retrieved India version 5 through the UI and confirmed the finalised status and recorded hash.
-- Actual isolated desktop UI UAE reporting and restart/reopen check passed as described above.
+- `.\tools\engagement-demo.ps1 firm-settings-reopen-ui` — passed after this task; India version 5 remained finalised and its retrieved PDF SHA-256 remained `059865a857f2dc5086e9a7d5765d89cc72201fce3ada3d539a776686ddf0e075`.
+- Actual isolated desktop UAE flow — normal login, open engagement, inspect source TB/journals/final TB/mappings/reporting, save v5, close/restart, reopen and download v5; stored and downloaded hashes matched. Final-TB v3's nullable India mapping-rule-set reference was verified through the protected desktop client.
+- Every page of UAE v5 was visually reviewed from the downloaded saved PDF. UAE output remains draft-only.
 
 Physical multi-computer UAT has not been performed and is deferred. Automated service tests and a single-machine demo do not establish production readiness.
 

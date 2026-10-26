@@ -53,6 +53,12 @@ This log separates user-approved product/scope decisions from engineering propos
 - **Rationale:** The saved desktop workflow is useful for demonstration, but its reporting coverage has not been validated against UAE client records or a complete IFRS requirements set.
 - **Status:** Implemented and verified as a limited draft-only path. The saved v3 PDF was reopened after restart and visually inspected. Broader UAE/IFRS validation remains planned; this entry does not supersede the earlier India → UAE IFRS → India Ind AS → US GAAP sequence.
 
+### 2026-10-27 — Preserve UAE v3 and save readiness corrections as new output versions
+
+- **Decision:** Keep UAE Sample 01 v3 unchanged as the demonstration baseline. Save corrected reporting output as a new version; never overwrite the baseline or finalise UAE output during this readiness pass.
+- **Rationale:** Preserve the known, previously reviewed synthetic report while validating UI persistence and branding improvements.
+- **Status:** Implemented. v3 retains its original SHA-256; corrected v5 is the current draft walkthrough output. The intermediate v4 remains a draft but is not the recommended walkthrough version because its logo layout caused a pagination mismatch.
+
 ## Engineering proposals and operational choices
 
 ### 2026-10-26 — Enforce engagement authorization at the trusted service
@@ -72,3 +78,15 @@ This log separates user-approved product/scope decisions from engineering propos
 - **Choice:** Preload EPIPE-specific handling into the `electron-vite` process because its Vite logger owns renderer HMR logging. Preserve bounded diagnostics in the isolated profile and leave unrelated errors visible.
 - **Rationale:** Handling only launcher and Electron-main streams does not cover the Vite CLI's own logger.
 - **Status:** Implemented in commit `666b110`; isolated CLI and desktop-launcher disconnect tests pass. The historical popup PID/stack was not captured, so the original incident's exact process is not established.
+
+### 2026-10-27 — Keep UAE final-TB creation independent of India mapping
+
+- **Choice:** For the `AE_UAE_DEMO` reporting pack only, do not select an India mapping rule set, run the India mapping engine, or auto-map comparative TBs. Keep the snapshot reference null and use the engagement-authorized UAE mappings.
+- **Rationale:** UAE calculations and permissions use a separate reporting path; an India mapping master is an irrelevant availability dependency and side effect.
+- **Status:** Implemented and verified through the isolated desktop: new UAE final-TB v3 has a null mapping-rule-set ID and 16 separately saved UAE mappings. India behavior remains unchanged.
+
+### 2026-10-27 — Restore approval details and keep the synthetic logo proportionate
+
+- **Choice:** Restore approval date/place and ordered signatory IDs from the saved output for the selected final-TB version. Render the synthetic wordmark within aspect-safe preview and PDF boxes sized to preserve report pagination.
+- **Rationale:** Reopening and saving a report must not silently clear approved signing details, and branding should be readable without distortion or breaking the combined PDF's contents numbering.
+- **Status:** Implemented and verified: values restored after restart; v5 saved/reopened with 17 pages and aligned contents/footer numbering.
