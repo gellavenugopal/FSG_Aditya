@@ -38,6 +38,9 @@ Electron + React (electron-vite, Tailwind) + PostgreSQL. This folder is the comp
 | `node tools/selftest-<name>.mjs` | run one self-test (there are ~70 in `tools/`) |
 | `node tools/selftest.mjs` | the general self-test |
 
+Development output is also kept in a bounded `dev-launcher.log`; if the console disconnects, logging continues
+in `%TEMP%\fsg-bharat-dev` or, in disposable test mode, in the isolated application profile.
+
 Many self-tests need PostgreSQL binaries on the machine (they start a throw-away database in a temp folder and
 never touch yours). If `initdb` is not found they say **SKIPPED**; set `FSG_PGBIN` to PostgreSQL's `bin` folder.
 

@@ -4,7 +4,7 @@
   "description": "FSG Bharat Financial Statement Generator",
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node tools/dev-launcher.mjs",
     "build": "electron-vite build",
     "engagement:server": "node src/server/engagement-server.js",
     "engagement:test": "node tools/selftest-engagement-service.mjs",
