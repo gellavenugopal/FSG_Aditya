@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { formatPeriodRange } from '../../utils/financialPeriodDisplay'
+import { formatPeriodMasterOption } from '../../utils/financialPeriodDisplay'
 
 /**
  * Financial Year / Period badge — shown in the TopBar immediately before the
@@ -31,7 +31,7 @@ export default function FinancialYearBadge({ entity, entityPeriods = [], selecte
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
-        {selected ? selected.year_label : (entityPeriods.length ? 'Select FY' : 'No FY set')}
+        {selected ? formatPeriodMasterOption(selected.year_label, selected.date_from, selected.date_till) : (entityPeriods.length ? 'Select FY' : 'No FY set')}
         <span className="text-[9px] opacity-70">{open ? '▴' : '▾'}</span>
       </button>
 
@@ -53,7 +53,7 @@ export default function FinancialYearBadge({ entity, entityPeriods = [], selecte
                   selectedId === p.id ? 'bg-blue-50 font-semibold text-blue-800' : 'text-gray-800'
                 }`}
               >
-                {p.year_label} <span className="text-gray-400">({formatPeriodRange(p.date_from, p.date_till)})</span>{p.locked ? ' 🔒' : ''}
+                {formatPeriodMasterOption(p.year_label, p.date_from, p.date_till)}{p.locked ? ' 🔒' : ''}
               </button>
             ))}
             <div className="border-t border-gray-100 mt-1 pt-1">

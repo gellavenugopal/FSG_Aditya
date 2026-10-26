@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { formatPeriodRange } from '../../utils/financialPeriodDisplay'
+import { formatPeriodMasterOption } from '../../utils/financialPeriodDisplay'
 
 /**
  * Dropdown to pick one of the active entity's attached Financial Periods.
@@ -63,7 +63,7 @@ export default function FinancialPeriodPicker({ entity, value, onChange, allowCu
         <option value="">— Select a Financial Period —</option>
         {periods.map(p => (
           <option key={p.id} value={p.id} disabled={!!p.locked}>
-            {p.year_label} ({formatPeriodRange(p.date_from, p.date_till, ' to ')}){p.locked ? ' — Locked' : ''}
+            {formatPeriodMasterOption(p.year_label, p.date_from, p.date_till)}{p.locked ? ' — Locked' : ''}
           </option>
         ))}
       </select>

@@ -41,6 +41,20 @@ Electron + React (electron-vite, Tailwind) + PostgreSQL. This folder is the comp
 Development output is also kept in a bounded `dev-launcher.log`; if the console disconnects, logging continues
 in `%TEMP%\fsg-bharat-dev` or, in disposable test mode, in the isolated application profile.
 
+For the isolated saved-engagement demo, run `.\tools\engagement-demo.ps1 provision-users` before launching.
+It creates repeatable synthetic administrator/contributor/reader accounts only in the verified disposable
+database and keeps their generated credentials in the ACL-restricted demo configuration file.
+The exact isolated startup, sample workflow, finalisation, restart and PDF-reopen commands are in
+[`ENGAGEMENT_SERVICE.md`](./ENGAGEMENT_SERVICE.md#saved-engagement-demo-through-the-desktop-ui).
+
+## Reporting periods
+The global Financial Period master is seeded with calendar-year, quarterly, and April-to-March periods for the
+requested 2024–2027 ranges. Labels use the closing month and year (`MMMYYYY`), while start and end dates remain
+separate ISO dates. Labels can repeat; a period is unique by its exact date range. Editing dates regenerates the
+label without changing the period ID or its existing auditee links. Defaults are reusable masters only and are
+not automatically attached to auditees or used to create engagements. Period selectors show both label and full
+date range.
+
 Many self-tests need PostgreSQL binaries on the machine (they start a throw-away database in a temp folder and
 never touch yours). If `initdb` is not found they say **SKIPPED**; set `FSG_PGBIN` to PostgreSQL's `bin` folder.
 

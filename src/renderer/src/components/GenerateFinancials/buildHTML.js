@@ -29,6 +29,7 @@ import { scaleRatioAmounts } from '../../utils/ratioTable'
 import { buildCashFlow } from '../../utils/cashFlow'
 import { pointBodyHtml } from '../../utils/generalNotePoint'
 import { signatoryIdText, signedOnBehalfOf } from '../../utils/signatoryFormat'
+import { financialPeriodText } from '../../utils/financialPeriodDisplay'
 
 // Module-level denomination key (set in buildFinancialsHTML).
 let _DENOM_KEY = 'as_is'
@@ -181,7 +182,7 @@ function compactSignFooter(entity, auditor, signatories, { enabled = true, signP
 // always render the identical structure, numbering, and zero-value
 // uncategorised suppression.
 function buildBSPage(entity, activeTB, prevTB, data, auditor, signatories, signPlace = '', signDate = '') {
-  const cyYE = yearEnd(activeTB?.period)
+  const cyYE = yearEnd(financialPeriodText(activeTB))
   const isCompany = parseInt(entity?.constitution) === 3
 
   const lineRow = (label, noteNum, total, prevTotal) => `<tr>
@@ -402,7 +403,7 @@ function buildCFSPage(entity, activeTB, data, auditor, signatories, signPlace = 
   return `
       <div class="print-page compact-page">
         <div class="page-body">
-          ${pageHeader(entity, 'Cash Flow Statement', `for the year ended ${esc(yearEnd(activeTB?.period || ''))}`)}
+          ${pageHeader(entity, 'Cash Flow Statement', `for the year ended ${esc(yearEnd(financialPeriodText(activeTB)))}`)}
           <table class="fs-table compact-table">
             <thead>
               <tr>
@@ -433,7 +434,7 @@ function buildPLPage(entity, activeTB, prevTB, data, auditor, signatories, signP
     return `
       <div class="print-page compact-page">
         <div class="page-body">
-          ${pageHeader(entity, title, `for the year ended ${esc(yearEnd(activeTB?.period || ''))}`)}
+          ${pageHeader(entity, title, `for the year ended ${esc(yearEnd(financialPeriodText(activeTB)))}`)}
           <table class="fs-table compact-table">
             <thead>
               <tr>
@@ -741,7 +742,7 @@ function buildPLPage(entity, activeTB, prevTB, data, auditor, signatories, signP
   return `
     <div class="print-page compact-page">
       <div class="page-body">
-        ${pageHeader(entity, title, `for the year ended ${esc(yearEnd(activeTB?.period || ''))}`)}
+        ${pageHeader(entity, title, `for the year ended ${esc(yearEnd(financialPeriodText(activeTB)))}`)}
         <table class="fs-table compact-table">
           <thead>
             <tr>
@@ -2407,11 +2408,11 @@ function buildNotesPages(entity, activeTB, auditor, signatories, signNotes = fal
   return (data) => {
     const isCompany = parseInt(entity?.constitution) === 3
     const isNonCorp12 = [1, 2].includes(parseInt(entity?.constitution))
-    const header = pageHeader(entity, 'Notes to Financial Statements', `for the year ended ${esc(yearEnd(activeTB?.period || ''))}`)
+    const header = pageHeader(entity, 'Notes to Financial Statements', `for the year ended ${esc(yearEnd(financialPeriodText(activeTB)))}`)
     const cyLabel = 'Current Year'
     const pyLabel = 'Previous Year'
-    const periodStartStr = yearStart(activeTB?.period || '')
-    const periodEndStr = yearEnd(activeTB?.period || '')
+    const periodStartStr = yearStart(financialPeriodText(activeTB))
+    const periodEndStr = yearEnd(financialPeriodText(activeTB))
 
     // General Notes — a single freeform narrative note (e.g. "Significant
     // Accounting Policies"), made up of internally-numbered — (a), (b), (c)...
@@ -2640,7 +2641,7 @@ function buildAnnexuresPages(entity, activeTB, data, auditor, signatories, signA
       </div>`, { keepNext: false }))
   }
   return flowSection(
-    pageHeader(entity, 'Annexures — Ledger Details', `for the year ended ${esc(yearEnd(activeTB?.period || ''))}`),
+    pageHeader(entity, 'Annexures — Ledger Details', `for the year ended ${esc(yearEnd(financialPeriodText(activeTB)))}`),
     compactSignFooter(entity, auditor, signatories, { enabled: signAnnex, signPlace, signDate }),
     blocks,
   )
@@ -2701,7 +2702,7 @@ function buildSigningPage(entity, activeTB, auditor, signatories, signPlace = ''
 function buildCoverPage(entity, activeTB, prevTB) {
   const isCompany = parseInt(entity?.constitution) === 3
   const constitution = entity?.constitution_display || ''
-  const period = yearEnd(activeTB?.period || '')
+  const period = yearEnd(financialPeriodText(activeTB))
   return `
     <div class="print-page cover-page">
       <div class="cover-inner">
@@ -2712,7 +2713,7 @@ function buildCoverPage(entity, activeTB, prevTB) {
           : (constitution ? `<div class="cover-sub">(${esc(constitution)})</div>` : '')}
         ${entity?.address ? `<div class="cover-sub">${esc(entity.address)}</div>` : ''}
         ${period ? `<div class="cover-period">For the year ended ${esc(period)}</div>` : ''}
-        ${prevTB?.period ? `<div class="cover-sub">(with comparatives for ${esc(yearEnd(prevTB.period))})</div>` : ''}
+        ${prevTB?.period ? `<div class="cover-sub">(with comparatives for ${esc(yearEnd(financialPeriodText(prevTB)))})</div>` : ''}
         <div class="cover-divider"></div>
         <div class="cover-index">
           <div class="cover-index-title">Index</div>

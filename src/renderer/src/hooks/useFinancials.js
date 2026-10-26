@@ -3349,11 +3349,13 @@ export function buildEngagementFinancials(bundle) {
   if (!bundle?.entity || !Array.isArray(bundle.financialRows) || !Array.isArray(bundle.levelFormat)) {
     throw new Error('The engagement reporting data is incomplete.')
   }
-  const { entity, financialRows, levelFormat, noteDetails = [], generalNotes = null } = bundle
+  const { entity, financialRows, levelFormat, comparativeRows = [], noteDetails = [], generalNotes = null } = bundle
   const guarded = ignoreForeignLevel2(financialRows, levelFormat)
+  const comparativeGuarded = ignoreForeignLevel2(comparativeRows, levelFormat)
+  const prevMap = comparativeGuarded.rows.length ? buildPrevMap(comparativeGuarded.rows) : null
   const processed = processRows(
     withoutPreviousYear(guarded.rows),
-    null,
+    prevMap,
     entity.constitution,
     noteDetails,
     entity.business_type,
@@ -3364,16 +3366,16 @@ export function buildEngagementFinancials(bundle) {
     null,
   )
   processed.levelFormat = levelFormat
-  processed.pyMode = 'none_show'
+  processed.pyMode = prevMap ? 'auto' : 'none_show'
   processed.cfsSaved = { cy: {}, py: {}, include: false }
-  processed.foreignLevel2 = foreignLevel2Report(guarded.flagged, [], false)
+  processed.foreignLevel2 = foreignLevel2Report(guarded.flagged, comparativeGuarded.flagged, Boolean(prevMap))
   processed.generalNotes = withoutRatioIntro(generalNotes) || { title: '', points: [] }
   if (parseInt(entity.constitution) === 3) processed.generalNotes = withCurrentTitleDeedsText(processed.generalNotes)
-  processed.prevMapL3 = null
-  processed.prevRowsByLedger = null
+  processed.prevMapL3 = prevMap ? buildPrevMapL3(comparativeGuarded.rows) : null
+  processed.prevRowsByLedger = prevMap ? buildPrevRowsByLedger(comparativeGuarded.rows) : null
   attachNoteExtras(processed, noteDetails, levelFormat, null, entity.constitution, null, null, null)
-  applyManualPyOverrides(processed, false, [])
-  if (parseInt(entity.constitution) === 3) computeEpsData(processed, noteDetails, null)
+  applyManualPyOverrides(processed, !prevMap, [])
+  if (parseInt(entity.constitution) === 3) computeEpsData(processed, noteDetails, comparativeGuarded.rows)
   processed.generalNotes = refreshRatiosInNote(processed.generalNotes, processed)
   return processed
 }

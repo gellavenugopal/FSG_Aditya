@@ -317,7 +317,8 @@ try {
   const one = async (sql, p) => (await query(sql, p)).rows[0]
   const rs = (await one(`SELECT id FROM mapping_rule_sets WHERE is_default LIMIT 1`)).id
   const ent = (await one(`INSERT INTO entities (name, constitution, constitution_display, business_type) VALUES ('Large Branch Co', 3, 'Company', 'Trader') RETURNING id`)).id
-  const fp = (await one(`INSERT INTO financial_periods (year_label, date_from, date_till) VALUES ('2025-26','2025-04-01','2026-03-31') RETURNING id`)).id
+  const fp = (await one(`SELECT id FROM financial_periods WHERE date_from='2025-04-01' AND date_till='2026-03-31'`))?.id
+    || (await one(`INSERT INTO financial_periods (year_label, date_from, date_till) VALUES ('Mar2026','2025-04-01','2026-03-31') RETURNING id`)).id
   const ep = (await one(`INSERT INTO entity_periods (entity_id, financial_period_id) VALUES ($1,$2) RETURNING id`, [ent, fp])).id
   const groups = [['Sundry Debtors', 'Current Assets', true, -1], ['Sundry Creditors', 'Current Liabilities', false, 1], ['Indirect Expenses', 'Indirect Expenses', true, -1], ['Sales Accounts', 'Sales Accounts', false, 1],
     ['Purchase Accounts', 'Purchase Accounts', true, -1], ['Bank Accounts', 'Current Assets', true, -1], ['Duties & Taxes', 'Current Liabilities', false, 1], ['Fixed Assets', 'Fixed Assets', true, -1]]

@@ -1,3 +1,5 @@
+import { seedFinancialPeriodMasters } from '../../shared/financial-periods.mjs'
+
 export async function ensureEngagementSchema(query) {
   if (typeof query !== 'function') throw new Error('A PostgreSQL query function is required for the engagement schema.')
   await query(`ALTER TABLE entities ADD COLUMN IF NOT EXISTS jurisdiction TEXT`)
@@ -108,6 +110,7 @@ export async function ensureEngagementSchema(query) {
       template_selections JSONB NOT NULL DEFAULT '{}',
       entity_period_id INTEGER REFERENCES entity_periods(id) ON DELETE RESTRICT,
       compatibility_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+      prior_trial_balance_id INTEGER REFERENCES trial_balances(id) ON DELETE RESTRICT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
@@ -117,6 +120,7 @@ export async function ensureEngagementSchema(query) {
   await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS finalisation_sign_place TEXT`)
   await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS finalisation_sign_date TEXT`)
   await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS engagement_finalised_at TIMESTAMPTZ`)
+  await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS prior_trial_balance_id INTEGER REFERENCES trial_balances(id) ON DELETE RESTRICT`)
 
   await query(`
     CREATE TABLE IF NOT EXISTS engagement_memberships (
@@ -272,4 +276,5 @@ export async function ensureEngagementSchema(query) {
     )
   `)
   await query(`CREATE INDEX IF NOT EXISTS idx_engagement_audit_history ON engagement_audit_log(firm_id, engagement_id, created_at DESC)`)
+  await seedFinancialPeriodMasters(query)
 }

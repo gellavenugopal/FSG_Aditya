@@ -96,7 +96,7 @@ export default function Master({ entity, onEntityChange, onOpenMappingRules, act
           <SectionHeading
             eyebrow="Reporting setup"
             title="Financial periods"
-            description="Create financial years and manage the periods available across your auditees."
+            description="Reusable period masters. Labels come from the closing month and year; attaching one to an auditee is a separate action."
             addLabel="financial period"
             onAdd={() => setModal({ type: 'period-create' })}
           />

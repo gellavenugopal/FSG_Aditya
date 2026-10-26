@@ -1,3 +1,4 @@
+import './dev-output-guard-bootstrap.js'
 import { app, BrowserWindow, ipcMain, Menu, dialog } from 'electron'
 import { join } from 'path'
 import { initDB, loadConfig, flushDB, withStartupLock } from './db/client.js'
@@ -31,6 +32,14 @@ import {
 } from './test-isolation.mjs'
 
 const disposableTestMode = isDisposableTestMode()
+if (process.env.FSG_TEST_REMOTE_DEBUG_PORT) {
+  const port = Number(process.env.FSG_TEST_REMOTE_DEBUG_PORT)
+  if (!disposableTestMode || !Number.isInteger(port) || port < 1024 || port > 65535 || port === 5432) {
+    throw new Error('FSG_TEST_REMOTE_DEBUG_PORT is allowed only in disposable test mode with an explicit local port.')
+  }
+  app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1')
+  app.commandLine.appendSwitch('remote-debugging-port', String(port))
+}
 const startupPlan = getApplicationStartupPlan(process.env, app.isPackaged)
 if (disposableTestMode) {
   configureDisposableTestUserData(app)

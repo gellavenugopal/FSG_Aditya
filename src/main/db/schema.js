@@ -1,4 +1,5 @@
 import { query } from './client.js'
+import { seedFinancialPeriodMasters } from '../../shared/financial-periods.mjs'
 
 // One-time migration marker. Used to gate work that must run exactly once
 // against the shared database (not once per client boot) — e.g. reseeding
@@ -554,6 +555,7 @@ export async function ensureSchema() {
       UNIQUE(date_from, date_till)
     )
   `)
+  await seedFinancialPeriodMasters(query)
 
   // ── Entity ↔ Financial Period attachment (this Auditee is being audited for
   // this FY). Locking lives here — per Auditee-per-FY, not per individual TB

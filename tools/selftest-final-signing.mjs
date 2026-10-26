@@ -76,7 +76,8 @@ try {
   ok('the database has is_final, final_sign_place, final_sign_date and finalised_at on entity_periods', ['is_final', 'final_sign_place', 'final_sign_date', 'finalised_at'].every(c => cols.includes(c)), cols.join(','))
 
   const ent = await one(`INSERT INTO entities (name, constitution, constitution_display, business_type) VALUES ('ZZ Final Co', 3, 'Company', 'Trader') RETURNING *`)
-  const fp = (await one(`INSERT INTO financial_periods (year_label, date_from, date_till) VALUES ('2025-26', '2025-04-01', '2026-03-31') RETURNING id`)).id
+  const fp = (await one(`SELECT id FROM financial_periods WHERE date_from='2025-04-01' AND date_till='2026-03-31'`))?.id
+    || (await one(`INSERT INTO financial_periods (year_label, date_from, date_till) VALUES ('Mar2026', '2025-04-01', '2026-03-31') RETURNING id`)).id
   const ep = (await one(`INSERT INTO entity_periods (entity_id, financial_period_id) VALUES ($1,$2) RETURNING id`, [ent.id, fp])).id
 
   const before = await ipc('entityPeriod:get', ep)

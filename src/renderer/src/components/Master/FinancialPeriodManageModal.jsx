@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { useModalKeys } from '../../hooks/useModalKeys'
 import RowActionButton from './RowActionButton'
-import { formatPeriodRange } from '../../utils/financialPeriodDisplay'
+import { formatPeriodMasterOption } from '../../utils/financialPeriodDisplay'
+import { financialPeriodLabel } from '../../../../shared/financial-periods.mjs'
 
 function PeriodForm({ editing, onSaved, onCancel }) {
-  const [yearLabel, setYearLabel] = useState(editing?.year_label || '')
   const [dateFrom, setDateFrom] = useState(editing?.date_from || '')
   const [dateTill, setDateTill] = useState(editing?.date_till || '')
   const [saving, setSaving] = useState(false)
@@ -12,11 +12,11 @@ function PeriodForm({ editing, onSaved, onCancel }) {
 
   const submit = async () => {
     setErr('')
-    if (!yearLabel.trim() || !dateFrom || !dateTill) { setErr('All fields are required.'); return }
+    if (!dateFrom || !dateTill) { setErr('Date From and Date Till are required.'); return }
     setSaving(true)
     try {
       const saved = await window.api?.saveFinancialPeriod({
-        id: editing?.id, year_label: yearLabel.trim(), date_from: dateFrom, date_till: dateTill,
+        id: editing?.id, date_from: dateFrom, date_till: dateTill,
       })
       onSaved(saved)
     } catch (e) {
@@ -29,18 +29,19 @@ function PeriodForm({ editing, onSaved, onCancel }) {
   return (
     <div className="border border-blue-200 rounded-lg p-3 mb-3 bg-blue-50/40">
       <div className="text-xs font-semibold text-blue-900 mb-2">{editing ? 'Edit Financial Period' : 'New Financial Period'}</div>
-      <div className="grid grid-cols-3 gap-2 mb-2">
-        <input value={yearLabel} onChange={e => setYearLabel(e.target.value)} placeholder="Year label e.g. FY 2025-26"
-          className="col-span-3 border border-gray-300 rounded px-2 py-1.5 text-xs bg-white" autoFocus />
+      <div className="grid grid-cols-2 gap-2 mb-2">
         <div>
           <label className="block text-[10px] text-gray-500 mb-0.5">Date From</label>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs bg-white" />
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs bg-white" autoFocus />
         </div>
         <div>
           <label className="block text-[10px] text-gray-500 mb-0.5">Date Till</label>
           <input type="date" value={dateTill} onChange={e => setDateTill(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs bg-white" />
         </div>
       </div>
+      <p className="mb-2 text-[11px] text-gray-500">
+        Period label: <span className="font-semibold text-gray-700">{financialPeriodLabel(dateTill) || 'set a valid closing date'}</span>
+      </p>
       {err && <p className="text-red-500 text-xs mb-2">{err}</p>}
       <div className="flex gap-2">
         <button onClick={onCancel} className="px-3 py-1.5 border border-gray-300 text-gray-600 rounded text-xs hover:bg-gray-50">Cancel</button>
@@ -70,10 +71,11 @@ export default function FinancialPeriodManageModal({ startInCreate = false, onCl
   useEffect(() => { load() }, [])
   useEffect(() => { if (startInCreate) setEditing({}) }, [startInCreate])
 
-  const visible = periods.filter(p => !search.trim() || p.year_label.toLowerCase().includes(search.trim().toLowerCase()))
+  const visible = periods.filter(p => !search.trim()
+    || formatPeriodMasterOption(p.year_label, p.date_from, p.date_till).toLowerCase().includes(search.trim().toLowerCase()))
 
   const handleDelete = async (p) => {
-    if (!window.confirm(`Delete Financial Period "${p.year_label}"?`)) return
+    if (!window.confirm(`Delete Financial Period "${formatPeriodMasterOption(p.year_label, p.date_from, p.date_till)}"?`)) return
     setError('')
     try {
       await window.api?.deleteFinancialPeriod(p.id)
@@ -139,10 +141,7 @@ export default function FinancialPeriodManageModal({ startInCreate = false, onCl
             <ul className="divide-y divide-gray-100">
               {visible.map(p => (
                 <li key={p.id} className="flex items-center justify-between py-2.5 px-1 hover:bg-gray-50 rounded">
-                  <div>
-                    <div className="text-sm font-medium text-gray-800">{p.year_label}</div>
-                    <div className="text-xs text-gray-400">{formatPeriodRange(p.date_from, p.date_till, ' to ')}</div>
-                  </div>
+                  <div className="text-sm font-medium text-gray-800">{formatPeriodMasterOption(p.year_label, p.date_from, p.date_till)}</div>
                   <div className="flex items-center">
                     <RowActionButton action="edit" onClick={() => setEditing(p)} />
                     <RowActionButton action="delete" onClick={() => handleDelete(p)} />

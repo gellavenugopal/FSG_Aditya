@@ -1,34 +1,39 @@
 import { ipcMain } from 'electron'
 import { query } from '../db/client.js'
+import { financialPeriodLabel } from '../../shared/financial-periods.mjs'
 
 export function registerFinancialPeriodHandlers() {
   // ── Global Financial Period master (shared across all Auditees) ────────────
   ipcMain.handle('financialPeriod:list', async () => {
-    const { rows } = await query(`SELECT * FROM financial_periods ORDER BY date_from DESC`)
+    const { rows } = await query(`SELECT * FROM financial_periods ORDER BY date_from DESC,date_till DESC,id DESC`)
     return rows
   })
 
   ipcMain.handle('financialPeriod:save', async (_, data) => {
-    const { id, year_label, date_from, date_till } = data
-    if (!year_label?.trim()) throw new Error('Year label is required.')
+    const { id, date_from, date_till } = data
     if (!date_from || !date_till) throw new Error('Date From and Date Till are required.')
-    if (date_from >= date_till) throw new Error('Date From must be before Date Till.')
+    const label = financialPeriodLabel(date_till)
+    if (!label) throw new Error('Date Till must be a valid ISO date.')
+    const fromLabel = financialPeriodLabel(date_from)
+    if (!fromLabel) throw new Error('Date From must be a valid ISO date.')
+    if (date_from > date_till) throw new Error('Date From must not be after Date Till.')
 
-    if (id) {
-      const { rows } = await query(
-        `UPDATE financial_periods SET year_label=$1, date_from=$2, date_till=$3 WHERE id=$4 RETURNING *`,
-        [year_label.trim(), date_from, date_till, id]
-      )
-      return rows[0]
-    }
     try {
+      if (id) {
+        const { rows } = await query(
+          `UPDATE financial_periods SET year_label=$1, date_from=$2, date_till=$3 WHERE id=$4 RETURNING *`,
+          [label, date_from, date_till, id]
+        )
+        if (!rows[0]) throw new Error('Financial Period not found.')
+        return rows[0]
+      }
       const { rows } = await query(
         `INSERT INTO financial_periods (year_label, date_from, date_till) VALUES ($1,$2,$3) RETURNING *`,
-        [year_label.trim(), date_from, date_till]
+        [label, date_from, date_till]
       )
       return rows[0]
     } catch (e) {
-      if (String(e.message || '').includes('UNIQUE')) {
+      if (e?.code === '23505' || String(e?.message || '').includes('UNIQUE')) {
         throw new Error('A Financial Period with this exact Date From/Date Till already exists.')
       }
       throw e
@@ -55,7 +60,7 @@ export function registerFinancialPeriodHandlers() {
        FROM entity_periods ep
        JOIN financial_periods fp ON fp.id = ep.financial_period_id
        WHERE ep.entity_id = $1
-       ORDER BY fp.date_from DESC`,
+       ORDER BY fp.date_from DESC,fp.date_till DESC,fp.id DESC`,
       [entityId]
     )
     return rows

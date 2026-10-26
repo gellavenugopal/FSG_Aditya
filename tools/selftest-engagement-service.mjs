@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { startLocalEngagementService } from '../src/server/dev-engagement-service.js'
+import { DEFAULT_FINANCIAL_PERIODS, financialPeriodLabel } from '../src/shared/financial-periods.mjs'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const require = createRequire(import.meta.url)
@@ -287,6 +288,37 @@ try {
     JOIN note_details n ON n.tb_id=t.id JOIN signatories s ON s.entity_id=e.id WHERE e.id=1
   `)
   check(beforeLegacy.rowCount === 1, 'representative legacy fixture created')
+  const legacyPeriod = await pool.query(
+    `INSERT INTO financial_periods(year_label,date_from,date_till)
+     VALUES ('Legacy FY label','2026-01-01','2026-12-31') RETURNING id`
+  )
+  const legacyPeriodId = legacyPeriod.rows[0].id
+  const legacyEntityPeriod = await pool.query(
+    `INSERT INTO entity_periods(entity_id,financial_period_id) VALUES (1,$1) RETURNING id`,
+    [legacyPeriodId]
+  )
+  const legacyEntityPeriodId = legacyEntityPeriod.rows[0].id
+
+  check(financialPeriodLabel('2026-12-31') === 'Dec2026'
+    && financialPeriodLabel('2026-02-29') === null
+    && DEFAULT_FINANCIAL_PERIODS.length === 10,
+  'period labels use the validated closing month and year, with ten reusable default ranges')
+  const expectedPeriodRanges = [
+    ['2024-01-01', '2024-12-31'],
+    ['2025-01-01', '2025-12-31'],
+    ['2026-01-01', '2026-12-31'],
+    ['2026-01-01', '2026-03-31'],
+    ['2026-04-01', '2026-06-30'],
+    ['2026-07-01', '2026-09-30'],
+    ['2026-10-01', '2026-12-31'],
+    ['2024-04-01', '2025-03-31'],
+    ['2025-04-01', '2026-03-31'],
+    ['2026-04-01', '2027-03-31'],
+  ]
+  check(DEFAULT_FINANCIAL_PERIODS.every((period, index) =>
+    period.date_from === expectedPeriodRanges[index][0]
+    && period.date_till === expectedPeriodRanges[index][1]),
+  'default period masters match the requested date ranges in order')
 
   service = await startLocalEngagementService({
     host: '127.0.0.1', port: pgPort, database: 'postgres', user: 'selftest', password: '',
@@ -300,6 +332,32 @@ try {
   check(Buffer.isBuffer(serviceCa) && service.clientOptions.setupToken.length >= 64,
     'local development creates a private setup authorization and trusted local CA')
   console.info('Local HTTPS engagement service started.')
+  const periodMasters = await pool.query(`
+    SELECT date_from::text,date_till::text,year_label,id
+    FROM financial_periods ORDER BY date_from,date_till
+  `)
+  const seededRanges = periodMasters.rows.map(({ date_from, date_till, year_label }) => ({
+    date_from, date_till, year_label,
+  }))
+  const duplicateLabels = await pool.query(
+    `SELECT COUNT(*)::int AS count FROM financial_periods WHERE year_label='Dec2026'`
+  )
+  const preservedPeriod = await pool.query(`
+    SELECT fp.id,fp.year_label,ep.id AS entity_period_id
+    FROM financial_periods fp JOIN entity_periods ep ON ep.financial_period_id=fp.id
+    WHERE fp.id=$1
+  `, [legacyPeriodId])
+  const attachedCount = await pool.query(`SELECT COUNT(*)::int AS count FROM entity_periods`)
+  check(periodMasters.rowCount === DEFAULT_FINANCIAL_PERIODS.length
+    && seededRanges.every(period => DEFAULT_FINANCIAL_PERIODS.some(expected =>
+      expected.date_from === period.date_from && expected.date_till === period.date_till && expected.year_label === period.year_label))
+    && duplicateLabels.rows[0].count === 2,
+  'service startup seeds the exact calendar, quarterly and April-to-March masters including duplicate display labels')
+  check(preservedPeriod.rows[0]?.id === legacyPeriodId
+    && preservedPeriod.rows[0]?.entity_period_id === legacyEntityPeriodId
+    && preservedPeriod.rows[0]?.year_label === 'Dec2026'
+    && attachedCount.rows[0].count === 1,
+  'existing period IDs and client relationships survive label normalization, and defaults are not attached to clients')
   const status = await ok('auth/status')
   check(status.data.setupRequired && !status.data.user, 'fresh service reports administrator setup required')
   const unauthorizedSetup = await api('auth/setup', {
@@ -424,6 +482,9 @@ try {
 
   const ownerOptions = await ok('options', {}, ownerToken)
   check(ownerOptions.data.users.every(user => !user.password_hash && !user.password_salt), 'firm user options never expose password hashes or salts')
+  check(ownerOptions.data.users.every(user => typeof user.displayName === 'string' && typeof user.jobTitle === 'string'
+    && user.display_name === undefined && user.job_title === undefined),
+  'firm user options use the desktop public-user field names')
   const readerView = await ok('overview', { engagementId }, readerToken)
   check(readerView.data.engagement.accessLevel === 'read' && !readerView.data.engagement.canEdit, 'reader can view but cannot edit')
   const editorView = await ok('overview', { engagementId }, editorToken)

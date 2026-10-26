@@ -20,6 +20,7 @@ import { getSubnoteGroups, UNCLASSIFIED_LABEL, plNoteLines, subnoteGroupFigures,
 import { signatoryIdText, signedOnBehalfOf } from '../../utils/signatoryFormat'
 import { CASH_BANK_ITEMS } from '../Notes/CashBankDetailsForm'
 import { printedDisclosures, disclosureParagraphs } from '../../utils/shareCapitalDisclosures'
+import { financialPeriodText } from '../../utils/financialPeriodDisplay'
 import { scaleRatioAmounts } from '../../utils/ratioTable'
 import { buildCashFlow } from '../../utils/cashFlow'
 import { pointBodyHtml } from '../../utils/generalNotePoint'
@@ -546,9 +547,9 @@ function buildBSSheet(entity, activeTB, prevTB, data, { denomination, auditor, s
   const scale = scaleFn(denomination)
   const numFmt = numFormatString(denomination)
   const d = DENOMINATIONS[denomination] || DENOMINATIONS['as_is']
-  const cyDate = yearEnd(activeTB?.period || '')
+  const cyDate = yearEnd(financialPeriodText(activeTB))
   const cyLabel = cyDate || 'Current Year'
-  const pyLabel = (prevTB?.period ? yearEnd(prevTB.period) : yearBefore(cyDate)) || 'Previous Year'
+  const pyLabel = (prevTB?.period ? yearEnd(financialPeriodText(prevTB)) : yearBefore(cyDate)) || 'Previous Year'
   const rows = []
   const noteLinks = []
   const formulaCells = []        // { rowIdx, noteNum } — patch with Notes formula after aoa_to_sheet
@@ -766,9 +767,9 @@ function buildNonCorpPLSheet(entity, activeTB, prevTB, data, { denomination, aud
   const scale = scaleFn(denomination)
   const numFmt = numFormatString(denomination)
   const d = DENOMINATIONS[denomination] || DENOMINATIONS['as_is']
-  const cyDate = yearEnd(activeTB?.period || '')
+  const cyDate = yearEnd(financialPeriodText(activeTB))
   const cyLabel = cyDate || 'Current Year'
-  const pyLabel = (prevTB?.period ? yearEnd(prevTB.period) : yearBefore(cyDate)) || 'Previous Year'
+  const pyLabel = (prevTB?.period ? yearEnd(financialPeriodText(prevTB)) : yearBefore(cyDate)) || 'Previous Year'
   const title = 'Profit and Loss Account'
   const rows = []
   const noteLinks = []
@@ -894,9 +895,9 @@ function buildPLSheet(entity, activeTB, prevTB, data, { denomination, auditor, s
   const scale = scaleFn(denomination)
   const numFmt = numFormatString(denomination)
   const d = DENOMINATIONS[denomination] || DENOMINATIONS['as_is']
-  const cyDate = yearEnd(activeTB?.period || '')
+  const cyDate = yearEnd(financialPeriodText(activeTB))
   const cyLabel = cyDate || 'Current Year'
-  const pyLabel = (prevTB?.period ? yearEnd(prevTB.period) : yearBefore(cyDate)) || 'Previous Year'
+  const pyLabel = (prevTB?.period ? yearEnd(financialPeriodText(prevTB)) : yearBefore(cyDate)) || 'Previous Year'
   const title = constitution === 1 ? 'Profit and Loss Account' : 'Statement of Profit and Loss'
   const rows = []
   const noteLinks = []
@@ -1777,14 +1778,14 @@ function buildNotesSheet(entity, activeTB, prevTB, data, { denomination, auditor
   const lineFormulaPatches = []  // { r, col, formula } — sub-note lines linked to Annexures subtotal cells
   const notesCyTotalMap = new Map()  // noteNum → { cyRow, pyRow } in this Notes sheet
 
-  const cyDate = yearEnd(activeTB?.period || '')
+  const cyDate = yearEnd(financialPeriodText(activeTB))
   const titleRows = pushTitleRows(rows, entity, `Notes to Financial Statements for the year ended ${cyDate}`, d.unit)
   rows.push([])
 
   // Single column header for the whole sheet
   const mainHeaderRow = rows.length
   const cyColLabel = cyDate || 'Current Year'
-  const pyColLabel = (prevTB?.period ? yearEnd(prevTB.period) : yearBefore(cyDate)) || 'Previous Year'
+  const pyColLabel = (prevTB?.period ? yearEnd(financialPeriodText(prevTB)) : yearBefore(cyDate)) || 'Previous Year'
   rows.push(['Particulars', '', cyColLabel, pyColLabel])
   rows.push([])
 
@@ -1809,8 +1810,8 @@ function buildNotesSheet(entity, activeTB, prevTB, data, { denomination, auditor
   const compSchedulePyRows = []
   const compScheduleRecoRows = []
 
-  const periodStartStr = yearStart(activeTB?.period || '')
-  const periodEndStr = yearEnd(activeTB?.period || '')
+  const periodStartStr = yearStart(financialPeriodText(activeTB))
+  const periodEndStr = yearEnd(financialPeriodText(activeTB))
 
   const notes = data.activeNotes || Object.values(data.notes)
   const noteBlocks = []  // { start, end, lastCol } — for outline box borders per note
@@ -2438,7 +2439,7 @@ function buildAnnexuresSheet(entity, activeTB, prevTB, data, { denomination, aud
   const annexTotalMap = new Map()         // noteNum → { cyRow, pyRow } (note Total row)
   const annexSubnoteTotalMap = new Map()  // noteNum → Map(subnoteLabel → { cyRow, pyRow })
 
-  const titleRows = pushTitleRows(rows, entity, `Annexures — Ledger-Level Details for the year ended ${yearEnd(activeTB?.period || '')}`, d.unit)
+  const titleRows = pushTitleRows(rows, entity, `Annexures — Ledger-Level Details for the year ended ${yearEnd(financialPeriodText(activeTB))}`, d.unit)
   rows.push([])
 
   const mainHeaderRow = rows.length
@@ -2714,9 +2715,9 @@ function buildCFSSheet(entity, activeTB, prevTB, data, { denomination, auditor, 
   const scale = scaleFn(denomination)
   const numFmt = numFormatString(denomination)
   const d = DENOMINATIONS[denomination] || DENOMINATIONS['as_is']
-  const cyDate = yearEnd(activeTB?.period || '')
+  const cyDate = yearEnd(financialPeriodText(activeTB))
   const cyLabel = cyDate || 'Current Year'
-  const pyLabel = (prevTB?.period ? yearEnd(prevTB.period) : yearBefore(cyDate)) || 'Previous Year'
+  const pyLabel = (prevTB?.period ? yearEnd(financialPeriodText(prevTB)) : yearBefore(cyDate)) || 'Previous Year'
   const cf = buildCashFlow(data, data.cfsSaved)
   const rows = []
   const titleRows = pushTitleRows(rows, entity, `Cash Flow Statement for year ended ${cyDate}`, d.unit)

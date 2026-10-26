@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useModalKeys } from '../../hooks/useModalKeys'
 import UnlockConfirmModal from '../shared/UnlockConfirmModal'
-import { formatPeriodRange } from '../../utils/financialPeriodDisplay'
+import { formatPeriodMasterOption } from '../../utils/financialPeriodDisplay'
 
 export default function AuditeeReadModal({ entity, onClose }) {
   const [periods, setPeriods] = useState([])
@@ -52,7 +52,7 @@ export default function AuditeeReadModal({ entity, onClose }) {
           <ul className="space-y-1.5">
             {periods.map(ep => (
               <li key={ep.id} className="flex items-center justify-between text-xs bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5">
-                <span className="text-gray-700">{ep.year_label} ({formatPeriodRange(ep.date_from, ep.date_till, ' to ')})</span>
+                <span className="text-gray-700">{formatPeriodMasterOption(ep.year_label, ep.date_from, ep.date_till)}</span>
                 {ep.locked ? (
                   <div className="flex items-center gap-2">
                     <span className="text-red-600 font-medium">🔒 Locked</span>
@@ -71,7 +71,7 @@ export default function AuditeeReadModal({ entity, onClose }) {
 
       {unlockTarget && (
         <UnlockConfirmModal
-          periodLabel={`${unlockTarget.year_label} (${formatPeriodRange(unlockTarget.date_from, unlockTarget.date_till, ' to ')})`}
+          periodLabel={formatPeriodMasterOption(unlockTarget.year_label, unlockTarget.date_from, unlockTarget.date_till)}
           onConfirm={() => doUnlock(unlockTarget)}
           onClose={() => setUnlockTarget(null)}
         />

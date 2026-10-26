@@ -107,9 +107,9 @@ if (mod) try {
   goodPayload = p
   const J = JSON.parse(JSON.stringify(p))
   ok('it follows the layout of Cloudtail PLAN section 7 (schema_version 1 and every top-level key)', J.schema_version === 1 && ['entity', 'period', 'basis', 'balance_sheet', 'profit_and_loss', 'notes', 'key_figures', 'share_capital', 'signatories_as_printed', 'auditor_as_printed'].every(k => J[k] !== undefined))
-  ok('entity and period: name, CIN, financial year dates and label', J.entity.name === 'Snapshot Test Pvt Ltd' && J.entity.cin === 'U12345WB2020PTC123456' && J.entity.constitution === 3 && J.period.date_from === '2025-04-01' && J.period.date_till === '2026-03-31' && J.period.year_label === 'FY 2025-26' && J.period.entity_period_id === 12, JSON.stringify(J.period))
+  ok('entity and period: name, CIN, reporting dates and closing-month label', J.entity.name === 'Snapshot Test Pvt Ltd' && J.entity.cin === 'U12345WB2020PTC123456' && J.entity.constitution === 3 && J.period.date_from === '2025-04-01' && J.period.date_till === '2026-03-31' && J.period.year_label === 'Mar2026' && J.period.entity_period_id === 12, JSON.stringify(J.period))
   const viaMaster = buildFsSnapshotPayload({ entity: { id: 7, name: 'X', constitution: 3 }, activeTB: { id: 1, period: '2025-26', entity_period_id: 12 }, data, periodInfo: { year_label: '2025-26', date_from: '2025-04-01', date_till: '2026-03-31' } })
-  ok('the Financial Year comes from the Auditee\'s own period (Master), so a Trial Balance whose period text is just "2025-26" still publishes', viaMaster.period.date_from === '2025-04-01' && viaMaster.period.date_till === '2026-03-31' && viaMaster.period.year_label === 'FY 2025-26', JSON.stringify(viaMaster.period))
+  ok('reporting dates come from the Auditee\'s master period, and the displayed period label is generated from its close date', viaMaster.period.date_from === '2025-04-01' && viaMaster.period.date_till === '2026-03-31' && viaMaster.period.year_label === 'Mar2026', JSON.stringify(viaMaster.period))
   ok('the basis says absolute rupees, not consolidated', J.basis.rounding === 'rupees' && J.basis.consolidated === false)
   const codes = [...J.balance_sheet, ...J.profit_and_loss].map(l => l.code)
   ok('every face line has a code and a label; codes are unique, so Cloudtail never matches on a label or note number', codes.every(Boolean) && new Set(codes).size === codes.length && [...J.balance_sheet, ...J.profit_and_loss].every(l => l.label && Number.isFinite(l.cy) && Number.isFinite(l.py)), codes.join(','))
@@ -181,7 +181,8 @@ try {
     const one = async (sql, p) => (await query(sql, p)).rows[0]
     const ent = await one(`INSERT INTO entities (name, constitution, constitution_display, business_type) VALUES ('ZZ Snap Co', 3, 'Company', 'Trader') RETURNING *`)
     const mkEp = async (label, from, till) => {
-      const fp = (await one(`INSERT INTO financial_periods (year_label, date_from, date_till) VALUES ($1,$2,$3) RETURNING id`, [label, from, till])).id
+      const fp = (await one(`SELECT id FROM financial_periods WHERE date_from=$1 AND date_till=$2`, [from, till]))?.id
+        || (await one(`INSERT INTO financial_periods (year_label, date_from, date_till) VALUES ($1,$2,$3) RETURNING id`, [label, from, till])).id
       return (await one(`INSERT INTO entity_periods (entity_id, financial_period_id) VALUES ($1,$2) RETURNING id`, [ent.id, fp])).id
     }
     const ep1 = await mkEp('2025-26', '2025-04-01', '2026-03-31'), ep2 = await mkEp('2024-25', '2024-04-01', '2025-03-31')

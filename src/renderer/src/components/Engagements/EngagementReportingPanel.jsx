@@ -5,6 +5,21 @@ import { formatPeriodDate, formatPeriodRange } from '../../utils/financialPeriod
 import { makeAuditReportPage, prependAuditReport } from './engagementReportHtml'
 
 const EMPTY_ENTRY = () => ({ ledgerName: '', ledgerCode: '', side: 'Dr', amount: '' })
+const EMPTY_SHARE_CLASS = () => ({
+  name: 'Equity Shares',
+  type: 'Equity',
+  faceValue: 10,
+  cy: { authorised: '', issued: '', subscribed: '', paidUp: '', openingShares: '', issuedDuringYear: '', deletedDuringYear: '' },
+  py: { authorised: '', issued: '', subscribed: '', paidUp: '', openingShares: '', issuedDuringYear: '', deletedDuringYear: '' },
+})
+const EMPTY_SHARE_DETAILS = () => ({
+  classes: [EMPTY_SHARE_CLASS()],
+  shareholders5pctEquity: [],
+  shareholders5pctPreference: [],
+  promoters: [],
+  rights: '',
+  footnotes: Array(10).fill(''),
+})
 const EMPTY_FIELDS = {
   addressee: '',
   opinion: '',
@@ -48,7 +63,7 @@ function TextArea({ label, value, onChange, rows = 3 }) {
   </label>
 }
 
-export default function EngagementReportingPanel({ engagement, user }) {
+export default function EngagementReportingPanel({ engagement, user, trialBalanceRefresh = 0 }) {
   const [trialBalances, setTrialBalances] = useState([])
   const [sourceId, setSourceId] = useState('')
   const [snapshots, setSnapshots] = useState([])
@@ -62,6 +77,9 @@ export default function EngagementReportingPanel({ engagement, user }) {
   const [entries, setEntries] = useState([EMPTY_ENTRY(), EMPTY_ENTRY()])
   const [journal, setJournal] = useState({ date: '', narration: '' })
   const [disclosures, setDisclosures] = useState({})
+  const [structuredDetails, setStructuredDetails] = useState({})
+  const [comparativeId, setComparativeId] = useState('')
+  const [mappingSelections, setMappingSelections] = useState({})
   const [signatory, setSignatory] = useState({ name: '', designation: '', din: '' })
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -97,7 +115,7 @@ export default function EngagementReportingPanel({ engagement, user }) {
     } finally {
       setLoading(false)
     }
-  }, [engagement.id])
+  }, [engagement.id, trialBalanceRefresh])
 
   useEffect(() => { load() }, [load])
 
@@ -117,7 +135,10 @@ export default function EngagementReportingPanel({ engagement, user }) {
       setBundle(reportingData)
       setFinalRows(rows)
       setFields({ ...EMPTY_FIELDS, ...(reportingData.auditReport?.fields || {}) })
-      setDisclosures(Object.fromEntries((reportingData.noteDisclosures || []).map(note => [note.note_num, note.text])))
+      setDisclosures(Object.fromEntries((reportingData.noteDisclosures || []).map(note => [note.note_title, note.text])))
+      setStructuredDetails(Object.fromEntries((reportingData.noteDetails || []).map(note => [note.note_title, note.data])))
+      setComparativeId(String(reportingData.comparativeTrialBalance?.id || ''))
+      setMappingSelections({})
       setError('')
     }).catch(fetchError => {
       if (!cancelled) {
@@ -192,10 +213,84 @@ export default function EngagementReportingPanel({ engagement, user }) {
       trialBalanceId: Number(finalId),
       noteNum: Number(note.num),
       noteTitle: note.title,
-      text: disclosures[note.num] || '',
+      text: disclosures[note.title] || '',
     })
     setMessage(`Note ${note.num} disclosure saved separately from the Trial Balance and journals.`)
   })
+
+  const importComparativeTrialBalance = () => run(async () => {
+    const imported = await window.api.importEngagementTrialBalance({ engagementId: engagement.id, comparative: true })
+    if (imported?.cancelled) return
+    setComparativeId(String(imported.trialBalance.id))
+    setMessage(`Prior-year Trial Balance ${imported.trialBalance.period} imported and selected. Its closing balances will be used for comparatives.`)
+    if (finalId) {
+      const [updated, rows] = await Promise.all([
+        window.api.getEngagementReportingData({ engagementId: engagement.id, trialBalanceId: Number(finalId) }),
+        window.api.getEngagementFinalTrialBalanceRows({ engagementId: engagement.id, trialBalanceId: Number(finalId) }),
+      ])
+      setBundle(updated)
+      setFinalRows(rows)
+      setStructuredDetails(Object.fromEntries((updated.noteDetails || []).map(note => [note.note_title, note.data])))
+    }
+    return imported
+  })
+
+  const selectComparativeTrialBalance = () => run(async () => {
+    await window.api.selectEngagementComparativeTrialBalance({
+      engagementId: engagement.id,
+      trialBalanceId: comparativeId ? Number(comparativeId) : null,
+    })
+    if (finalId) {
+      const updated = await window.api.getEngagementReportingData({ engagementId: engagement.id, trialBalanceId: Number(finalId) })
+      setBundle(updated)
+    }
+    setMessage('Prior-year comparative selection saved.')
+  })
+
+  const saveStructuredDetails = note => run(async () => {
+    const data = structuredDetails[note.title] || EMPTY_SHARE_DETAILS()
+    await window.api.saveEngagementNoteDetails({
+      engagementId: engagement.id,
+      trialBalanceId: Number(finalId),
+      noteNum: Number(note.num),
+      noteTitle: note.title,
+      data,
+    })
+    const updated = await window.api.getEngagementReportingData({ engagementId: engagement.id, trialBalanceId: Number(finalId) })
+    setBundle(updated)
+    setStructuredDetails(Object.fromEntries((updated.noteDetails || []).map(item => [item.note_title, item.data])))
+    setMessage(`Structured details for ${note.title} saved by stable note identity.`)
+  })
+
+  const correctMapping = row => run(async () => {
+    const levelFormatId = Number(mappingSelections[row.id] || row.lf_id)
+    if (!Number.isInteger(levelFormatId)) throw new Error('Choose a valid statement mapping.')
+    await window.api.correctEngagementMapping({
+      engagementId: engagement.id,
+      trialBalanceId: Number(finalId),
+      trialBalanceRowId: Number(row.id),
+      levelFormatId,
+    })
+    const [updated, rows] = await Promise.all([
+      window.api.getEngagementReportingData({ engagementId: engagement.id, trialBalanceId: Number(finalId) }),
+      window.api.getEngagementFinalTrialBalanceRows({ engagementId: engagement.id, trialBalanceId: Number(finalId) }),
+    ])
+    setBundle(updated)
+    setFinalRows(rows)
+    setMessage(`Mapping correction saved for ${row.name}.`)
+  })
+
+  const changeShareDetail = (noteTitle, periodKey, field, value) => {
+    setStructuredDetails(current => {
+      const existing = current[noteTitle] || EMPTY_SHARE_DETAILS()
+      const classes = existing.classes?.length ? [...existing.classes] : [EMPTY_SHARE_CLASS()]
+      const shareClass = classes[0]
+      classes[0] = periodKey === 'faceValue'
+        ? { ...shareClass, faceValue: value }
+        : { ...shareClass, [periodKey]: { ...shareClass[periodKey], [field]: value } }
+      return { ...current, [noteTitle]: { ...existing, classes } }
+    })
+  }
 
   const saveReportSettings = async () => {
     const result = await window.api.saveEngagementAuditReportSettings({ engagementId: engagement.id, fields })
@@ -218,12 +313,16 @@ export default function EngagementReportingPanel({ engagement, user }) {
       frn: fields.firmRegistrationNumber,
       firm_address: fields.firmAddress,
     }
-    const detailsMap = Object.fromEntries((bundle.noteDetails || []).map(note => [note.note_num, note.data]))
-    const disclosureMap = { ...disclosures }
+    const detailsByTitle = new Map((bundle.noteDetails || []).map(note => [String(note.note_title || '').trim().toLocaleLowerCase(), note.data]))
+    const detailsMap = Object.fromEntries(notes.map(note => {
+      const saved = detailsByTitle.get(String(note.title || '').trim().toLocaleLowerCase())
+      return saved ? [note.num, saved] : null
+    }).filter(Boolean))
+    const disclosureMap = Object.fromEntries(notes.map(note => [note.num, disclosures[note.title] || '']))
     const financialsHtml = buildFinancialsHTML({
       entity: bundle.entity,
       activeTB: bundle.activeTB,
-      prevTB: null,
+      prevTB: bundle.comparativeTrialBalance,
       data: financialData,
       auditor,
       signatories,
@@ -291,6 +390,28 @@ export default function EngagementReportingPanel({ engagement, user }) {
             </select>
           </label>
           {selectedSource && <p className="mt-2 text-xs text-gray-500">{selectedSource.period || engagement.period_label} · imported source retained</p>}
+          {editable && <button disabled={busy || !supported} onClick={importComparativeTrialBalance}
+            className="mt-3 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 disabled:opacity-40">
+            Import prior-year Trial Balance
+          </button>}
+          {bundle?.comparativeTrialBalances?.length > 0 && <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/60 p-3">
+            <label className="block text-xs font-medium text-gray-700">Comparative Trial Balance
+              <select value={comparativeId} onChange={event => setComparativeId(event.target.value)}
+                className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm">
+                <option value="">No prior-year comparative selected</option>
+                {bundle.comparativeTrialBalances.map(row => <option key={row.id} value={row.id}>
+                  {row.period} · {row.filename} · {row.row_count} rows
+                </option>)}
+              </select>
+            </label>
+            <button disabled={!editable || busy} onClick={selectComparativeTrialBalance}
+              className="mt-2 rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-xs font-medium text-indigo-900 disabled:opacity-40">
+              Save comparative selection
+            </button>
+            {bundle.comparativeTrialBalance && <p className="mt-2 text-xs text-indigo-900">
+              Comparatives use prior-year closing balances for {bundle.comparativeTrialBalance.dateFrom} to {bundle.comparativeTrialBalance.dateTill}; current-year opening balances are not substituted.
+            </p>}
+          </div>}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <Input label="Journal date" type="date" value={journal.date} onChange={value => setJournal(current => ({ ...current, date: value }))} />
             <Input label="Narration" value={journal.narration} onChange={value => setJournal(current => ({ ...current, narration: value }))} />
@@ -339,7 +460,21 @@ export default function EngagementReportingPanel({ engagement, user }) {
                 <thead className="sticky top-0 bg-gray-50"><tr><th className="p-2">Ledger</th><th className="p-2">Mapping</th><th className="p-2 text-right">Closing</th></tr></thead>
                 <tbody className="divide-y">{finalRows.map(row => <tr key={row.id}>
                   <td className="p-2">{row.name}</td>
-                  <td className="p-2">{[row.mapping1_resultant, row.mapping2_resultant, row.mapping3_resultant].filter(Boolean).join(' · ') || row.status || 'Unmapped'}</td>
+                  <td className="p-2">
+                    <div>{[row.mapping1_resultant, row.mapping2_resultant, row.mapping3_resultant].filter(Boolean).join(' · ') || row.status || 'Unmapped'}</div>
+                    {editable && bundle?.levelFormat?.length > 0 && <div className="mt-1 flex gap-1">
+                      <select aria-label={`Correct mapping for ${row.name}`} value={mappingSelections[row.id] || row.level_format_id || ''}
+                        onChange={event => setMappingSelections(current => ({ ...current, [row.id]: event.target.value }))}
+                        className="min-w-0 flex-1 rounded border border-gray-300 px-1 py-1 text-[10px]">
+                        <option value="">Select mapping…</option>
+                        {bundle.levelFormat.filter(item => item.alie).map(item => <option key={item.id} value={item.id}>
+                          {[item.alie, item.level1, item.level2, item.level3].filter(Boolean).join(' · ')}
+                        </option>)}
+                      </select>
+                      <button disabled={busy || !(mappingSelections[row.id] || row.level_format_id)} onClick={() => correctMapping(row)}
+                        className="rounded border px-2 py-1 text-[10px] disabled:opacity-40">Save</button>
+                    </div>}
+                  </td>
                   <td className="p-2 text-right">{Number(row.closing_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>)}</tbody>
               </table>
@@ -406,9 +541,42 @@ export default function EngagementReportingPanel({ engagement, user }) {
           {notes.length > 0 && <details className="mt-4 rounded-md border border-gray-200 bg-white p-3">
             <summary className="cursor-pointer text-sm font-semibold text-gray-800">Notes to accounts — add separate narrative disclosures ({notes.length})</summary>
             <div className="mt-3 space-y-3">
-              {notes.map(note => <div key={note.num} className="grid gap-2 border-t pt-3 md:grid-cols-[1fr_auto]">
-                <TextArea label={`Note ${note.num}: ${note.displayTitle || note.title}`} rows={2} value={disclosures[note.num] || ''} onChange={value => setDisclosures(current => ({ ...current, [note.num]: value }))} />
-                <button disabled={!editable || busy} onClick={() => saveDisclosure(note)} className="self-end rounded-md border px-3 py-2 text-sm disabled:opacity-40">Save note text</button>
+              {notes.map(note => <div key={note.title} className="border-t pt-3">
+                <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+                  <TextArea label={`Note ${note.num}: ${note.displayTitle || note.title}`} rows={2} value={disclosures[note.title] || ''} onChange={value => setDisclosures(current => ({ ...current, [note.title]: value }))} />
+                  <button disabled={!editable || busy} onClick={() => saveDisclosure(note)} className="self-end rounded-md border px-3 py-2 text-sm disabled:opacity-40">Save note text</button>
+                </div>
+                {/share capital/i.test(note.title || '') && <details className="mt-3 rounded border border-gray-200 p-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-gray-700">Structured share-capital details</summary>
+                  {(() => {
+                    const shareClass = (structuredDetails[note.title]?.classes || EMPTY_SHARE_DETAILS().classes)[0]
+                    const fieldsToEdit = [
+                      ['authorised', 'Authorised shares'],
+                      ['issued', 'Issued shares'],
+                      ['subscribed', 'Subscribed shares'],
+                      ['paidUp', 'Paid-up shares'],
+                      ['openingShares', 'Opening shares'],
+                      ['issuedDuringYear', 'Issued during year'],
+                      ['deletedDuringYear', 'Shares cancelled during year'],
+                    ]
+                    return <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <Input label="Share class" value={shareClass.name || 'Equity Shares'} onChange={value => {
+                        const current = structuredDetails[note.title] || EMPTY_SHARE_DETAILS()
+                        const classes = current.classes?.length ? [...current.classes] : [EMPTY_SHARE_CLASS()]
+                        classes[0] = { ...classes[0], name: value }
+                        setStructuredDetails(details => ({ ...details, [note.title]: { ...current, classes } }))
+                      }} />
+                      <Input label="Face value per share" type="number" value={shareClass.faceValue ?? 10} onChange={value => changeShareDetail(note.title, 'faceValue', '', value)} />
+                      {['cy', 'py'].flatMap(periodKey => fieldsToEdit.map(([field, label]) => (
+                        <Input key={`${periodKey}-${field}`} label={`${label} · ${periodKey === 'cy' ? 'Current year' : 'Prior year'}`}
+                          type="number" value={shareClass[periodKey]?.[field] ?? ''}
+                          onChange={value => changeShareDetail(note.title, periodKey, field, value)} />
+                      )))}
+                      <button disabled={!editable || busy} onClick={() => saveStructuredDetails(note)}
+                        className="justify-self-start rounded-md border border-indigo-300 px-3 py-2 text-xs font-medium text-indigo-900 disabled:opacity-40">Save structured details</button>
+                    </div>
+                  })()}
+                </details>}
               </div>)}
             </div>
           </details>}

@@ -40,6 +40,9 @@ const OPERATIONS = {
   'engagement:trialBalances': { path: 'trial-balances', args: id => [{ engagementId: id }] },
   'engagement:trialBalanceRows': { path: 'trial-balance/rows', args: input => [input] },
   'engagement:importTrialBalance': { path: 'trial-balance/import', args: input => [input], selectFile: true },
+  'engagement:comparativeTrialBalanceSelect': { path: 'trial-balance/comparative/select', args: input => [input] },
+  'engagement:mappingOverride': { path: 'mapping/override', args: input => [input] },
+  'engagement:noteDetailsSave': { path: 'reporting/note-details/save', args: input => [input] },
   'engagement:journalList': { path: 'journals', args: id => [{ engagementId: id }] },
   'engagement:journalPost': { path: 'journal/post', args: input => [input] },
   'engagement:finalTrialBalances': { path: 'final-trial-balances', args: id => [{ engagementId: id }] },
@@ -121,7 +124,7 @@ export function registerEngagementClientHandlers(handlerRegistry = ipcMain, opti
       }
       if (operation.selectFile) {
         const selection = await dialog.showOpenDialog({
-          title: 'Import Trial Balance',
+          title: input?.comparative ? 'Import Prior-year Trial Balance' : 'Import Trial Balance',
           properties: ['openFile'],
           filters: [{ name: 'Excel workbooks', extensions: ['xlsx', 'xls', 'xlsm'] }],
         })
@@ -134,6 +137,7 @@ export function registerEngagementClientHandlers(handlerRegistry = ipcMain, opti
         const content = await readFile(filePath)
         input = {
           engagementId: input?.engagementId,
+          comparative: input?.comparative === true,
           fileName: basename(filePath),
           fileContentBase64: content.toString('base64'),
         }

@@ -9,6 +9,7 @@
 import { computeCompanyBSLayout } from './bsStructure'
 import { EXPENSE_LINES, corpFaceTail, TAX_SECTION_RX } from './plStructureCorp'
 import { printNoteRows } from './noteRowHeaders'
+import { financialPeriodLabel } from '../../../shared/financial-periods.mjs'
 
 const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0 }
 const r2 = (n) => Math.round(num(n) * 100) / 100
@@ -19,8 +20,6 @@ export function periodDates(period) {
   const m = /(\d{4}-\d{2}-\d{2})\s*(?:to|-)\s*(\d{4}-\d{2}-\d{2})/i.exec(String(period || ''))
   return m ? { from: m[1], till: m[2] } : { from: null, till: null }
 }
-const yearLabel = (from, till) => (from && till ? `FY ${from.slice(0, 4)}-${till.slice(2, 4)}` : null)
-
 // ── Balance Sheet face: code per line (BS.EL.<group>.<letter>[.<roman>], BS.AS...), as the face is laid out ──
 export function snapshotBalanceSheet(data) {
   const layout = computeCompanyBSLayout(data)
@@ -135,7 +134,7 @@ export function buildFsSnapshotPayload({ entity, activeTB, data, auditor = null,
   const ymd = (x) => (x ? String(x).slice(0, 10) : null)
   const fromTB = periodDates(activeTB?.period)
   const dates = periodInfo && periodInfo.date_from && periodInfo.date_till ? { from: ymd(periodInfo.date_from), till: ymd(periodInfo.date_till) } : fromTB
-  const label = periodInfo && periodInfo.year_label ? (/^FY/i.test(periodInfo.year_label) ? periodInfo.year_label : `FY ${periodInfo.year_label}`) : yearLabel(dates.from, dates.till)
+  const label = financialPeriodLabel(dates.till) || periodInfo?.year_label || null
   const details = (n) => {
     if (!noteDetailsMap) return null
     const v = typeof noteDetailsMap.get === 'function' ? noteDetailsMap.get(Number(n)) : noteDetailsMap[n]

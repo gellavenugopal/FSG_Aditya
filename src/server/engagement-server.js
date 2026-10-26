@@ -60,6 +60,9 @@ const ROUTES = {
     args: body => [body],
     maxBodyBytes: TB_IMPORT_MAX_BODY_BYTES,
   },
+  'trial-balance/comparative/select': { channel: 'engagement:comparativeTrialBalanceSelect', args: body => [body] },
+  'mapping/override': { channel: 'engagement:mappingOverride', args: body => [body] },
+  'reporting/note-details/save': { channel: 'engagement:noteDetailsSave', args: body => [body] },
 }
 
 function getTlsOptions(options = {}) {

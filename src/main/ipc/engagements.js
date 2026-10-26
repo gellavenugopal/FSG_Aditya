@@ -1,8 +1,9 @@
-import { createHash, randomBytes, pbkdf2, timingSafeEqual } from 'node:crypto'
-import { promisify } from 'node:util'
+import { createHash, randomBytes } from 'node:crypto'
 import * as XLSX from 'xlsx'
 import { parseTBExcel } from '../services/tb-template.js'
 import { runMappingEngine, persistMappingResults } from '../services/mapping-engine.js'
+import { createEngagementPasswordRecord, verifyEngagementPassword } from '../services/engagement-password.js'
+import { financialPeriodLabel } from '../../shared/financial-periods.mjs'
 import {
   canEditEngagement, canFinaliseEngagement, canViewEngagement,
   isValidDateOnly, validateActivation, validateEngagementDraft,
@@ -10,9 +11,7 @@ import {
 
 let query
 let runInTransaction
-const derivePassword = promisify(pbkdf2)
 const sessions = new Map()
-const PASSWORD_ITERATIONS = 310000
 const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
 const BOOTSTRAP_LOCK = 517203841
 
@@ -23,25 +22,6 @@ function cleanEmail(value) {
 function dateOnly(value) {
   if (value instanceof Date) return value.toISOString().slice(0, 10)
   return typeof value === 'string' ? value.slice(0, 10) : ''
-}
-
-function validatePassword(value) {
-  if (typeof value !== 'string' || value.length < 12 || value.length > 256) {
-    throw new Error('Password must be between 12 and 256 characters.')
-  }
-}
-
-async function passwordRecord(password, salt = randomBytes(16).toString('hex')) {
-  validatePassword(password)
-  const hash = await derivePassword(password, Buffer.from(salt, 'hex'), PASSWORD_ITERATIONS, 32, 'sha256')
-  return { salt, hash: hash.toString('hex') }
-}
-
-async function verifyPassword(password, salt, expectedHex) {
-  if (typeof password !== 'string' || password.length > 256) return false
-  const actual = await derivePassword(String(password || ''), Buffer.from(salt, 'hex'), PASSWORD_ITERATIONS, 32, 'sha256')
-  const expected = Buffer.from(expectedHex, 'hex')
-  return actual.length === expected.length && timingSafeEqual(actual, expected)
 }
 
 function publicUser(row) {
@@ -130,7 +110,8 @@ async function assertEngagementTBContext(user, engagementId) {
   const engagement = await fetchEngagement(user.firmId, id)
   const membership = await assertCanView(user, engagement)
   const { rows: [period] } = await query(
-    `SELECT ep.id,ep.entity_id,ep.locked,ep.is_final,fp.year_label
+    `SELECT ep.id,ep.entity_id,ep.locked,ep.is_final,ep.financial_period_id,
+            fp.year_label,fp.date_from,fp.date_till
      FROM engagement_reporting_sets rs
      JOIN entity_periods ep ON ep.id=rs.entity_period_id
      JOIN financial_periods fp ON fp.id=ep.financial_period_id
@@ -298,13 +279,14 @@ async function ensureClientBelongsToFirm(firmId, entityId, actorId, allowUnassig
   )
 }
 
-async function attachEntityPeriod(entityId, start, end, name) {
+async function attachEntityPeriod(entityId, start, end) {
   if (!start || !end) return { entityPeriodId: null, existingWork: false }
-  const label = String(name || '').trim() || `Period ${start.slice(0, 4)}`
+  const label = financialPeriodLabel(end)
+  if (!label) throw new Error('The reporting period end date must be a valid ISO date.')
   const { rows: [fp] } = await query(
     `INSERT INTO financial_periods (year_label, date_from, date_till)
      VALUES ($1,$2,$3)
-     ON CONFLICT (date_from, date_till) DO UPDATE SET year_label=financial_periods.year_label
+     ON CONFLICT (date_from, date_till) DO UPDATE SET year_label=EXCLUDED.year_label
      RETURNING id`,
     [label, start, end]
   )
@@ -376,7 +358,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Enter a valid administrator email.')
     if (!String(input.firmName || '').trim()) throw new Error('Firm name is required.')
     if (!String(input.displayName || '').trim()) throw new Error('Administrator name is required.')
-    const { salt, hash } = await passwordRecord(input.password)
+    const { salt, hash } = await createEngagementPasswordRecord(input.password)
     const user = await runInTransaction(async () => {
       await query(`SELECT pg_advisory_xact_lock($1)`, [BOOTSTRAP_LOCK])
       const { rows: [existing] } = await query(
@@ -408,7 +390,7 @@ export function registerEngagementHandlers(ipcMain, database) {
       [email]
     )
     const row = rows.length === 1 ? rows[0] : null
-    if (!row || !(await verifyPassword(input.password, row.password_salt, row.password_hash))) {
+    if (!row || !(await verifyEngagementPassword(input.password, row.password_salt, row.password_hash))) {
       throw new Error('Email or password is incorrect.')
     }
     const user = publicUser(row)
@@ -426,7 +408,7 @@ export function registerEngagementHandlers(ipcMain, database) {
 
   ipcMain.handle('engagementAuth:changePassword', async (event, password) => {
     const user = await authenticated(event, true)
-    const { salt, hash } = await passwordRecord(password)
+    const { salt, hash } = await createEngagementPasswordRecord(password)
     await runInTransaction(async () => {
       await query(
         `UPDATE firm_users SET password_salt=$1,password_hash=$2,must_change_password=FALSE,updated_at=now() WHERE id=$3`,
@@ -464,7 +446,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     if (!name) throw new Error('User name is required.')
     if (!['employee', 'article', 'auditor', 'partner'].includes(jobTitle)) throw new Error('Choose a valid team position.')
     const initialPassword = randomBytes(24).toString('hex')
-    const { salt, hash } = await passwordRecord(initialPassword)
+    const { salt, hash } = await createEngagementPasswordRecord(initialPassword)
     const row = await runInTransaction(async () => {
       const { rows: [created] } = await query(
         `INSERT INTO firm_users (firm_id,email,display_name,job_title,password_salt,password_hash,role,must_change_password)
@@ -488,13 +470,24 @@ export function registerEngagementHandlers(ipcMain, database) {
        ORDER BY e.name`,
       [user.firmId, user.role]
     )
-    const { rows: periods } = await query(`SELECT id,year_label,date_from,date_till FROM financial_periods ORDER BY date_from DESC`)
+    const { rows: periods } = await query(`SELECT id,year_label,date_from,date_till FROM financial_periods ORDER BY date_from DESC,date_till DESC,id DESC`)
     const { rows: packs } = await query(`SELECT * FROM reporting_pack_catalog ORDER BY jurisdiction,framework`)
     const { rows: users } = await query(
       `SELECT id,email,display_name,role,job_title FROM firm_users WHERE firm_id=$1 AND active=TRUE ORDER BY display_name`,
       [user.firmId]
     )
-    return { entities, periods, packs, users }
+    return {
+      entities,
+      periods,
+      packs,
+      users: users.map(row => ({
+        id: Number(row.id),
+        email: row.email,
+        displayName: row.display_name,
+        role: row.role,
+        jobTitle: row.job_title || (row.role === 'partner' ? 'partner' : 'employee'),
+      })),
+    }
   })
 
   ipcMain.handle('engagement:createClient', async (event, input = {}) => {
@@ -685,7 +678,7 @@ export function registerEngagementHandlers(ipcMain, database) {
       const reference = String(input.reference || '').trim() || `ENG-${String(new Date().getFullYear()).slice(-2)}-${String(ref.number).padStart(5, '0')}`
       const status = input.status === 'active' ? 'active' : 'draft'
       const periodName = String(input.name || '').trim()
-      const attached = await attachEntityPeriod(entityId, input.periodStart, input.periodEnd, periodName)
+      const attached = await attachEntityPeriod(entityId, input.periodStart, input.periodEnd)
       if (status === 'active') await assertEntityPeriodAvailableForActivation(attached.entityPeriodId)
       const compatibilityConfirmed = !!input.compatibilityConfirmed && !attached.hasUnlinkedTrialBalances
       if (input.status === 'active' && !compatibilityConfirmed) {
@@ -815,7 +808,7 @@ export function registerEngagementHandlers(ipcMain, database) {
       let existingWork = false
       let hasUnlinkedTrialBalances = false
       if (!entityPeriodId && periodStart && periodEnd) {
-        const attached = await attachEntityPeriod(engagement.entity_id, periodStart, periodEnd, input.name)
+        const attached = await attachEntityPeriod(engagement.entity_id, periodStart, periodEnd)
         entityPeriodId = attached.entityPeriodId
         existingWork = attached.existingWork
         hasUnlinkedTrialBalances = attached.hasUnlinkedTrialBalances
@@ -1037,6 +1030,7 @@ export function registerEngagementHandlers(ipcMain, database) {
   ipcMain.handle('engagement:importTrialBalance', async (event, input = {}) => {
     const user = await authenticated(event)
     const { engagement, period } = await assertEngagementTBContext(user, input.engagementId)
+    const comparative = input.comparative === true
     if (engagement.status === 'finalised' || engagement.status === 'archived' || period.locked || period.is_final) {
       throw new Error('This engagement reporting period is locked or finalised and cannot accept a Trial Balance import.')
     }
@@ -1055,10 +1049,11 @@ export function registerEngagementHandlers(ipcMain, database) {
     try {
       return await runInTransaction(async () => {
         const { rows: [lockedContext] } = await query(
-          `SELECT e.status,ep.locked,ep.is_final
+          `SELECT e.status,ep.locked,ep.is_final,fp.date_from,fp.date_till
            FROM engagements e
            JOIN engagement_reporting_sets rs ON rs.engagement_id=e.id
            JOIN entity_periods ep ON ep.id=rs.entity_period_id
+           JOIN financial_periods fp ON fp.id=ep.financial_period_id
            WHERE e.id=$1 AND e.firm_id=$2 AND rs.id=$3
            FOR UPDATE OF e,ep`,
           [engagement.id, user.firmId, engagement.reporting_set_id]
@@ -1071,11 +1066,49 @@ export function registerEngagementHandlers(ipcMain, database) {
         const currentEngagement = await fetchEngagement(user.firmId, engagement.id)
         await assertCanEdit(user, currentEngagement)
 
+        let importPeriodId = period.id
+        let importPeriodLabel = period.year_label || ''
+        let importDateFrom = dateOnly(period.date_from)
+        let importDateTill = dateOnly(period.date_till)
+        if (comparative) {
+          const { rows: [prior] } = await query(
+            `SELECT (date_from - interval '1 year')::date AS date_from,
+                    (date_till - interval '1 year')::date AS date_till
+             FROM financial_periods WHERE id=$1`,
+            [period.financial_period_id]
+          )
+          if (!prior) throw new Error('The prior-year reporting period could not be resolved.')
+          const from = dateOnly(prior.date_from)
+          const till = dateOnly(prior.date_till)
+          importDateFrom = from
+          importDateTill = till
+          importPeriodLabel = financialPeriodLabel(till)
+          if (!importPeriodLabel) throw new Error('The prior-year reporting period end date is invalid.')
+          const { rows: [financialPeriod] } = await query(
+            `INSERT INTO financial_periods (year_label,date_from,date_till)
+             VALUES ($1,$2,$3)
+             ON CONFLICT (date_from,date_till) DO UPDATE SET year_label=EXCLUDED.year_label
+             RETURNING id,year_label`,
+            [importPeriodLabel, from, till]
+          )
+          const { rows: [entityPeriod] } = await query(
+            `INSERT INTO entity_periods (entity_id,financial_period_id)
+             VALUES ($1,$2)
+             ON CONFLICT (entity_id,financial_period_id) DO UPDATE SET entity_id=EXCLUDED.entity_id
+             RETURNING id,locked,is_final`,
+            [engagement.entity_id, financialPeriod.id]
+          )
+          if (entityPeriod.locked || entityPeriod.is_final) {
+            throw new Error('The prior-year reporting period is locked or finalised and cannot accept a Trial Balance import.')
+          }
+          importPeriodId = entityPeriod.id
+        }
+
         const { rows: [tb] } = await query(
           `INSERT INTO trial_balances
              (entity_id,period,filename,row_count,branch_name,entity_period_id)
            VALUES ($1,$2,$3,$4,'',$5) RETURNING id,period,filename,row_count,uploaded_at,branch_name`,
-          [engagement.entity_id, period.year_label || '', fileName, rows.length, period.id]
+          [engagement.entity_id, `${importDateFrom} To ${importDateTill}`, fileName, rows.length, importPeriodId]
         )
         const columns = [
           'tb_id','period','branch','ledger_code','name','opening_balance','debit','credit','closing_balance',
@@ -1108,9 +1141,16 @@ export function registerEngagementHandlers(ipcMain, database) {
            VALUES ($1,$2,$3,$4,$5,$6)`,
           [engagement.id, tb.id, fileName, sourceHash, buffer.length, user.id]
         )
+        if (comparative) {
+          await query(
+            `UPDATE engagement_reporting_sets SET prior_trial_balance_id=$1,updated_at=now()
+             WHERE id=$2 AND engagement_id=$3`,
+            [tb.id, engagement.reporting_set_id, engagement.id]
+          )
+        }
         await logAudit(user, 'trial_balance.imported', engagement.id, {
           trialBalanceId: Number(tb.id), fileName, sourceSha256: sourceHash,
-          sourceSizeBytes: buffer.length, rowCount: rows.length,
+          sourceSizeBytes: buffer.length, rowCount: rows.length, comparative,
         })
         return {
           trialBalance: { ...tb, id: Number(tb.id), row_count: Number(tb.row_count) },
@@ -1124,6 +1164,70 @@ export function registerEngagementHandlers(ipcMain, database) {
       }
       throw error
     }
+  })
+
+  ipcMain.handle('engagement:comparativeTrialBalanceSelect', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertEngagementTBContext(user, input.engagementId)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    const tbId = input.trialBalanceId == null || input.trialBalanceId === '' ? null : Number(input.trialBalanceId)
+    if (tbId != null && (!Number.isSafeInteger(tbId) || tbId <= 0)) {
+      throw new Error('Choose a valid prior-year Trial Balance.')
+    }
+    return runInTransaction(async () => {
+      if (tbId != null) {
+        const { rows: [prior] } = await query(
+          `SELECT tb.id
+           FROM trial_balances tb
+           JOIN entity_periods priorEp ON priorEp.id=tb.entity_period_id AND priorEp.entity_id=tb.entity_id
+           JOIN financial_periods priorFp ON priorFp.id=priorEp.financial_period_id
+           JOIN engagement_trial_balance_imports i
+             ON i.engagement_id=$1 AND i.trial_balance_id=tb.id
+           JOIN engagement_reporting_sets rs ON rs.id=$2 AND rs.engagement_id=i.engagement_id
+           JOIN entity_periods currentEp ON currentEp.id=rs.entity_period_id
+           JOIN financial_periods currentFp ON currentFp.id=currentEp.financial_period_id
+           WHERE tb.id=$3 AND tb.entity_id=$4
+             AND priorFp.date_from=(currentFp.date_from - interval '1 year')::date
+             AND priorFp.date_till=(currentFp.date_till - interval '1 year')::date`,
+          [context.engagement.id, context.engagement.reporting_set_id, tbId, context.engagement.entity_id]
+        )
+        if (!prior) throw new Error('Select a Trial Balance imported to this engagement for the immediately preceding reporting period.')
+      }
+      await query(
+        `UPDATE engagement_reporting_sets SET prior_trial_balance_id=$1,updated_at=now()
+         WHERE id=$2 AND engagement_id=$3`,
+        [tbId, context.engagement.reporting_set_id, context.engagement.id]
+      )
+      if (tbId != null) {
+        const { rows: [latestSnapshot] } = await query(
+          `SELECT mapping_rule_set_id FROM engagement_final_tb_snapshots
+           WHERE engagement_id=$1 ORDER BY version DESC LIMIT 1`,
+          [context.engagement.id]
+        )
+        if (latestSnapshot) {
+          const { rows: [existing] } = await query(`SELECT COUNT(*)::integer AS count FROM mapped_tb WHERE tb_id=$1`, [tbId])
+          if (Number(existing.count) === 0) {
+            let queryQueue = Promise.resolve()
+            const mappingDatabase = {
+              query(sql, params) {
+                const result = queryQueue.then(() => query(sql, params))
+                queryQueue = result.then(() => undefined, () => undefined)
+                return result
+              },
+              runInTransaction,
+            }
+            const priorMapped = await runMappingEngine(
+              tbId, Number(latestSnapshot.mapping_rule_set_id), Number(context.engagement.constitution),
+              { businessType: context.engagement.business_type, database: mappingDatabase }
+            )
+            await persistMappingResults(priorMapped, mappingDatabase)
+          }
+        }
+      }
+      await logAudit(user, 'report.comparative_trial_balance_selected', context.engagement.id, { trialBalanceId: tbId })
+      return { ok: true, trialBalanceId: tbId }
+    })
   })
 
   ipcMain.handle('engagement:journalList', async (event, engagementId) => {
@@ -1321,7 +1425,7 @@ export function registerEngagementHandlers(ipcMain, database) {
         let row
         if (adjustment.sourceIndex == null) {
           row = {
-            period: context.period.year_label || '',
+            period: `${dateOnly(context.period.date_from)} To ${dateOnly(context.period.date_till)}`,
             branch: '',
             ledger_code: adjustment.ledgerCode,
             name: adjustment.ledgerName,
@@ -1358,7 +1462,13 @@ export function registerEngagementHandlers(ipcMain, database) {
       const { rows: [tb] } = await query(
         `INSERT INTO trial_balances (entity_id,period,filename,row_count,branch_name,entity_period_id)
          VALUES ($1,$2,$3,$4,'',$5) RETURNING id,period,filename,row_count,uploaded_at,branch_name,entity_id,entity_period_id`,
-        [context.engagement.entity_id, context.period.year_label || '', `Final TB v${versionRow.next_version}`, resultRows.length, context.period.id]
+        [
+          context.engagement.entity_id,
+          `${dateOnly(context.period.date_from)} To ${dateOnly(context.period.date_till)}`,
+          `Final TB v${versionRow.next_version}`,
+          resultRows.length,
+          context.period.id,
+        ]
       )
       const columns = [
         'tb_id','period','branch','ledger_code','name','opening_balance','debit','credit','closing_balance',
@@ -1408,6 +1518,37 @@ export function registerEngagementHandlers(ipcMain, database) {
         { businessType: context.engagement.business_type, database: mappingDatabase }
       )
       await persistMappingResults(mapped, mappingDatabase)
+      const { rows: [priorTb] } = await query(
+        `SELECT tb.id,tb.entity_id,tb.entity_period_id,priorFp.date_from,priorFp.date_till,
+                currentFp.date_from AS current_date_from,currentFp.date_till AS current_date_till
+         FROM engagement_reporting_sets rs
+         JOIN trial_balances tb ON tb.id=rs.prior_trial_balance_id
+         JOIN entity_periods priorEp ON priorEp.id=tb.entity_period_id AND priorEp.entity_id=tb.entity_id
+         JOIN financial_periods priorFp ON priorFp.id=priorEp.financial_period_id
+         JOIN entity_periods currentEp ON currentEp.id=rs.entity_period_id
+         JOIN financial_periods currentFp ON currentFp.id=currentEp.financial_period_id
+         JOIN engagement_trial_balance_imports i
+           ON i.engagement_id=rs.engagement_id AND i.trial_balance_id=tb.id
+         WHERE rs.engagement_id=$1 AND tb.entity_id=$2
+           AND priorFp.date_from=(currentFp.date_from - interval '1 year')::date
+           AND priorFp.date_till=(currentFp.date_till - interval '1 year')::date`,
+        [context.engagement.id, context.engagement.entity_id]
+      )
+      if (priorTb) {
+        const { rows: [existingPriorMappings] } = await query(
+          `SELECT COUNT(*)::integer AS count FROM mapped_tb WHERE tb_id=$1`,
+          [priorTb.id]
+        )
+        if (Number(existingPriorMappings.count) === 0) {
+          const priorMapped = await runMappingEngine(
+            Number(priorTb.id),
+            Number(ruleSet.id),
+            Number(context.engagement.constitution),
+            { businessType: context.engagement.business_type, database: mappingDatabase }
+          )
+          await persistMappingResults(priorMapped, mappingDatabase)
+        }
+      }
       await logAudit(user, 'trial_balance.final_snapshot_created', context.engagement.id, {
         sourceTrialBalanceId: context.trialBalance.id,
         trialBalanceId: Number(tb.id),
@@ -1455,12 +1596,56 @@ export function registerEngagementHandlers(ipcMain, database) {
     }))
   })
 
+  ipcMain.handle('engagement:mappingOverride', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    const rowId = Number(input.trialBalanceRowId)
+    const levelFormatId = Number(input.levelFormatId)
+    if (!Number.isSafeInteger(rowId) || rowId <= 0 || !Number.isSafeInteger(levelFormatId) || levelFormatId <= 0) {
+      throw new Error('Choose a valid final Trial Balance row and mapping.')
+    }
+    return runInTransaction(async () => {
+      const { rows: [snapshot] } = await query(
+        `SELECT mapping_rule_set_id FROM engagement_final_tb_snapshots
+         WHERE engagement_id=$1 AND trial_balance_id=$2`,
+        [context.engagement.id, context.trialBalance.id]
+      )
+      if (!snapshot) throw new Error('Manual corrections are available only for a final engagement Trial Balance.')
+      const { rows: [mapping] } = await query(
+        `SELECT id,rule_set_id,constitution,alie,level1,level2,level3,level4,level5,level6,level7
+         FROM level_format
+         WHERE id=$1 AND rule_set_id=$2 AND constitution=$3 AND alie IS NOT NULL`,
+        [levelFormatId, snapshot.mapping_rule_set_id, context.engagement.constitution]
+      )
+      if (!mapping) throw new Error('The selected mapping is not part of this engagement reporting rule set.')
+      const { rows: [mapped] } = await query(
+        `UPDATE mapped_tb
+         SET alie=$1,mapping1_resultant=$2,mapping2_resultant=$3,mapping3_resultant=$4,
+             level_format_id=$5,level4_value=$6,level5_value=$7,level6_value=$8,level7_value=$9,
+             status='user_override',confidence='user',override_note='Manual correction from protected reporting workflow',
+             mapped_at=now()
+         WHERE tb_id=$10 AND tb_row_id=$11 AND rule_set_id=$12
+         RETURNING id`,
+        [mapping.alie,mapping.level1,mapping.level2,mapping.level3,mapping.id,
+          mapping.level4,mapping.level5,mapping.level6,mapping.level7,
+          context.trialBalance.id,rowId,snapshot.mapping_rule_set_id]
+      )
+      if (!mapped) throw new Error('The selected ledger row is not mapped in this final Trial Balance.')
+      await logAudit(user, 'report.mapping_corrected', context.engagement.id, {
+        trialBalanceId: context.trialBalance.id, trialBalanceRowId: rowId, levelFormatId: mapping.id,
+      })
+      return { ok: true }
+    })
+  })
+
   ipcMain.handle('engagement:finalTrialBalanceRows', async (event, input = {}) => {
     const user = await authenticated(event)
     const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
     const { rows } = await query(
       `SELECT tr.id,tr.period,tr.ledger_code,tr.name,tr.opening_balance,tr.debit,tr.credit,
-              tr.closing_balance,tr.is_deemed_positive,tr.upload_nature,
+              tr.closing_balance,tr.is_deemed_positive,tr.upload_nature,mt.level_format_id,
               mt.mapping1_resultant,mt.mapping2_resultant,mt.mapping3_resultant,mt.alie,
               mt.status,mt.confidence,mt.override_note
        FROM tb_rows tr
@@ -1485,6 +1670,20 @@ export function registerEngagementHandlers(ipcMain, database) {
       [engagement.id, trialBalance.id]
     )
     if (!snapshot) throw new Error('Generate a final Trial Balance before creating financial statements.')
+    const { rows: [priorSelection] } = await query(
+      `SELECT rs.prior_trial_balance_id,tb.id,tb.period,tb.filename,tb.row_count,
+              tb.entity_period_id,fp.date_from,fp.date_till
+       FROM engagement_reporting_sets rs
+       LEFT JOIN trial_balances tb ON tb.id=rs.prior_trial_balance_id AND tb.entity_id=$2
+       LEFT JOIN engagement_trial_balance_imports i
+         ON i.engagement_id=rs.engagement_id AND i.trial_balance_id=tb.id
+       LEFT JOIN financial_periods fp ON fp.id=(
+         SELECT ep.financial_period_id FROM entity_periods ep WHERE ep.id=tb.entity_period_id
+       )
+       WHERE rs.id=$1 AND (rs.prior_trial_balance_id IS NULL OR i.trial_balance_id IS NOT NULL)`,
+      [engagement.reporting_set_id, engagement.entity_id]
+    )
+    if (!priorSelection) throw new Error('The selected comparative Trial Balance is not linked to this engagement.')
     const { rows: [entity] } = await query(
       `SELECT id,name,constitution,constitution_display,business_type,address,cin,pan,jurisdiction,legal_form
        FROM entities WHERE id=$1`,
@@ -1526,6 +1725,31 @@ export function registerEngagementHandlers(ipcMain, database) {
       `SELECT * FROM level_format WHERE rule_set_id=$1 AND constitution=$2 ORDER BY sort_order`,
       [snapshot.mapping_rule_set_id, entity.constitution]
     )
+    let comparativeRows = []
+    if (priorSelection.id) {
+      const { rows } = await query(
+        `SELECT mt.mapping1_resultant,mt.mapping2_resultant,mt.mapping3_resultant,
+                mt.level4_value,mt.level5_value,mt.level6_value,mt.level7_value,
+                mt.status,mt.override_note,tr.name AS ledger_name,tr.name,tr.ledger_code,
+                mt.id AS mapped_id,mt.tb_row_id,mt.tb_id,tr.opening_balance,tr.closing_balance,
+                tr.trail_balance,tr.is_deemed_positive,tr.upload_nature,tr.stock_head,
+                lf.id AS lf_id,COALESCE(lf.alie,mt.alie) AS alie,
+                COALESCE(lf.level1,mt.mapping1_resultant) AS level1,
+                COALESCE(lf.level2,mt.mapping2_resultant) AS level2,
+                COALESCE(lf.level3,mt.mapping3_resultant) AS level3,
+                lf.level4,lf.level5 AS lf_level5,lf.level6 AS lf_level6,lf.level7 AS lf_level7,
+                lf.sort_order
+         FROM mapped_tb mt
+         JOIN tb_rows tr ON tr.id=mt.tb_row_id
+         LEFT JOIN level_format lf ON lf.id=mt.level_format_id
+         WHERE mt.tb_id=$1
+           AND mt.status IN ('auto_high','auto_medium','auto_low','user_approved','user_override')
+           AND COALESCE(lf.alie,mt.alie) IS NOT NULL
+         ORDER BY lf.sort_order NULLS LAST,COALESCE(lf.alie,mt.alie),lf.level1,lf.level2,lf.level3`,
+        [priorSelection.id]
+      )
+      comparativeRows = rows
+    }
     const { rows: details } = await query(
       `SELECT note_num,note_title,data FROM note_details WHERE tb_id=$1 ORDER BY note_num`,
       [trialBalance.id]
@@ -1533,6 +1757,16 @@ export function registerEngagementHandlers(ipcMain, database) {
     const { rows: disclosures } = await query(
       `SELECT note_num,note_title,text FROM note_disclosures WHERE tb_id=$1 AND text<>'' ORDER BY note_num`,
       [trialBalance.id]
+    )
+    const { rows: comparativeTrialBalances } = await query(
+      `SELECT tb.id,tb.period,tb.filename,tb.row_count,fp.date_from,fp.date_till
+       FROM engagement_trial_balance_imports i
+       JOIN trial_balances tb ON tb.id=i.trial_balance_id
+       JOIN entity_periods ep ON ep.id=tb.entity_period_id AND ep.entity_id=tb.entity_id
+       JOIN financial_periods fp ON fp.id=ep.financial_period_id
+       WHERE i.engagement_id=$1 AND tb.entity_id=$2 AND fp.date_till < $3
+       ORDER BY fp.date_till DESC,tb.uploaded_at DESC`,
+      [engagement.id, engagement.entity_id, context.period.date_from]
     )
     const { rows: [reportSettings] } = await query(
       `SELECT template_id,revision,fields,updated_at FROM engagement_audit_report_settings WHERE engagement_id=$1`,
@@ -1552,6 +1786,15 @@ export function registerEngagementHandlers(ipcMain, database) {
       },
       entity,
       activeTB: { ...trialBalance, id: Number(trialBalance.id), entity_period_id: context.period.id },
+      comparativeTrialBalance: priorSelection.id ? {
+        id: Number(priorSelection.id),
+        period: priorSelection.period,
+        filename: priorSelection.filename,
+        dateFrom: dateOnly(priorSelection.date_from),
+        dateTill: dateOnly(priorSelection.date_till),
+      } : null,
+      comparativeTrialBalances: comparativeTrialBalances.map(row => ({ ...row, id: Number(row.id) })),
+      comparativeRows,
       snapshot: { ...snapshot, id: Number(snapshot.id), version: Number(snapshot.version) },
       financialRows,
       levelFormat,
@@ -1620,14 +1863,80 @@ export function registerEngagementHandlers(ipcMain, database) {
       throw new Error('Enter a valid note number, title and disclosure of no more than 12,000 characters.')
     }
     await runInTransaction(async () => {
-      await query(
-        `INSERT INTO note_disclosures (tb_id,note_num,note_title,text,updated_at)
-         VALUES ($1,$2,$3,$4,now())
-         ON CONFLICT (tb_id,note_num) DO UPDATE SET
-           note_title=EXCLUDED.note_title,text=EXCLUDED.text,updated_at=now()`,
-        [context.trialBalance.id, noteNum, noteTitle, text]
+      const { rows: [existing] } = await query(
+        `SELECT note_num FROM note_disclosures
+         WHERE tb_id=$1 AND lower(btrim(note_title))=lower(btrim($2))
+         ORDER BY note_num LIMIT 1 FOR UPDATE`,
+        [context.trialBalance.id, noteTitle]
       )
+      if (existing) {
+        await query(
+          `UPDATE note_disclosures SET text=$1,updated_at=now()
+           WHERE tb_id=$2 AND note_num=$3`,
+          [text, context.trialBalance.id, existing.note_num]
+        )
+      } else {
+        const { rows: [last] } = await query(
+          `SELECT COALESCE(MAX(note_num),0)::integer AS note_num FROM note_disclosures WHERE tb_id=$1`,
+          [context.trialBalance.id]
+        )
+        await query(
+          `INSERT INTO note_disclosures (tb_id,note_num,note_title,text,updated_at)
+           VALUES ($1,$2,$3,$4,now())`,
+          [context.trialBalance.id, Number(last.note_num) + 1, noteTitle, text]
+        )
+      }
       await logAudit(user, 'report.note_disclosure_updated', context.engagement.id, {
+        trialBalanceId: context.trialBalance.id, noteNum, noteTitle,
+      })
+    })
+    return { ok: true }
+  })
+
+  ipcMain.handle('engagement:noteDetailsSave', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    await assertIndiaScheduleIII(context.engagement)
+    const noteNum = Number(input.noteNum)
+    const noteTitle = String(input.noteTitle || '').trim()
+    if (!Number.isInteger(noteNum) || noteNum < 1 || noteNum > 500 || !noteTitle || noteTitle.length > 500
+      || !input.data || typeof input.data !== 'object' || Array.isArray(input.data)) {
+      throw new Error('Enter a valid structured disclosure for the selected note.')
+    }
+    let serialized
+    try {
+      serialized = JSON.stringify(input.data)
+    } catch {
+      throw new Error('Structured note details must be valid JSON data.')
+    }
+    if (Buffer.byteLength(serialized) > 65536) throw new Error('Structured note details cannot exceed 64 KB.')
+    await runInTransaction(async () => {
+      const { rows: [existing] } = await query(
+        `SELECT note_num FROM note_details
+         WHERE tb_id=$1 AND lower(btrim(note_title))=lower(btrim($2))
+         ORDER BY note_num LIMIT 1 FOR UPDATE`,
+        [context.trialBalance.id, noteTitle]
+      )
+      if (existing) {
+        await query(
+          `UPDATE note_details SET data=$1::text,details=$1::text::jsonb,updated_at=now()
+           WHERE tb_id=$2 AND note_num=$3`,
+          [serialized, context.trialBalance.id, existing.note_num]
+        )
+      } else {
+        const { rows: [last] } = await query(
+          `SELECT COALESCE(MAX(note_num),0)::integer AS note_num FROM note_details WHERE tb_id=$1`,
+          [context.trialBalance.id]
+        )
+        await query(
+          `INSERT INTO note_details (tb_id,note_num,note_title,data,details,updated_at)
+           VALUES ($1,$2,$3,$4::text,$4::text::jsonb,now())`,
+          [context.trialBalance.id, Number(last.note_num) + 1, noteTitle, serialized]
+        )
+      }
+      await logAudit(user, 'report.note_details_updated', context.engagement.id, {
         trialBalanceId: context.trialBalance.id, noteNum, noteTitle,
       })
     })

@@ -9,6 +9,7 @@ const repositoryRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url))
 const electronViteCli = path.join(repositoryRoot, 'node_modules', 'electron-vite', 'bin', 'electron-vite.js')
 const maximumLogBytes = 4 * 1024 * 1024
 const maximumLogFiles = 3
+const launcherVersion = 2
 
 if (!fs.existsSync(electronViteCli)) throw new Error(`electron-vite CLI was not found at ${electronViteCli}`)
 
@@ -87,7 +88,15 @@ function forwardOutput(streamName, chunk) {
   }
 }
 
-appendLog('launcher', `Starting electron-vite dev; pid=${process.pid}; logDirectory=${logDirectory}\n`)
+appendLog('launcher', `${JSON.stringify({
+  event: 'startup',
+  pid: process.pid,
+  parentPid: process.ppid,
+  timestamp: new Date().toISOString(),
+  sourceCheckout: repositoryRoot,
+  launcherVersion,
+  packageVersion: JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8')).version,
+})}\n`)
 child = spawn(process.execPath, [electronViteCli, 'dev'], {
   cwd: repositoryRoot,
   env: process.env,

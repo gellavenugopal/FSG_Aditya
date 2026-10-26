@@ -360,6 +360,7 @@ function CreateEngagement({ user, onCancel, onCreated, onOpen, initialEngagement
     status: 'draft', separateReason: '', compatibilityConfirmed: false, legacyConfirmationNote: '',
   }))
   const [newClient, setNewClient] = useState({ name: '', jurisdiction: '', legalForm: '' })
+  const [showNewClientForm, setShowNewClientForm] = useState(false)
   const [creatingClient, setCreatingClient] = useState(false)
   const [duplicates, setDuplicates] = useState(null)
   const [error, setError] = useState('')
@@ -386,6 +387,7 @@ function CreateEngagement({ user, onCancel, onCreated, onOpen, initialEngagement
       const client = await window.api.createEngagementClient(newClient)
       await loadOptions()
       set('entityId', String(client.id))
+      setShowNewClientForm(false)
       setCreatingClient(false)
       setNewClient({ name: '', jurisdiction: '', legalForm: '' })
     } catch (err) {
@@ -485,9 +487,9 @@ function CreateEngagement({ user, onCancel, onCreated, onOpen, initialEngagement
           <div className="space-y-5">
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[240px] flex-1"><Field label="Client entity"><Select required disabled={isEditing} value={form.entityId} onChange={e => set('entityId', e.target.value)}><option value="">Select a client…</option>{options.entities.map(entity => <option key={entity.id} value={entity.id}>{entity.name} {entity.jurisdiction ? `· ${entity.jurisdiction}` : '· Legacy setup required'}</option>)}</Select></Field></div>
-              {!isEditing && <button onClick={() => setCreatingClient(value => !value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{creatingClient ? 'Cancel new client' : '+ Create client'}</button>}
+              {!isEditing && <button onClick={() => setShowNewClientForm(value => !value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{showNewClientForm ? 'Cancel new client' : '+ Create client'}</button>}
             </div>
-            {creatingClient && (
+            {showNewClientForm && (
               <div className="grid gap-3 rounded-lg bg-gray-50 p-4 sm:grid-cols-3">
                 <Field label="Legal client name"><Input value={newClient.name} onChange={e => setNewClient({ ...newClient, name: e.target.value })} /></Field>
                 <Field label="Jurisdiction code" hint="Use the ISO 3166-1 alpha-2 code, such as IN, AE or US."><Input required maxLength={2} pattern="[A-Za-z]{2}" value={newClient.jurisdiction} onChange={e => setNewClient({ ...newClient, jurisdiction: e.target.value.toUpperCase() })} /></Field>
@@ -619,6 +621,7 @@ function Summary({ label, value }) {
 
 function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false }) {
   const [data, setData] = useState(null)
+  const [trialBalanceRefresh, setTrialBalanceRefresh] = useState(0)
   const [options, setOptions] = useState({ users: [] })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -734,8 +737,8 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
           </div>
 
           {serviceOnlyMode && <>
-            <ProtectedTrialBalancePanel engagement={engagement} />
-            <EngagementReportingPanel engagement={engagement} user={user} />
+            <ProtectedTrialBalancePanel engagement={engagement} onImported={() => setTrialBalanceRefresh(value => value + 1)} />
+            <EngagementReportingPanel engagement={engagement} user={user} trialBalanceRefresh={trialBalanceRefresh} />
           </>}
 
           <section className="mt-5 rounded-xl border border-gray-200 bg-white p-5">
@@ -752,7 +755,7 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
   )
 }
 
-function ProtectedTrialBalancePanel({ engagement }) {
+function ProtectedTrialBalancePanel({ engagement, onImported }) {
   const [trialBalances, setTrialBalances] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [page, setPage] = useState(0)
@@ -811,6 +814,7 @@ function ProtectedTrialBalancePanel({ engagement }) {
       await loadTrialBalances()
       setSelectedId(String(imported.trialBalance.id))
       setPage(0)
+      onImported?.()
     } catch (importError) {
       setError(importError.message || 'Trial Balance import failed.')
     } finally {

@@ -52,8 +52,12 @@ export function registerTBHandlers() {
   // ── List distinct branches for an entity ──────────────────────────────────
   ipcMain.handle('tb:getBranches', async (_, entityId) => {
     const { rows } = await query(
-      `SELECT id, branch_name, period, filename, row_count, entity_period_id FROM trial_balances
-       WHERE entity_id=$1 ORDER BY branch_name, id`,
+      `SELECT tb.id, tb.branch_name, tb.period, tb.filename, tb.row_count, tb.entity_period_id,
+              fp.date_from AS period_date_from, fp.date_till AS period_date_till
+       FROM trial_balances tb
+       LEFT JOIN entity_periods ep ON ep.id=tb.entity_period_id
+       LEFT JOIN financial_periods fp ON fp.id=ep.financial_period_id
+       WHERE tb.entity_id=$1 ORDER BY tb.branch_name, tb.id`,
       [entityId]
     )
     return rows
@@ -219,7 +223,11 @@ export function registerTBHandlers() {
   // ── List TBs for an entity ─────────────────────────────────────────────────
   ipcMain.handle('tb:list', async (_, entityId) => {
     const { rows } = await query(
-      `SELECT * FROM trial_balances WHERE entity_id=$1 ORDER BY uploaded_at DESC`,
+      `SELECT tb.*,fp.date_from AS period_date_from,fp.date_till AS period_date_till
+       FROM trial_balances tb
+       LEFT JOIN entity_periods ep ON ep.id=tb.entity_period_id
+       LEFT JOIN financial_periods fp ON fp.id=ep.financial_period_id
+       WHERE tb.entity_id=$1 ORDER BY tb.uploaded_at DESC`,
       [entityId]
     )
     return rows
@@ -232,7 +240,11 @@ export function registerTBHandlers() {
   ipcMain.handle('tb:listByEntityPeriod', async (_, entityPeriodId) => {
     if (!entityPeriodId) return []
     const { rows } = await query(
-      `SELECT * FROM trial_balances WHERE entity_period_id=$1 ORDER BY uploaded_at DESC`,
+      `SELECT tb.*,fp.date_from AS period_date_from,fp.date_till AS period_date_till
+       FROM trial_balances tb
+       JOIN entity_periods ep ON ep.id=tb.entity_period_id
+       JOIN financial_periods fp ON fp.id=ep.financial_period_id
+       WHERE tb.entity_period_id=$1 ORDER BY tb.uploaded_at DESC`,
       [entityPeriodId]
     )
     return rows

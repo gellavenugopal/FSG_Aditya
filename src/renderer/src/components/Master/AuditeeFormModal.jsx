@@ -3,7 +3,8 @@ import { useModalKeys } from '../../hooks/useModalKeys'
 import UnlockConfirmModal from '../shared/UnlockConfirmModal'
 import GlobalAuditorPicker from '../shared/GlobalAuditorPicker'
 import { isValidPan, normalizePan } from '../../utils/pan'
-import { formatPeriodRange } from '../../utils/financialPeriodDisplay'
+import { formatPeriodMasterOption } from '../../utils/financialPeriodDisplay'
+import { financialPeriodLabel } from '../../../../shared/financial-periods.mjs'
 
 const CONSTITUTION_OPTIONS = [
   { label: 'Individual', value: 'Individual', code: 1 },
@@ -16,13 +17,12 @@ const CONSTITUTION_OPTIONS = [
 const BUSINESS_TYPE_OPTIONS = ['Manufacturer', 'Trader', 'Service Provider', 'Mixed']
 
 function fmtPeriod(p) {
-  return `${p.year_label} (${formatPeriodRange(p.date_from, p.date_till, ' to ')})`
+  return formatPeriodMasterOption(p.year_label, p.date_from, p.date_till)
 }
 
 // One row for picking/creating a Financial Period to attach.
 function PeriodPickRow({ globalPeriods, alreadyAttachedIds, value, onChange, onRemove }) {
   const [creatingNew, setCreatingNew] = useState(false)
-  const [newLabel, setNewLabel] = useState('')
   const [newFrom, setNewFrom] = useState('')
   const [newTill, setNewTill] = useState('')
   const [saving, setSaving] = useState(false)
@@ -32,10 +32,10 @@ function PeriodPickRow({ globalPeriods, alreadyAttachedIds, value, onChange, onR
 
   const createNew = async () => {
     setErr('')
-    if (!newLabel.trim() || !newFrom || !newTill) { setErr('All fields are required.'); return }
+    if (!newFrom || !newTill) { setErr('Date From and Date Till are required.'); return }
     setSaving(true)
     try {
-      const created = await window.api?.saveFinancialPeriod({ year_label: newLabel.trim(), date_from: newFrom, date_till: newTill })
+      const created = await window.api?.saveFinancialPeriod({ date_from: newFrom, date_till: newTill })
       onChange(created)
       setCreatingNew(false)
     } catch (e) {
@@ -48,9 +48,7 @@ function PeriodPickRow({ globalPeriods, alreadyAttachedIds, value, onChange, onR
   if (creatingNew) {
     return (
       <div className="border border-blue-200 rounded p-3 bg-blue-50/50 mb-2">
-        <div className="grid grid-cols-3 gap-2 mb-2">
-          <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Year label e.g. FY 2025-26"
-            className="border border-gray-300 rounded px-2 py-1.5 text-xs col-span-3 bg-white" />
+        <div className="grid grid-cols-2 gap-2 mb-2">
           <div>
             <label className="block text-[10px] text-gray-500 mb-0.5">Date From</label>
             <input type="date" value={newFrom} onChange={e => setNewFrom(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs bg-white" />
@@ -60,6 +58,9 @@ function PeriodPickRow({ globalPeriods, alreadyAttachedIds, value, onChange, onR
             <input type="date" value={newTill} onChange={e => setNewTill(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs bg-white" />
           </div>
         </div>
+        <p className="mb-2 text-[11px] text-gray-500">
+          Period label: <span className="font-semibold text-gray-700">{financialPeriodLabel(newTill) || 'set a valid closing date'}</span>
+        </p>
         {err && <p className="text-red-500 text-xs mb-2">{err}</p>}
         <div className="flex gap-2">
           <button onClick={() => setCreatingNew(false)} className="px-2 py-1 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-50">Cancel</button>
@@ -265,7 +266,7 @@ export default function AuditeeFormModal({ mode, editing, onSaved, onClose }) {
               <ul className="space-y-1.5 mb-3">
                 {attached.map(ep => (
                   <li key={ep.id} className="flex items-center justify-between text-xs bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5">
-                    <span className="text-gray-700">{ep.year_label} ({formatPeriodRange(ep.date_from, ep.date_till, ' to ')})</span>
+                    <span className="text-gray-700">{formatPeriodMasterOption(ep.year_label, ep.date_from, ep.date_till)}</span>
                     {ep.locked ? (
                       <div className="flex items-center gap-2">
                         <span className="text-red-600 font-medium" title={ep.is_final ? 'Marked Final when the PDF / Excel was generated: Place and Date of Signing are fixed' : undefined}>🔒 Locked{ep.is_final ? ` · Final (signed at ${ep.final_sign_place || ''} on ${ep.final_sign_date || ''})` : ''}</span>
@@ -312,7 +313,7 @@ export default function AuditeeFormModal({ mode, editing, onSaved, onClose }) {
 
       {unlockTarget && (
         <UnlockConfirmModal
-          periodLabel={`${unlockTarget.year_label} (${formatPeriodRange(unlockTarget.date_from, unlockTarget.date_till, ' to ')})`}
+          periodLabel={formatPeriodMasterOption(unlockTarget.year_label, unlockTarget.date_from, unlockTarget.date_till)}
           onConfirm={() => doUnlock(unlockTarget)}
           onClose={() => setUnlockTarget(null)}
         />

@@ -233,6 +233,9 @@ function verifyFailClosedConfiguration() {
   check(path.resolve(effectivePath) === path.resolve(userDataPath)
     && path.resolve(fakeApp.getPath('userData')) === path.resolve(userDataPath),
   'Electron userData is explicitly set and its effective value is verified')
+  rejects(() => configureDisposableTestUserData({ ...fakeApp, isPackaged: true }, baseEnvironment, fixtureReadTarget),
+    /cannot run in a packaged application/i,
+    'packaged applications reject disposable test mode before profile or account provisioning')
 
   rejects(() => resolveDisposableTestTarget({
     ...baseEnvironment,
@@ -306,7 +309,8 @@ try {
   await runtimePool.query(`
     CREATE TABLE entities (id SERIAL PRIMARY KEY, name TEXT);
     CREATE TABLE global_signatories (id SERIAL PRIMARY KEY, name TEXT);
-    CREATE TABLE financial_periods (id SERIAL PRIMARY KEY, year_label TEXT, date_from DATE, date_till DATE);
+    CREATE TABLE financial_periods (id SERIAL PRIMARY KEY, year_label TEXT, date_from DATE, date_till DATE,
+      UNIQUE (date_from, date_till));
     CREATE TABLE entity_periods (id SERIAL PRIMARY KEY, entity_id INTEGER REFERENCES entities(id),
       financial_period_id INTEGER REFERENCES financial_periods(id));
     CREATE TABLE trial_balances (id SERIAL PRIMARY KEY);

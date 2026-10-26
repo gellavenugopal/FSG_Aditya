@@ -76,7 +76,8 @@ try {
   const ent = (await one(`INSERT INTO entities (name, constitution, constitution_display) VALUES ('ZZ Selftest Co', 3, 'Company') RETURNING id`)).id
   const rs = (await one(`INSERT INTO mapping_rule_sets (name, is_default, entity_id) VALUES ('selftest rules', FALSE, $1) RETURNING id`, [ent])).id
   const tbFor = async (label, from, till) => {
-    const fp = (await one(`INSERT INTO financial_periods (year_label, date_from, date_till) VALUES ($1,$2,$3) RETURNING id`, [label, from, till])).id
+    const fp = (await one(`SELECT id FROM financial_periods WHERE date_from=$1 AND date_till=$2`, [from, till]))?.id
+      || (await one(`INSERT INTO financial_periods (year_label, date_from, date_till) VALUES ($1,$2,$3) RETURNING id`, [label, from, till])).id
     const ep = (await one(`INSERT INTO entity_periods (entity_id, financial_period_id) VALUES ($1,$2) RETURNING id`, [ent, fp])).id
     return (await one(`INSERT INTO trial_balances (entity_id, period, entity_period_id) VALUES ($1,$2,$3) RETURNING id`, [ent, label, ep])).id
   }

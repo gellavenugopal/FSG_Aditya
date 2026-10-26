@@ -31,6 +31,20 @@ FSG_TEST_USER_DATA_PATH=<absolute-harness-user-data-path>
 
 Do not set `ENGAGEMENT_SERVICE_URL`, `ENGAGEMENT_DATABASE_URL`, or any `ENGAGEMENT_DB_*` variable in this mode. The application sets and verifies Electron's effective `userData` path before loading any saved database profile, displays the non-secret target, starts only the local engagement service, and disables legacy DB initialization, schema/mapping setup and legacy financial IPC registration. The service compares its complete database options with the harness manifest before connecting. After connection it verifies the PostgreSQL endpoint, current database/user and the harness-created instance marker/data-directory identity before running engagement schema setup.
 
+### Persistent demo sign-in accounts
+
+For the persistent, single-machine sample, provision UI-test accounts only through the isolated harness:
+
+```powershell
+.\tools\engagement-demo.ps1 start-db
+.\tools\engagement-demo.ps1 provision-users
+.\tools\engagement-demo.ps1 launch
+```
+
+The provisioning action requires the explicit disposable target and its separate application profile, verifies the connected PostgreSQL identity and test-instance marker, then creates a synthetic firm administrator, contributor, and reader. Passwords are randomly generated into the ACL-restricted `credentials.json` in the demo home and stored in PostgreSQL using the same PBKDF2 password-record helper as normal authentication. Passwords are never printed or logged. Re-running the command verifies existing users and passwords without resetting or replacing them; a mismatch fails closed. The app's normal startup never creates test users, and packaged applications reject `FSG_TEST_MODE`.
+
+UI automation may read the credentials file locally, but should enter them through the regular sign-in form. Keep the demo's PostgreSQL data directory and Electron user-data directory between application restarts; `stop-db` is optional and stops only the dedicated demo cluster. Do not use this harness against saved Settings or a production database.
+
 Run the safeguards self-test with:
 
 ```powershell
@@ -115,11 +129,14 @@ The first protected reporting path is available in the engagement overview. It s
 1. Open an active engagement and import an Excel workbook with `Name`, `OpeningBalance`, `Debit`, `Credit`, and `ClosingBalance`. Include hierarchy columns such as `Parent` and `Group.$Parent` to help the existing India auto-mapper classify accounts.
 2. Post balanced audit journals. Users with engagement edit rights can post without approval. Journal entries are retained as immutable history; the source import does not change.
 3. Create a final Trial Balance. Each operation creates a new versioned snapshot from the selected import plus the posted journals through a saved journal watermark, then runs the existing India auto-mapping engine.
-4. Review the mapping results and report inputs. The panel currently supports automatic mapping and inspection only; manual mapping overrides are not yet available through the protected service.
-5. Edit and save the auditor-entered audit-report fields. The application does not infer the opinion. Enter audit-report date/place separately from financial-statement approval date/place, select the client signatories, and add separate narrative note disclosures as needed.
-6. Generate one combined PDF. The desktop renders the existing India financial-statement and notes HTML together with the audit-report page, then sends the bounded PDF bytes to the trusted service for versioned persistence. Download saved versions from the panel. Output finalisation is restricted to the assigned engagement partner or authorised substitute.
+4. Review automatic mappings and apply manual mapping corrections where needed. Select a prior-year closing TB for comparatives by its exact reporting dates; current-year opening balances are not used as a substitute for prior-year closing balances.
+5. Complete structured note details for the disclosures supported by the selected India forms, and add narrative disclosures where needed. Note identity is retained by its stable title when display numbering changes.
+6. Edit and save the auditor-entered audit-report fields. The application does not infer the opinion. Enter audit-report date/place separately from financial-statement approval date/place and select the client signatories.
+7. Generate one combined PDF. The desktop renders the existing India financial-statement and notes HTML together with the audit-report page, then sends the bounded PDF bytes to the trusted service for versioned persistence. Download saved versions from the panel. Output finalisation is restricted to the assigned engagement partner or authorised substitute.
 
-Current limitations: the protected panel does not migrate the existing structured note fill-details forms, provide manual mapping corrections, or select a comparative Trial Balance. The renderer can consume saved note-detail records, but those forms are not editable through this panel. The PDF persistence integration test uses a synthetic valid PDF; Electron rendering is separately verified with the synthetic report script below, not by full end-to-end UI UAT.
+The complete UI workflow has been run against a saved synthetic engagement using the isolated desktop and PostgreSQL instance. It imported current- and prior-year TBs, posted journals, created a final TB, corrected a mapping, saved structured Share Capital details, edited the audit report, and generated the combined PDF through the UI and trusted service. The assigned partner finalised the engagement/output; a subsequent journal mutation was rejected; authorised reopening retained the final output. After closing and restarting the desktop/service against the same isolated profile and database, the engagement and PDF were reopened. The downloaded PDF matched the persisted output SHA-256 (`c3cf106b101b89cc4db09d73d2866429ad702ae50fe161bd93898997e3515642`). The 10-page PDF was rendered to a contact sheet and visually inspected. Two physical desktop clients were not tested.
+
+Independent checks reconciled the final TB; current and prior balance sheet totals; current and prior PBT/PAT; PPE, receivables, cash, revenue, depreciation, operating expense, tax, and share-capital note totals; and the structured Share Capital figures to the mapped statement amount. The comparative uses the prior-year closing TB dated 01-Apr-2024 to 31-Mar-2025. The corrected PDF has no Share Capital balance-sheet mismatch or missing-share-count EPS warning.
 
 ### Reproducible single-machine sample
 
@@ -134,7 +151,46 @@ This uses synthetic-only data and the production India statement HTML builder pl
 - `artifacts\Synthetic-Engagement-TB.xlsx` — a three-ledger import workbook for the sample client and period 01-Apr-2025 to 31-Mar-2026.
 - `artifacts\Synthetic-Engagement-India-Reporting-Pack.pdf` — a seven-page sample containing an auditor-entered report, India financial statements, notes and signing page.
 
-The sample PDF is a renderer review artifact, not a report for a real client, and is not saved into the engagement service. To create a persistent sample through the application, use only a disposable local PostgreSQL database: configure the local connection in development Settings, run `npm run dev`, complete first-admin setup/sign-in, create a synthetic India engagement for `2025-04-01` through `2026-03-31`, import the sample workbook, post balanced journals (Dr Synthetic Expense / Cr Synthetic Capital for 15.00 and again for 5.00), create the final TB, enter synthetic auditor/report/signatory details, then generate and download the combined PDF.
+The sample PDF is a renderer review artifact, not a report for a real client, and is not saved into the engagement service.
+
+### Saved engagement demo through the desktop UI
+
+The repeatable demo harness provisions users only after verifying its dedicated PostgreSQL cluster and isolated Electron profile. It never falls back to saved Settings or the production database. Do not use the harness against any other database. Run these commands from the repository root in PowerShell:
+
+```powershell
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 init
+.\tools\engagement-demo.ps1 start-db
+.\tools\engagement-demo.ps1 provision-users
+```
+
+Start the desktop and embedded engagement service in one PowerShell window; leave it open:
+
+```powershell
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 launch
+```
+
+In a second PowerShell window at the repository root, run the normal-login UI workflow:
+
+```powershell
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 workflow-ui
+.\tools\engagement-demo.ps1 finalize-ui
+```
+
+The UI automation signs in using the harness-provisioned administrator, creates `FSG-DEMO-2025-26` for the synthetic company, imports current- and prior-year workbooks, posts balanced journals, completes the reporting inputs and saves a combined PDF. It then exercises assigned-partner finalisation/reopening. The test administrator/contributor/reader/partner credentials remain in the ACL-restricted `$env:FSG_DEMO_HOME\credentials.json`; do not copy them into source or logs.
+
+Repeat provisioning is safe: the latest run verified the existing firm and four role accounts with `accountsCreated: 0`, without resetting their passwords. `.\tools\engagement-demo.ps1 verify-ui` exercises the normal sign-in/sign-out screen for administrator, contributor, reader and partner, and confirms an incorrect password is rejected.
+
+Close the desktop normally through its window. The disposable PostgreSQL instance remains running. Restart the same desktop/service profile using the launch command above, then in the second PowerShell window run:
+
+```powershell
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 reopen-ui
+```
+
+The restart check signs in as the demo partner through the regular login page, reopens the saved engagement/output, downloads the finalised PDF via the desktop UI, and compares its hash with the service-persisted bytes. The verified review file is `$env:USERPROFILE\FSG-Aditya-engagement-demo\outputs\FSG-DEMO-2025-26-reporting-pack-v4.pdf`. Preserve the demo database/profile until any further review is complete.
 
 For the same-machine development path, `npm run dev` starts the embedded HTTPS service on loopback when `ENGAGEMENT_SERVICE_URL` is unset or loopback. The service uses the database settings already saved by the app and applies its additive engagement migration at service startup. Use a disposable development database; do not point this procedure at the live firm database. A remote firm service can also be used with `ENGAGEMENT_SERVICE_URL`, without desktop PostgreSQL credentials.
 
@@ -160,9 +216,9 @@ From the repository root on Windows, with Node.js, PostgreSQL binaries under `C:
 npm run engagement:test
 ```
 
-The test creates a temporary PostgreSQL cluster, starts the local-development HTTPS service against that disposable database, exercises it with synthetic fixtures/workbooks, stops the cluster, and removes its temporary files. It never reads the configured application DB settings or connects to the live database. The latest run passed 82 assertions covering migration/repeated startup, persistence, password setup/change, read/edit and partner/admin/substitute permissions, revocation/disabled users, privacy-safe duplicate checks, legacy trial-balance linking, activation/finalisation/reopening, validated Excel import, TB identifier isolation, locked/finalised rejection, concurrent/repeated import handling, source metadata, journal posting, final-TB versioning/mapping, report settings/output permissions, and rollback when audit insertion fails. It does not render a PDF through Electron.
+The test creates a temporary PostgreSQL cluster, starts the local-development HTTPS service against that disposable database, exercises it with synthetic fixtures/workbooks, stops the cluster, and removes its temporary files. It never reads the configured application DB settings or connects to the live database. The latest run passed 87 assertions covering migration/repeated startup, persistence, password setup/change, read/edit and partner/admin/substitute permissions, revocation/disabled users, privacy-safe duplicate checks, legacy trial-balance linking, activation/finalisation/reopening, validated Excel import, TB identifier isolation, locked/finalised rejection, concurrent/repeated import handling, source metadata, journal posting, final-TB versioning/mapping, report settings/output permissions, and rollback when audit insertion fails. Its PDF persistence check uses synthetic valid PDF bytes; the actual desktop-rendered workflow is verified separately above.
 
-The latest validation also passed `npm run build`, `node tools/selftest-fs-snapshot.mjs`, and `node tools/selftest-final-signing.mjs`. Physical two-client UAT is deferred. No live database migration, push or merge was performed.
+The latest validation passed `npm run isolation:test` (23 assertions), `npm run build`, `node tools/selftest-fs-snapshot.mjs`, and `node tools/selftest-final-signing.mjs`. Physical two-client UAT is deferred. No live database migration, push or merge was performed.
 
 The service uses in-memory bearer sessions: restart logs all clients out. Deploy a process supervisor and monitor service/DB health before firm use. `/health` reports process availability, not database readiness.
 
