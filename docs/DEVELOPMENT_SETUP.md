@@ -40,6 +40,36 @@ The verified non-secret target is loopback PostgreSQL `127.0.0.1:64023`, databas
 
 Do not run a second app process against the same profile. Do not run `init` to fix an ordinary startup issue; first inspect the manifest, exact process tree and logs.
 
+## Reopen the preserved India v5 output
+
+The existing finalized India pack is version 5; preserve it and verify it through the normal UI after starting the isolated demo:
+
+```powershell
+Set-Location 'D:\Programs\FinancialStatements\AdityaTool\FSG_Bharat_Source'
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 status
+.\tools\engagement-demo.ps1 start-db
+.\tools\engagement-demo.ps1 launch
+```
+
+In a second PowerShell window at the repository root, while the desktop remains open:
+
+```powershell
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 firm-settings-reopen-ui
+```
+
+This reads the existing workflow/verification records, signs in as the assigned partner through the login UI, opens the saved engagement, retrieves the persisted output and compares its bytes to the recorded v5 SHA-256. It does not reopen or mutate the finalized engagement. Do not run `init`.
+
+To verify that same output's local fallback copy before or after the UI check:
+
+```powershell
+$pdf = Join-Path $env:FSG_DEMO_HOME 'outputs\FSG-DEMO-2025-26-firm-settings-pack-v5.pdf'
+Get-FileHash -LiteralPath $pdf -Algorithm SHA256
+```
+
+Expected SHA-256: `059865a857f2dc5086e9a7d5765d89cc72201fce3ada3d539a776686ddf0e075`.
+
 ## EPIPE test
 
 With the isolated PostgreSQL instance running and no app/dev process from this checkout active:

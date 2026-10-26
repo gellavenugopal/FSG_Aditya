@@ -1,32 +1,32 @@
 # Roadmap
 
-Order reflects the user-approved priority: complete and maintain the single-client pack before adding jurisdictions or deployment requirements. Acceptance requires observable application behavior, not just API tests or an architecture document.
+Order reflects the current user-approved delivery priority. Acceptance requires observable application behavior, not just API tests or an architecture document.
 
-## 1. Maintain the India single-client pack — active
+## 1. Verify and preserve the India baseline — gate
 
-- Keep the saved engagement workflow usable from import through final PDF.
-- Fix remaining defects in journals/final TB, manual mapping, structured/narrative notes, prior-year comparisons, report identity and finalisation.
-- Regenerate the saved pack after representative journal, mapping, disclosure and audit-wording changes; confirm each change appears in the correct output section with reconciled figures and references.
-- Preserve output versions, selected templates, report identity, branding and signing details across master edits and application/service restarts.
-- Acceptance: actual desktop generates and saves one combined PDF from a saved engagement; reopening retrieves it after restart; independent TB, statements, notes and comparative reconciliations pass; finalisation blocks edits and authorised reopening retains the prior final output. See [CURRENT_STATUS.md](./CURRENT_STATUS.md) for what has already been verified.
+- Preserve the finalised India PDFs and engagement; do not run demo initialization against the existing database.
+- Reopen the saved India engagement and finalised version 5 through the isolated desktop UI and verify its saved hash.
+- Investigate draft version 6 and make status/finalisation policy clear; never reopen a finalised engagement automatically.
+- Acceptance: the UI shows finalised/reopened state accurately, version 5 remains byte-identical, and draft generation cannot bypass finalisation policy.
 
-## 2. Close the EPIPE verification gap
+## 2. Build UAE Sample 01 — immediate milestone
 
-- Capture the process tree and complete stack from an actual recurrence, including PID, executable, parent, checkout and launcher log.
-- Exercise repeated actual renderer HMR after output-consumer disconnection through the isolated launcher, then normal shutdown/restart.
-- Acceptance: the same isolated route demonstrates continued HMR and diagnostic logging after a pipe disconnect, unrelated errors remain visible, and no project-owned dev processes remain orphaned.
+- Create one separate synthetic UAE LLC engagement and reporting set for year ended 31 December 2025 with 2024 comparatives, AED functional/source/presentation currency, selected firm identity and separate financial statements.
+- Keep UAE report generation separate from the India Schedule III path. Use explicit AED debit/credit sign normalization; do not translate currency or hardcode totals in the renderer.
+- Derive statements and notes from the saved final TB, journals and reconciled supporting schedules. Include financial position, profit or loss and OCI, changes in equity, cash flows, notes, editable audit narrative and combined PDF.
+- Clearly label the output **Draft for demonstration**; do not claim full IFRS compliance or a production-validated pack. Use supplied client materials only as references; do not commit those files. If references are missing/inconsistent, document the inconsistency and use disclosed synthetic data.
+- Acceptance: the actual desktop walkthrough saves the UAE engagement; journal and narrative disclosure edits appear after PDF regeneration; totals, comparatives, equity movements, cash flows, note references and UAE/AED captions reconcile; restart/reopen retrieves the same saved output; every PDF page is visually inspected; India regressions still pass.
 
-## 3. Retire legacy authorization bypasses
+## 3. Resume India product corrections
 
-- Inventory and move remaining financial/notes/mapping/period/snapshot database operations behind trusted service authorization.
-- Keep schema changes additive and preserve current India outputs.
-- Acceptance: service authorization applies per operation and engagement; unauthorised/cross-engagement calls fail; service-only mode does not fall back to legacy DB/IPC paths; regression tests and India reconciliations pass.
+- Continue the India single-client change-to-output, reconciliation, finalisation and reopening work after the UAE demonstration gate.
+- Acceptance: representative journal, mapping, disclosure and audit-wording changes reach the correct sections with reconciled values and preserved versions.
 
-## 4. Implement UAE IFRS — first case: UAE Sample 01
+## 4. Close remaining operational gaps
 
-- Build the initial UAE reporting workflow only after the India pack stays stable.
-- Use synthetic data for **UAE Sample 01**; do not commit client source workbooks, statements, or other confidential client files.
-- Acceptance: a documented synthetic engagement produces reconciled UAE statements, notes, auditor-authored report and saved combined PDF through the application, with persistence and permission checks. No UAE accounting behavior is complete before this gate passes.
+- Continue legacy IPC migration only when scheduled after the demonstration.
+- Continue extended EPIPE investigation only when it blocks the isolated walkthrough; retain current uncertainty until a live popup is correlated.
+- Acceptance: separately scoped authorization coverage and process-correlated EPIPE verification; neither is implied complete by the UAE demo.
 
 ## 5. Implement India Ind AS
 

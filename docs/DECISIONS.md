@@ -4,6 +4,13 @@ This log separates user-approved product/scope decisions from engineering propos
 
 ## User-approved decisions
 
+### 2026-10-26 — Prioritise UAE Sample 01 client demonstration
+
+- **Decision:** Build one complete UAE client demonstration using a synthetic AED dataset. Supplied client documents may be used as references only and must not be committed. Preserve the verified India workflow and its finalised PDFs. Keep UAE output explicitly identified as demonstration material until reporting coverage is validated.
+- **Rationale:** A UAE demonstration is scheduled in two days; a reliable saved, repeatable application walkthrough is more valuable than additional infrastructure in the immediate milestone.
+- **Scope:** UAE LLC; year ended 31 December 2025 with 2024 comparatives; separate statements, notes, editable auditor-entered report, selected firm/office/logo/partner/signatories, and a combined saved PDF. Use an AED trial balance with explicit debit/credit sign normalization; do not implement currency translation.
+- **Status:** Active and not yet implemented. UAE is not supported by the current India-only reporting panel. Use synthetic data if references are unavailable or unreconciled; do not represent synthetic figures as client accounts or claim complete IFRS compliance.
+
 ### 2026-10-26 — Finish one-client reporting before deployment expansion
 
 - **Decision:** Prioritise a complete reporting pack for one client on one computer: trial balance, journals, final TB, mapping, financial statements, notes, audit report and one assembled PDF.
@@ -33,6 +40,12 @@ This log separates user-approved product/scope decisions from engineering propos
 - **Decision:** Preserve India first, then UAE IFRS, India Ind AS and US GAAP; defer currency translation and multi-computer UAT until a complete single-client pack exists.
 - **Rationale:** Sequence work by supported reporting outcome rather than infrastructure expansion.
 - **Status:** Active. **UAE Sample 01** is the first UAE synthetic case; no client files are to be committed for it.
+
+### 2026-10-26 — Defer broad migration and extended EPIPE investigation
+
+- **Decision:** For the UAE demonstration window, defer broad legacy IPC/database migration and extended EPIPE investigation unless they block the isolated demonstration. Preserve their known gaps and prior findings.
+- **Rationale:** Protect the short-term demonstration schedule and avoid unrelated scope expansion.
+- **Status:** Active for this milestone only. This does not resolve the production-data incident, remove legacy authorization bypasses, or establish that the historical EPIPE popup is resolved.
 
 ## Engineering proposals and operational choices
 

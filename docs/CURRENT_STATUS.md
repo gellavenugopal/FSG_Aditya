@@ -12,7 +12,9 @@ Last updated: **2026-10-26**
 
 ## Current task and next action
 
-The context-file task is documentation-only. Next, continue the India single-client product queue: first correlate any recurring EPIPE popup to its live process using the isolated launcher and collect the complete stack; then continue reporting workflow corrections and change-to-output verification. Keep this file and affected context documents current at each completed task.
+Immediate task: deliver **UAE Sample 01**, a synthetic UAE LLC demonstration, within the two-day demonstration window. Preserve the India engagement and finalised outputs; use the isolated desktop/database only; do not initialize the existing demo DB. First reopen the India engagement and finalised PDF v5 in the UI, confirm its hash and resolve the draft-v6/finalisation UX. Then implement the smallest independent UAE demo path and verify the complete saved desktop workflow. See [ROADMAP.md](./ROADMAP.md).
+
+The broad legacy migration and extended EPIPE investigation are deferred for this window unless they block the isolated demonstration. Their unresolved status is retained below.
 
 ## Verified reporting outcome
 
@@ -53,6 +55,8 @@ The preliminary database-isolation incident affecting possible `vera_financial` 
 
 ## Active blockers and product gaps
 
-- Recurring EPIPE popup reports need correlation against the live popup process; its historical owner and full stack are unknown. The new process-boundary guard has focused isolated test coverage, not conclusive production/user-session confirmation.
+- **UAE:** No UAE reporting engine exists. Current reporting panel supports only `IN_SCHEDULE_III_LEGACY` with INR. UAE create metadata/catalog fields exist, but do not imply UAE accounting/reporting support. A local search found no UAE reporting workbook in Downloads, Documents, Desktop, repository artifacts or the persistent demo; `C:\Users\Admin\Downloads\EmiratesTicket1.pdf` and other PDFs require content verification and may be unrelated. Use synthetic demo balances if client references cannot be confirmed/reconciled promptly.
+- **Draft version 6:** A previously saved unfinalised PDF version 6 exists. The current renderer disables generation when an engagement is finalised; the older automation attempt produced v6 after a repeat attempt, and its exact path through finalise/reopen needs investigation. Do not automatically reopen a finalised engagement. Keep finalisation and reopening explicit and user-authorized.
+- Recurring EPIPE popup reports still lack historical live process/PID correlation and a complete original stack. The isolated process-boundary tests passed; extended investigation is deferred unless it blocks the demonstration.
 - Legacy database-backed IPC remains outside engagement authorization; see [ARCHITECTURE.md](./ARCHITECTURE.md).
-- UAE IFRS, India Ind AS, US GAAP, currency translation and complete migration of legacy operations are not implemented.
+- UAE IFRS is not implemented. The immediate UAE output must remain a synthetic demonstration, clearly watermarked/labelled, until scope is validated. India Ind AS, US GAAP, currency translation and complete legacy-operation migration also remain unimplemented/deferred.
