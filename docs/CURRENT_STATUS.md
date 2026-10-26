@@ -25,7 +25,7 @@ The broad legacy migration and extended EPIPE investigation are deferred for thi
 - Local path: `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\FSG-DEMO-2025-26-firm-settings-pack-v5.pdf`
 - SHA-256: `059865a857f2dc5086e9a7d5765d89cc72201fce3ada3d539a776686ddf0e075`
 - It contains the audit report, financial statements and notes, was reopened after restarting the desktop/service against the same isolated database/profile, and its 10 pages were visually inspected.
-- A fresh UI-driven restart/reopen check on 2026-10-26 confirmed version 5 remains finalised and retrieved PDF bytes match its recorded SHA-256.
+- After the UAE shared-code changes, a read-only isolated desktop UI restart/reopen check again confirmed version 5 remains finalised, firm/office/branding/signatories persist, and retrieved PDF bytes match its recorded SHA-256.
 - A previous reporting-pack version 4 was also reopened and matched its saved service output. Version 5 is finalised; versions 1, 2 and 6 are drafts in the current demo. This task did not change/finalise version 6.
 - `artifacts/Synthetic-Engagement-India-Reporting-Pack.pdf` is a separate synthetic renderer artifact. It is not the persisted PDF from the saved engagement.
 
@@ -61,6 +61,7 @@ Verified for the current implementation or recent reporting checkpoints:
 - `node tools/selftest-uae-demo-reporting.mjs` — passed; validates UAE AED/current-comparative reconciliation, cash flow/equity/notes and draft-only HTML.
 - `node tools/selftest-fs-snapshot.mjs` and `node tools/selftest-final-signing.mjs` — passed in this checkpoint against disposable test data.
 - `.\tools\engagement-demo.ps1 verify-ui` — passed through the normal screen: administrator, contributor, reader and partner sign-in/sign-out, and incorrect-password rejection.
+- `.\tools\engagement-demo.ps1 firm-settings-reopen-ui` — passed after the UAE shared-code changes; retrieved India version 5 through the UI and confirmed the finalised status and recorded hash.
 - Actual isolated desktop UI UAE reporting and restart/reopen check passed as described above.
 
 Physical multi-computer UAT has not been performed and is deferred. Automated service tests and a single-machine demo do not establish production readiness.
