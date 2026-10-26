@@ -5,14 +5,16 @@ Last updated: **2026-10-27**
 ## Repository state
 
 - Branch: `feature/engagement-foundation`
-- Base HEAD before the current test-bed checkpoint: `4cb550d` — `Record UAE access and PDF checkpoint`.
+- Current test-bed implementation checkpoint: `cc5d18e` — `test: verify UAE IFRS B/C desktop cases`.
+- Base before that checkpoint: `4cb550d` — `Record UAE access and PDF checkpoint`.
+- HEAD: this documentation-only follow-up to `cc5d18e`; its exact commit is the current `git log -1` entry.
 - Earlier milestones remain in history: `6dea749` reporting workflow, `a683914` firm settings, `666b110` EPIPE guard, `a5785c8` synthetic UAE test bed, and `5ccdf38` UAE access/list and PDF review.
-- Current test-bed application, harness and documentation changes are pending a local checkpoint commit.
+- The test-bed source, harness, and coverage/roadmap documentation are committed locally. This status refresh is a documentation-only follow-up; no application changes are uncommitted.
 - No push or merge has been performed.
 
 ## Current task and next action
 
-The current task completed the first-cut synthetic UAE IFRS test bed. Cases B and C now exist as separate engagements in the persistent isolated database; their reporting selections and saved PDFs were reopened through the normal desktop UI after an application restart. The exact commands, paths and hashes are in [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md). The immediate next action is a local commit of only this task's source, harness and documentation changes.
+The current task completed the first-cut synthetic UAE IFRS test bed. Cases B and C now exist as separate engagements in the persistent isolated database; their reporting selections and saved PDFs were reopened through the normal desktop UI after an application restart. The exact commands, paths and hashes are in [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md). The implementation checkpoint is `cc5d18e`; the current follow-up changes only this status document.
 
 The empty UAE engagement list was reproduced and diagnosed as a firm-scope mismatch, not an authentication, service, or loading failure. The protected UI now identifies the signed-in firm and defaults administrators/partners to the firm-scoped list. Normal login and visible navigation reached `UAE-SAMPLE-01-2025`, and the saved v5 bytes were downloaded through the application.
 
