@@ -411,6 +411,7 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
         <div>
           <h3 className="text-lg font-semibold text-gray-900">India reporting pack</h3>
           <p className="mt-1 max-w-3xl text-sm text-gray-600">Import → post journals → create an immutable final Trial Balance → map → generate one audit report, financial statements and notes PDF.</p>
+          <p className="mt-1 max-w-3xl text-xs text-gray-500">Generation saves a draft PDF. The assigned partner or authorised substitute must explicitly finalise it. Finalised engagements are never reopened automatically.</p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${supported ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-900'}`}>
           {supported ? 'India legacy · INR' : 'Processing unavailable'}
@@ -700,9 +701,14 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
         <div className="mt-2 divide-y">
           {outputs.map(output => <div key={output.id} className="flex flex-wrap items-center gap-3 py-3">
             <div className="min-w-[200px] flex-1">
-              <div className="text-sm font-medium">Version {output.version} · Final TB v{output.final_tb_version}</div>
-              <div className="mt-0.5 text-xs text-gray-500">Template r{output.template_revision} · {output.created_by_name} · {new Date(output.created_at).toLocaleString()}{output.finalised_at ? ` · Finalised ${new Date(output.finalised_at).toLocaleString()}` : ''}</div>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+            <span>Version {output.version} · Final TB v{output.final_tb_version}</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${output.finalised_at ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>
+              {output.finalised_at ? 'Finalised' : 'Draft · not finalised'}
+            </span>
+          </div>
+          <div className="mt-0.5 text-xs text-gray-500">Template r{output.template_revision} · {output.created_by_name} · {new Date(output.created_at).toLocaleString()}{output.finalised_at ? ` · Finalised ${new Date(output.finalised_at).toLocaleString()}` : ''}</div>
+        </div>
             <button disabled={busy} onClick={() => downloadOutput(output)} className="rounded-md border px-3 py-1.5 text-sm">Download PDF</button>
             {canFinaliseOutput && !output.finalised_at && <button disabled={busy} onClick={() => finaliseOutput(output)} className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">Finalise version</button>}
           </div>)}

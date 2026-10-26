@@ -48,11 +48,11 @@ Schema changes are additive. Do not replace the legacy accounting tables or infe
 
 The protected path imports current/prior TBs, posts balanced journals without an approval queue for editors, creates final-TB snapshots, runs the existing India mapping engine, permits manual mapping correction, supports supported structured and narrative disclosures, selects prior-year closing TB comparatives, and collects auditor-entered report text and separate report/financial-statement approval dates.
 
-The desktop reuses the India financial statement/notes builders and Electron PDF renderer. It persists combined PDF versions through the service. The existing protected pack is India legacy Schedule III with INR/INR only and performs no currency translation. Finalisation requires the assigned partner or authorised substitute.
+The desktop reuses the India financial statement/notes builders and Electron PDF renderer. It persists combined PDF versions through the service. The existing protected pack is India legacy Schedule III with INR/INR only and performs no currency translation. Generated PDFs are drafts until the assigned partner or authorised substitute explicitly finalises them; the UI marks draft and finalised outputs distinctly. Finalised engagement state is not reopened automatically.
 
 ### Planned
 
-New reporting frameworks and localization remain governed by [ROADMAP.md](./ROADMAP.md). UAE IFRS, India Ind AS, US GAAP and currency translation are not implemented.
+New reporting frameworks and localization remain governed by [ROADMAP.md](./ROADMAP.md). UAE Sample 01 is the immediate synthetic demonstration milestone, but no UAE reporting engine is implemented yet. UAE IFRS validation, India Ind AS, US GAAP and currency translation are not implemented.
 
 ## Known legacy database/IPC bypasses
 
