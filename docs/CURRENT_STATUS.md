@@ -11,7 +11,7 @@ Last updated: **2026-10-27**
 - Previous relevant checkpoint: `a683914ce057df67691e04efe709073bb90fad9e` — Firm Settings and report identity.
 - Latest application checkpoint: `dd154c0` — `Fix UAE demo report persistence and layout`.
 - UAE IFRS test-bed implementation checkpoint: `a5785c8` — `test: add synthetic UAE IFRS test bed`.
-- Access and reporting changes are being checkpointed locally before resuming B/C engagement work.
+- UAE access/list UX and corrected PDF review checkpoint: `5ccdf38` — `Fix UAE demo access and PDF corrections` (local; no push or merge).
 - No push or merge has been performed.
 
 ## Current task and next action
