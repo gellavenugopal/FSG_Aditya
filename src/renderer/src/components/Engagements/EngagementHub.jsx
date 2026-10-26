@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { formatPeriodDate, formatPeriodRange } from '../../utils/financialPeriodDisplay'
 import EngagementReportingPanel from './EngagementReportingPanel'
+import FirmSettingsPanel from './FirmSettingsPanel'
 
 const SCOPE_OPTIONS = [
   ['statutory_audit', 'Statutory audit'],
@@ -880,28 +881,45 @@ function ProtectedTrialBalancePanel({ engagement, onImported }) {
 
 export default function EngagementHub({ user, initialView = 'engagements', serviceOnlyMode = false }) {
   const [screen, setScreen] = useState({ type: 'list' })
+  const [section, setSection] = useState(initialView === 'team' ? 'team' : 'engagements')
   const [error, setError] = useState('')
   if (!user) return <div role="alert" className="p-6 text-sm text-red-700">Sign in to access firm settings.</div>
-  if (initialView === 'team') return <div className="h-full overflow-y-auto bg-gray-50"><FirmTeam user={user} /></div>
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-gray-50">
-      {screen.type === 'list' && <EngagementList user={user} onCreate={() => { setError(''); setScreen({ type: 'create' }) }} onOpen={id => { setError(''); setScreen({ type: 'overview', id }) }} />}
-      {(screen.type === 'create' || screen.type === 'edit') && <CreateEngagement
-        user={user}
-        initialEngagement={screen.type === 'edit' ? screen.initialEngagement : null}
-        onCancel={() => setScreen({ type: 'list' })}
-        onCreated={id => setScreen({ type: 'overview', id })}
-        onUpdated={id => setScreen({ type: 'overview', id })}
-        onOpen={id => setScreen({ type: 'overview', id })}
-      />}
-      {screen.type === 'overview' && <EngagementOverview
-        user={user}
-        id={screen.id}
-        serviceOnlyMode={serviceOnlyMode}
-        onBack={() => setScreen({ type: 'list' })}
-        onEdit={data => setScreen({ type: 'edit', initialEngagement: data })}
-      />}
+      <nav aria-label="Firm workspace" className="sticky top-0 z-10 flex shrink-0 items-center gap-1 border-b border-gray-200 bg-white px-4 py-2 shadow-sm">
+        <button type="button" aria-current={section === 'engagements' ? 'page' : undefined}
+          onClick={() => setSection('engagements')}
+          className={`rounded-lg px-3 py-2 text-sm font-semibold ${section === 'engagements' ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50'}`}>Engagements</button>
+        {user.role === 'administrator' && <button type="button" aria-current={section === 'firm-settings' ? 'page' : undefined}
+          onClick={() => setSection('firm-settings')}
+          className={`rounded-lg px-3 py-2 text-sm font-semibold ${section === 'firm-settings' ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50'}`}>Firm Settings</button>}
+        <button type="button" aria-current={section === 'team' ? 'page' : undefined}
+          onClick={() => setSection('team')}
+          className={`rounded-lg px-3 py-2 text-sm font-semibold ${section === 'team' ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50'}`}>Firm Team</button>
+      </nav>
+      <main className="min-h-0 flex-1">
+        {section === 'firm-settings' && user.role === 'administrator' && <FirmSettingsPanel user={user} />}
+        {section === 'team' && <div className="mx-auto max-w-6xl p-5 sm:p-7"><FirmTeam user={user} /></div>}
+        {section === 'engagements' && <>
+          {screen.type === 'list' && <EngagementList user={user} onCreate={() => { setError(''); setScreen({ type: 'create' }) }} onOpen={id => { setError(''); setScreen({ type: 'overview', id }) }} />}
+          {(screen.type === 'create' || screen.type === 'edit') && <CreateEngagement
+            user={user}
+            initialEngagement={screen.type === 'edit' ? screen.initialEngagement : null}
+            onCancel={() => setScreen({ type: 'list' })}
+            onCreated={id => setScreen({ type: 'overview', id })}
+            onUpdated={id => setScreen({ type: 'overview', id })}
+            onOpen={id => setScreen({ type: 'overview', id })}
+          />}
+          {screen.type === 'overview' && <EngagementOverview
+            user={user}
+            id={screen.id}
+            serviceOnlyMode={serviceOnlyMode}
+            onBack={() => setScreen({ type: 'list' })}
+            onEdit={data => setScreen({ type: 'edit', initialEngagement: data })}
+          />}
+        </>}
+      </main>
     </div>
   )
 }

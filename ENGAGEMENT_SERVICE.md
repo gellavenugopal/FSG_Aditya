@@ -136,6 +136,16 @@ The first protected reporting path is available in the engagement overview. It s
 
 The complete UI workflow has been run against a saved synthetic engagement using the isolated desktop and PostgreSQL instance. It imported current- and prior-year TBs, posted journals, created a final TB, corrected a mapping, saved structured Share Capital details, edited the audit report, and generated the combined PDF through the UI and trusted service. The assigned partner finalised the engagement/output; a subsequent journal mutation was rejected; authorised reopening retained the final output. After closing and restarting the desktop/service against the same isolated profile and database, the engagement and PDF were reopened. The downloaded PDF matched the persisted output SHA-256 (`c3cf106b101b89cc4db09d73d2866429ad702ae50fe161bd93898997e3515642`). The 10-page PDF was rendered to a contact sheet and visually inspected. Two physical desktop clients were not tested.
 
+### Firm settings and saved report identity
+
+Administrators can maintain the existing professional-firm master under **Settings → Firm Settings**: registration details, contact/address fields, PNG/JPEG logo (maximum 750 KB), and active status. Offices are scoped to the service firm and professional firm. Partner qualifications, registration numbers and active status extend existing firm-user records. Selecting an unlinked global auditor firm associates that existing record instead of creating a duplicate. The additive service migration creates the base `auditor_firms` table only when a minimal service-only database does not already have it, then adds the service-scoped fields.
+
+For each engagement, users with edit access can save the responsible firm, office and branding profile, and the ordered client management signatories. The assigned partner remains the responsible engagement partner. Audit-report date/place are separate from the financial-statement approval date/place. Firm, office, logo, partner, signatory order and signing details are resolved and snapshotted with each saved output; later master edits do not rewrite a finalised PDF.
+
+The firm-settings UI run reused the existing auditor-firm and partner records, created one firm office and a synthetic CFO signatory, saved the ordered signatories and engagement selections, and generated/finalised combined PDF version 5 through the desktop. It was reopened after restarting the desktop/service against the same `127.0.0.1:64023/fsg_engagement_demo` cluster and Electron user-data profile. Its SHA-256 is `059865a857f2dc5086e9a7d5765d89cc72201fce3ada3d539a776686ddf0e075`, at `$env:USERPROFILE\FSG-Aditya-engagement-demo\outputs\FSG-DEMO-2025-26-firm-settings-pack-v5.pdf`. Changing the firm master afterward left the finalised PDF bytes and financial-data hash unchanged. All 10 pages were visually inspected in the PDF viewer: the audit-report page and logo/firm identity, financial-statement cover, comparative Balance Sheet and Profit and Loss, structured Share Capital and other notes, ledger annexures, and ordered management signatures.
+
+The current retained demo also has an unfinalised version 6 produced during a repeated automation run. Its finalisation control was unavailable because the prior engagement finalisation had not been reopened first; version 5 remains finalised and intact. The automation's first full run completed the saved selections, PDF generation, finalisation, master edit and restart/reopen checks, but returned a failure during its final sign-in transition; those persistence and immutability checks were then completed separately through the UI. A repeatable all-in-one rerun should first reopen a finalised engagement through the assigned partner UI.
+
 Independent checks reconciled the final TB; current and prior balance sheet totals; current and prior PBT/PAT; PPE, receivables, cash, revenue, depreciation, operating expense, tax, and share-capital note totals; and the structured Share Capital figures to the mapped statement amount. The comparative uses the prior-year closing TB dated 01-Apr-2024 to 31-Mar-2025. The corrected PDF has no Share Capital balance-sheet mismatch or missing-share-count EPS warning.
 
 ### Reproducible single-machine sample
@@ -191,7 +201,23 @@ $env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
 .\tools\engagement-demo.ps1 reopen-ui
 ```
 
-The restart check signs in as the demo partner through the regular login page, reopens the saved engagement/output, downloads the finalised PDF via the desktop UI, and compares its hash with the service-persisted bytes. The verified review file is `$env:USERPROFILE\FSG-Aditya-engagement-demo\outputs\FSG-DEMO-2025-26-reporting-pack-v4.pdf`. Preserve the demo database/profile until any further review is complete.
+The restart check signs in as the demo partner through the regular login page, reopens the saved engagement/output, downloads the finalised PDF via the desktop UI, and compares its hash with the service-persisted bytes. The original reporting-workflow review file is `$env:USERPROFILE\FSG-Aditya-engagement-demo\outputs\FSG-DEMO-2025-26-reporting-pack-v4.pdf`; the firm-settings review PDF is `$env:USERPROFILE\FSG-Aditya-engagement-demo\outputs\FSG-DEMO-2025-26-firm-settings-pack-v5.pdf`. Preserve the demo database/profile until any further review is complete.
+
+With the same demo database running and the desktop open, the firm-settings UI automation is invoked from a second PowerShell window at the repository root:
+
+```powershell
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 firm-settings-ui
+```
+
+After closing the desktop normally, restart it with the `launch` command above and verify the saved firm selections/output through the UI:
+
+```powershell
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 firm-settings-reopen-ui
+```
+
+The current demo has a finalised version 5 plus an unfinalised version 6 from a repeat attempt. Before trying to finalise a new output after a finalised engagement, reopen the engagement through the assigned-partner interface. The demo cluster and profile remain in place; do not rerun `init`.
 
 For the same-machine development path, `npm run dev` starts the embedded HTTPS service on loopback when `ENGAGEMENT_SERVICE_URL` is unset or loopback. The service uses the database settings already saved by the app and applies its additive engagement migration at service startup. Use a disposable development database; do not point this procedure at the live firm database. A remote firm service can also be used with `ENGAGEMENT_SERVICE_URL`, without desktop PostgreSQL credentials.
 
@@ -217,7 +243,7 @@ From the repository root on Windows, with Node.js, PostgreSQL binaries under `C:
 npm run engagement:test
 ```
 
-The test creates a temporary PostgreSQL cluster, starts the local-development HTTPS service against that disposable database, exercises it with synthetic fixtures/workbooks, stops the cluster, and removes its temporary files. It never reads the configured application DB settings or connects to the live database. The latest run passed 87 assertions covering migration/repeated startup, persistence, password setup/change, read/edit and partner/admin/substitute permissions, revocation/disabled users, privacy-safe duplicate checks, legacy trial-balance linking, activation/finalisation/reopening, validated Excel import, TB identifier isolation, locked/finalised rejection, concurrent/repeated import handling, source metadata, journal posting, final-TB versioning/mapping, report settings/output permissions, and rollback when audit insertion fails. Its PDF persistence check uses synthetic valid PDF bytes; the actual desktop-rendered workflow is verified separately above.
+The test creates a temporary PostgreSQL cluster, starts the local-development HTTPS service against that disposable database, exercises it with synthetic fixtures/workbooks, stops the cluster, and removes its temporary files. It never reads the configured application DB settings or connects to the live database. The latest run passed 94 assertions covering migration/repeated startup, persistence, password setup/change, read/edit and partner/admin/substitute permissions, revocation/disabled users, privacy-safe duplicate checks, legacy trial-balance linking, activation/finalisation/reopening, validated Excel import, TB identifier isolation, locked/finalised rejection, concurrent/repeated import handling, source metadata, journal posting, final-TB versioning/mapping, firm/office/partner selections, report identity snapshots, output permissions, and rollback when audit insertion fails. Its PDF persistence check uses synthetic valid PDF bytes; the actual desktop-rendered workflow is verified separately above.
 
 The latest validation passed `npm run isolation:test` (23 assertions), `npm run build`, `node tools/selftest-fs-snapshot.mjs`, and `node tools/selftest-final-signing.mjs`. Physical two-client UAT is deferred. No live database migration, push or merge was performed.
 

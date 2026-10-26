@@ -40,6 +40,42 @@ export async function ensureEngagementSchema(query) {
   `)
   await query(`ALTER TABLE firm_users ALTER COLUMN job_title SET DEFAULT 'employee'`)
   await query(`ALTER TABLE firm_users ALTER COLUMN job_title SET NOT NULL`)
+  await query(`ALTER TABLE firm_users ADD COLUMN IF NOT EXISTS qualification TEXT`)
+  await query(`ALTER TABLE firm_users ADD COLUMN IF NOT EXISTS registration_number TEXT`)
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS auditor_firms (
+      id SERIAL PRIMARY KEY,
+      firm_name TEXT NOT NULL,
+      frn TEXT,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      pan TEXT,
+      address TEXT,
+      email TEXT
+    )
+  `)
+  await query(`ALTER TABLE auditor_firms ADD COLUMN IF NOT EXISTS service_firm_id INTEGER REFERENCES firms(id) ON DELETE CASCADE`)
+  await query(`ALTER TABLE auditor_firms ADD COLUMN IF NOT EXISTS phone TEXT`)
+  await query(`ALTER TABLE auditor_firms ADD COLUMN IF NOT EXISTS logo_mime_type TEXT`)
+  await query(`ALTER TABLE auditor_firms ADD COLUMN IF NOT EXISTS logo_data BYTEA`)
+  await query(`CREATE INDEX IF NOT EXISTS idx_auditor_firms_service_firm ON auditor_firms(service_firm_id)`)
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS auditor_firm_offices (
+      id SERIAL PRIMARY KEY,
+      service_firm_id INTEGER NOT NULL REFERENCES firms(id) ON DELETE CASCADE,
+      auditor_firm_id INTEGER NOT NULL REFERENCES auditor_firms(id) ON DELETE CASCADE,
+      office_name TEXT NOT NULL,
+      address TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `)
+  await query(`CREATE INDEX IF NOT EXISTS idx_auditor_firm_offices_firm ON auditor_firm_offices(service_firm_id,auditor_firm_id,is_active)`)
 
   await query(`
     CREATE TABLE IF NOT EXISTS firm_entities (
@@ -121,6 +157,10 @@ export async function ensureEngagementSchema(query) {
   await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS finalisation_sign_date TEXT`)
   await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS engagement_finalised_at TIMESTAMPTZ`)
   await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS prior_trial_balance_id INTEGER REFERENCES trial_balances(id) ON DELETE RESTRICT`)
+  await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS responsible_auditor_firm_id INTEGER REFERENCES auditor_firms(id) ON DELETE RESTRICT`)
+  await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS responsible_office_id INTEGER REFERENCES auditor_firm_offices(id) ON DELETE RESTRICT`)
+  await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS branding_auditor_firm_id INTEGER REFERENCES auditor_firms(id) ON DELETE RESTRICT`)
+  await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS management_signatory_ids JSONB NOT NULL DEFAULT '[]'`)
 
   await query(`
     CREATE TABLE IF NOT EXISTS engagement_memberships (

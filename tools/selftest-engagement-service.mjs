@@ -161,6 +161,10 @@ try {
       jurisdiction TEXT, legal_form TEXT
     );
     CREATE TABLE global_signatories (id SERIAL PRIMARY KEY, name TEXT NOT NULL);
+    CREATE TABLE auditor_firms (
+      id SERIAL PRIMARY KEY,firm_name TEXT NOT NULL,frn TEXT,pan TEXT,address TEXT,email TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE
+    );
     CREATE TABLE financial_periods (
       id SERIAL PRIMARY KEY, year_label TEXT NOT NULL, date_from DATE NOT NULL, date_till DATE NOT NULL,
       UNIQUE (date_from, date_till)
@@ -425,6 +429,42 @@ try {
   await fails('admin/users/create', {
     email: 'forbidden-admin@example.test', displayName: 'Forbidden', jobTitle: 'administrator',
   }, adminToken, /valid team position/i)
+  const emptyFirmSettings = await ok('admin/firm-settings', {}, adminToken)
+  check(emptyFirmSettings.data.professionalFirms.length === 0
+    && emptyFirmSettings.data.canManage,
+  'administrator firm settings are scoped to the signed-in service firm')
+  await fails('admin/firm/save', {
+    firmName: 'Synthetic Audit LLP', frn: 'FRN-TEST-001',
+  }, ownerToken, /administrator/i)
+  const testLogo = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString('base64')
+  const professionalFirm = await ok('admin/firm/save', {
+    firmName: 'Synthetic Audit LLP', frn: 'FRN-TEST-001', pan: 'ABCDE1234F',
+    address: 'Main Street, Synthetic City', email: 'office@example.test', phone: '+91 11111 11111',
+    logoMimeType: 'image/png', logoBase64: testLogo, isActive: true,
+  }, adminToken)
+  const duplicateProfessionalFirm = await ok('admin/firm/save', {
+    firmName: 'Synthetic Audit LLP', frn: 'FRN-TEST-001', pan: 'ABCDE1234F',
+    address: 'Main Street, Synthetic City', email: 'office@example.test', phone: '+91 11111 11111',
+    logoMimeType: 'image/png', logoBase64: testLogo, isActive: true,
+  }, adminToken)
+  check(professionalFirm.data.id === duplicateProfessionalFirm.data.id,
+    'repeat firm save reuses the existing auditor-firm master instead of creating duplicates')
+  await fails('admin/firm/save', {
+    firmName: 'Bad Logo LLP', logoMimeType: 'image/png', logoBase64: Buffer.from('not png').toString('base64'),
+  }, adminToken, /does not match/i)
+  const office = await ok('admin/office/save', {
+    auditorFirmId: professionalFirm.data.id, officeName: 'Synthetic City Office',
+    address: 'Second Street, Synthetic City', phone: '+91 22222 22222', email: 'city@example.test',
+  }, adminToken)
+  await ok('admin/partner/save', {
+    partnerId: partner.user.id, qualification: 'FCA', registrationNumber: 'M-TEST-1001', isActive: true,
+  }, adminToken)
+  const firmSettings = await ok('admin/firm-settings', {}, adminToken)
+  check(firmSettings.data.professionalFirms.length === 1
+    && firmSettings.data.professionalFirms[0].logo_base64 === testLogo
+    && firmSettings.data.offices.some(item => Number(item.id) === office.data.id)
+    && firmSettings.data.partners.find(item => Number(item.id) === partner.user.id)?.registration_number === 'M-TEST-1001',
+  'firm logo, office contact and existing partner professional details persist in their existing masters')
 
   await fails('list', {
     scope: 'all', userId: 1, role: 'administrator',
@@ -556,6 +596,24 @@ try {
   check((await ok('overview', { engagementId }, ownerToken)).data.engagement.status === 'active',
     'confirmed draft transitions to active')
   await fails('activate', { engagementId }, ownerToken, /only a Draft/i)
+  const secondSignatory = await pool.query(
+    `INSERT INTO signatories(entity_id,name,designation) VALUES (1,'Synthetic CFO','Chief Financial Officer') RETURNING id`
+  )
+  const orderedSignatoryIds = [Number(secondSignatory.rows[0].id), 1]
+  await fails('reporting/selections/save', {
+    engagementId,
+    responsibleAuditorFirmId: professionalFirm.data.id,
+    responsibleOfficeId: office.data.id,
+    brandingAuditorFirmId: professionalFirm.data.id,
+    managementSignatoryIds: orderedSignatoryIds,
+  }, readerToken, /edit access/i)
+  await ok('reporting/selections/save', {
+    engagementId,
+    responsibleAuditorFirmId: professionalFirm.data.id,
+    responsibleOfficeId: office.data.id,
+    brandingAuditorFirmId: professionalFirm.data.id,
+    managementSignatoryIds: orderedSignatoryIds,
+  }, ownerToken)
 
   const originalFile = syntheticTBFile()
   const originalUpload = {
@@ -664,6 +722,11 @@ try {
   }, readerToken)
   check(reportingData.data.financialRows.length === 3 && reportingData.data.levelFormat.length === 3,
     'reader can view India statement inputs for an authorized final TB')
+  check(reportingData.data.reportingSelections.managementSignatoryIds[0] === orderedSignatoryIds[0]
+    && reportingData.data.firmSettings.branding.logoBase64 === testLogo
+    && reportingData.data.auditReport.fields.firmName === 'Synthetic Audit LLP'
+    && reportingData.data.auditReport.fields.auditorName === partner.user.displayName,
+  'reporting data returns persisted firm, partner, branding and ordered management-signatory selections')
   await fails('reporting/data', {
     engagementId: unrelatedEngagement.data.id, trialBalanceId: finalSnapshot2.data.trialBalance.id,
   }, ownerToken, /not found in this engagement/i)
@@ -684,7 +747,12 @@ try {
     auditorDesignation: 'Partner',
   }
   await fails('reporting/settings/save', { engagementId, fields: emptyOpinion }, readerToken, /edit access/i)
-  await ok('reporting/settings/save', { engagementId, fields: emptyOpinion }, ownerToken)
+  const savedSettings = await ok('reporting/settings/save', { engagementId, fields: emptyOpinion }, ownerToken)
+  check(savedSettings.data.fields.firmName === 'Synthetic Audit LLP'
+    && savedSettings.data.fields.firmRegistrationNumber === 'FRN-TEST-001'
+    && savedSettings.data.fields.auditorName === partner.user.displayName
+    && savedSettings.data.fields.firmAddress === 'Second Street, Synthetic City',
+  'audit report signing identity is resolved from selected masters rather than freeform report fields')
   const testPdf = await PDFDocument.create()
   testPdf.addPage().drawText('Synthetic combined reporting pack')
   const pdfBase64 = Buffer.from(await testPdf.save()).toString('base64')
@@ -692,11 +760,13 @@ try {
     engagementId,
     trialBalanceId: finalSnapshot2.data.trialBalance.id,
     pdfContentBase64: pdfBase64,
-    signingDetails: { approvalDate: '2026-04-30', approvalPlace: 'Approval City', signatoryIds: [1] },
+    signingDetails: { approvalDate: '2026-04-30', approvalPlace: 'Approval City', signatoryIds: orderedSignatoryIds },
   }
   await fails('reporting/output/save', reportPayload, ownerToken, /auditor-entered opinion/i)
   const completedFields = { ...emptyOpinion, opinion: 'Synthetic auditor-entered opinion text.' }
-  await ok('reporting/settings/save', { engagementId, fields: completedFields }, ownerToken)
+  const completedSettings = await ok('reporting/settings/save', { engagementId, fields: completedFields }, ownerToken)
+  reportPayload.auditReportFields = completedSettings.data.fields
+  reportPayload.reportIdentitySnapshot = reportingData.data.reportIdentitySnapshot
   const savedOutput = await ok('reporting/output/save', reportPayload, ownerToken)
   check(savedOutput.data.version === 1 && savedOutput.data.template_revision === 2
     && savedOutput.data.financial_data_sha256.length === 64,
@@ -718,10 +788,48 @@ try {
     && savedDetails.rows[0].retained_report_date === '2026-05-01'
     && savedDetails.rows[0].approval_place === 'Approval City',
   'audit report date/place are separately retained from financial-statement approval date/place')
+  const identityBeforeMasterEdit = await pool.query(
+    `SELECT audit_report_fields->>'firmName' AS firm_name,
+            audit_report_fields->>'auditorName' AS partner_name,
+            signing_details->'identitySnapshot'->'branding'->>'logoBase64' AS logo_base64,
+            signing_details->'identitySnapshot'->'office'->>'address' AS office_address,
+            signing_details->'signatories'->0->>'id' AS first_signatory
+     FROM engagement_report_outputs WHERE id=$1`,
+    [savedOutput.data.id]
+  )
+  check(identityBeforeMasterEdit.rows[0].firm_name === 'Synthetic Audit LLP'
+    && identityBeforeMasterEdit.rows[0].partner_name === partner.user.displayName
+    && identityBeforeMasterEdit.rows[0].logo_base64 === testLogo
+    && identityBeforeMasterEdit.rows[0].office_address === 'Second Street, Synthetic City'
+    && identityBeforeMasterEdit.rows[0].first_signatory === String(orderedSignatoryIds[0]),
+  'saved output snapshots the exact firm logo, office, partner and management signatory identity')
   await fails('reporting/output/finalise', { outputId: savedOutput.data.id }, ownerToken, /assigned engagement partner/i)
   const finalisedOutput = await ok('reporting/output/finalise', { outputId: savedOutput.data.id }, substituteToken)
   check(!!finalisedOutput.data.finalised_at, 'authorised substitute finalises an immutable report output')
   await fails('reporting/output/finalise', { outputId: savedOutput.data.id }, partnerToken, /already finalised/i)
+  await ok('admin/firm/save', {
+    id: professionalFirm.data.id, firmName: 'Changed Synthetic Audit LLP', frn: 'FRN-CHANGED',
+    pan: 'ABCDE1234F', address: 'Changed Main Street', email: 'changed@example.test',
+    phone: '+91 33333 33333', logoMimeType: 'image/png',
+    logoBase64: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]).toString('base64'), isActive: true,
+  }, adminToken)
+  await ok('admin/partner/save', {
+    partnerId: partner.user.id, qualification: 'Changed Qualification',
+    registrationNumber: 'M-CHANGED', isActive: true,
+  }, adminToken)
+  const identityAfterMasterEdit = await pool.query(
+    `SELECT audit_report_fields->>'firmName' AS firm_name,
+            audit_report_fields->>'auditorName' AS partner_name,
+            signing_details->'identitySnapshot'->'branding'->>'logoBase64' AS logo_base64,
+            signing_details->'identitySnapshot'->'office'->>'address' AS office_address,
+            signing_details->'signatories'->0->>'id' AS first_signatory
+     FROM engagement_report_outputs WHERE id=$1`,
+    [savedOutput.data.id]
+  )
+  assert.deepEqual(identityAfterMasterEdit.rows, identityBeforeMasterEdit.rows)
+  const unchangedPdf = await ok('reporting/output/read', { outputId: savedOutput.data.id }, readerToken)
+  check(unchangedPdf.data.pdfContentBase64 === storedOutput.data.pdfContentBase64,
+    'later firm and partner master changes do not alter the finalised output snapshot or PDF bytes')
 
   const concurrentUploads = [
     { ...originalUpload, fileName: 'concurrent-a.xlsx', fileContentBase64: syntheticTBFile(-81).toString('base64') },

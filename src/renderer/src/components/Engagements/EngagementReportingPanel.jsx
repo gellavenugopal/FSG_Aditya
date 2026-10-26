@@ -55,10 +55,10 @@ function Input({ label, value, onChange, ...props }) {
   </label>
 }
 
-function TextArea({ label, value, onChange, rows = 3 }) {
+function TextArea({ label, value, onChange, rows = 3, ...props }) {
   return <label className="block">
     <span className="mb-1 block text-xs font-medium text-gray-700">{label}</span>
-    <textarea value={value} rows={rows} onChange={event => onChange(event.target.value)}
+    <textarea {...props} value={value} rows={rows} onChange={event => onChange(event.target.value)}
       className="w-full rounded-md border border-gray-300 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none" />
   </label>
 }
@@ -74,6 +74,12 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
   const [finalRows, setFinalRows] = useState([])
   const [fields, setFields] = useState(EMPTY_FIELDS)
   const [approval, setApproval] = useState({ approvalDate: '', approvalPlace: '', signatoryIds: [] })
+  const [selections, setSelections] = useState({
+    responsibleAuditorFirmId: '',
+    responsibleOfficeId: '',
+    brandingAuditorFirmId: '',
+    managementSignatoryIds: [],
+  })
   const [entries, setEntries] = useState([EMPTY_ENTRY(), EMPTY_ENTRY()])
   const [journal, setJournal] = useState({ date: '', narration: '' })
   const [disclosures, setDisclosures] = useState({})
@@ -135,6 +141,16 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
       setBundle(reportingData)
       setFinalRows(rows)
       setFields({ ...EMPTY_FIELDS, ...(reportingData.auditReport?.fields || {}) })
+      setSelections(reportingData.reportingSelections || {
+        responsibleAuditorFirmId: '',
+        responsibleOfficeId: '',
+        brandingAuditorFirmId: '',
+        managementSignatoryIds: [],
+      })
+      setApproval(current => ({
+        ...current,
+        signatoryIds: reportingData.reportingSelections?.managementSignatoryIds || [],
+      }))
       setDisclosures(Object.fromEntries((reportingData.noteDisclosures || []).map(note => [note.note_title, note.text])))
       setStructuredDetails(Object.fromEntries((reportingData.noteDetails || []).map(note => [note.note_title, note.data])))
       setComparativeId(String(reportingData.comparativeTrialBalance?.id || ''))
@@ -298,20 +314,42 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
     return result
   }
 
+  const saveSelections = async () => {
+    await window.api.saveEngagementReportingSelections({
+      engagementId: engagement.id,
+      ...selections,
+      managementSignatoryIds: approval.signatoryIds,
+    })
+    setSelections(current => ({ ...current, managementSignatoryIds: approval.signatoryIds }))
+  }
+
+  const moveSignatory = (index, direction) => setApproval(current => {
+    const next = [...current.signatoryIds]
+    const target = index + direction
+    if (target < 0 || target >= next.length) return current
+    ;[next[index], next[target]] = [next[target], next[index]]
+    return { ...current, signatoryIds: next }
+  })
+
   const generateReport = () => run(async () => {
     if (!bundle || !financialData) throw new Error('Mapped India financial data is not ready.')
     if (!approval.approvalDate || !approval.approvalPlace.trim()) throw new Error('Enter the financial-statement approval date and place.')
     if (!approval.signatoryIds.length) throw new Error('Select at least one active client signatory.')
-    await saveReportSettings()
-    const signatories = bundle.signatories.filter(item => approval.signatoryIds.includes(Number(item.id)))
+    await saveSelections()
+    const savedSettings = await window.api.saveEngagementAuditReportSettings({ engagementId: engagement.id, fields })
+    const currentFields = { ...fields, ...(savedSettings.fields || {}) }
+    setFields(currentFields)
+    const reportBundle = await window.api.getEngagementReportingData({ engagementId: engagement.id, trialBalanceId: Number(finalId) })
+    setBundle(reportBundle)
+    const signatories = approval.signatoryIds.map(id => bundle.signatories.find(item => Number(item.id) === Number(id))).filter(Boolean)
     if (signatories.length !== approval.signatoryIds.length) throw new Error('A selected client signatory is no longer available.')
     const auditor = {
-      name: fields.auditorName,
-      membership_number: fields.auditorMembershipNumber,
-      designation: fields.auditorDesignation,
-      firm_name: fields.firmName,
-      frn: fields.firmRegistrationNumber,
-      firm_address: fields.firmAddress,
+      name: currentFields.auditorName,
+      membership_number: currentFields.auditorMembershipNumber,
+      designation: currentFields.auditorDesignation,
+      firm_name: currentFields.firmName,
+      frn: currentFields.firmRegistrationNumber,
+      firm_address: currentFields.firmAddress,
     }
     const detailsByTitle = new Map((bundle.noteDetails || []).map(note => [String(note.note_title || '').trim().toLocaleLowerCase(), note.data]))
     const detailsMap = Object.fromEntries(notes.map(note => {
@@ -332,13 +370,17 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
       signPlace: approval.approvalPlace,
       signDate: approval.approvalDate,
     })
-    const html = prependAuditReport(financialsHtml, makeAuditReportPage(fields, bundle.entity, bundle.engagement))
+    const html = prependAuditReport(financialsHtml, makeAuditReportPage(
+      currentFields, bundle.entity, bundle.engagement, reportBundle.firmSettings?.branding
+    ))
     const pdfBytes = new Uint8Array(await window.api.renderEngagementPDF(html))
     const saved = await window.api.saveEngagementReportOutput({
       engagementId: engagement.id,
       trialBalanceId: Number(finalId),
       pdfContentBase64: bytesToBase64(pdfBytes),
       signingDetails: approval,
+      auditReportFields: currentFields,
+      reportIdentitySnapshot: reportBundle.reportIdentitySnapshot,
     })
     await load()
     setMessage(`Combined PDF v${saved.version} saved as an immutable engagement output. Download it below for review.`)
@@ -492,6 +534,58 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
           {selectedFinal && <span className="text-xs text-gray-500">Reporting period {formatPeriodRange(bundle?.engagement.periodStart, bundle?.engagement.periodEnd)}</span>}
         </div>
         {!bundle ? <p className="mt-3 text-sm text-gray-500">Create or select a final Trial Balance to prepare the reporting pack.</p> : <>
+          <section className="mt-4 rounded-md border border-gray-200 bg-white p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h5 className="text-sm font-semibold text-gray-800">Firm, office and branding selections</h5>
+                <p className="mt-1 text-xs text-gray-500">Selections come from Firm Settings and the assigned engagement partner; generated PDFs retain a snapshot.</p>
+              </div>
+              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">Partner · {engagement.partner_name || 'Not assigned'}</span>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-gray-700">Responsible firm</span>
+                <select disabled={!editable} value={selections.responsibleAuditorFirmId || ''} onChange={event => setSelections(current => ({
+                  ...current,
+                  responsibleAuditorFirmId: event.target.value,
+                  responsibleOfficeId: '',
+                  brandingAuditorFirmId: current.brandingAuditorFirmId || event.target.value,
+                }))} className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm">
+                  <option value="">Select a firm…</option>
+                  {(bundle.firmSettings?.professionalFirms || []).filter(item => item.is_active).map(item =>
+                    <option key={item.id} value={item.id}>{item.firm_name} · {item.frn || 'No FRN'}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-gray-700">Responsible office</span>
+                <select disabled={!editable || !selections.responsibleAuditorFirmId} value={selections.responsibleOfficeId || ''} onChange={event => setSelections(current => ({ ...current, responsibleOfficeId: event.target.value }))}
+                  className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm">
+                  <option value="">Use firm main address</option>
+                  {(bundle.firmSettings?.offices || []).filter(item => item.is_active && String(item.auditor_firm_id) === String(selections.responsibleAuditorFirmId)).map(item =>
+                    <option key={item.id} value={item.id}>{item.office_name} · {item.address}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-gray-700">Branding profile</span>
+                <select disabled={!editable} value={selections.brandingAuditorFirmId || ''} onChange={event => setSelections(current => ({ ...current, brandingAuditorFirmId: event.target.value }))}
+                  className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm">
+                  <option value="">Use responsible firm</option>
+                  {(bundle.firmSettings?.professionalFirms || []).filter(item => item.is_active).map(item =>
+                    <option key={item.id} value={item.id}>{item.firm_name} · {item.frn || 'No FRN'}</option>)}
+                </select>
+              </label>
+            </div>
+            {bundle.firmSettings?.branding?.logoBase64 && <div className="mt-3 flex items-center gap-3 text-xs text-gray-600">
+              <img alt="Selected report branding" src={`data:${bundle.firmSettings.branding.logoMimeType};base64,${bundle.firmSettings.branding.logoBase64}`} className="max-h-12 max-w-40 object-contain" />
+              <span>{bundle.firmSettings.branding.name} logo</span>
+            </div>}
+            {editable && <button type="button" disabled={busy} onClick={() => run(async () => {
+              await saveSelections()
+              const updated = await window.api.getEngagementReportingData({ engagementId: engagement.id, trialBalanceId: Number(finalId) })
+              setBundle(updated)
+              setMessage('Firm, office, branding and ordered signatory selections saved.')
+            })} className="mt-3 rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-800 disabled:opacity-40">Save engagement selections</button>}
+          </section>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <Input label="Addressee" value={fields.addressee} onChange={value => changeField('addressee', value)} />
             <Input label="Audit report title" value="Independent Auditor's Report" onChange={() => {}} disabled />
@@ -506,16 +600,16 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
               <Input label="Financial-statement approval date" type="date" value={approval.approvalDate} onChange={value => setApproval(current => ({ ...current, approvalDate: value }))} />
               <Input label="Financial-statement approval place" value={approval.approvalPlace} onChange={value => setApproval(current => ({ ...current, approvalPlace: value }))} />
             </div>
-            <Input label="Audit firm name" value={fields.firmName} onChange={value => changeField('firmName', value)} />
-            <Input label="Firm registration number (FRN)" value={fields.firmRegistrationNumber} onChange={value => changeField('firmRegistrationNumber', value)} />
-            <Input label="Auditor name" value={fields.auditorName} onChange={value => changeField('auditorName', value)} />
-            <Input label="Auditor membership number" value={fields.auditorMembershipNumber} onChange={value => changeField('auditorMembershipNumber', value)} />
-            <Input label="Auditor designation" value={fields.auditorDesignation} onChange={value => changeField('auditorDesignation', value)} />
-            <TextArea label="Audit firm address" value={fields.firmAddress} onChange={value => changeField('firmAddress', value)} />
+            <Input label="Audit firm name" value={fields.firmName} readOnly onChange={() => {}} />
+            <Input label="Firm registration number (FRN)" value={fields.firmRegistrationNumber} readOnly onChange={() => {}} />
+            <Input label="Auditor name" value={fields.auditorName} readOnly onChange={() => {}} />
+            <Input label="Auditor membership / registration number" value={fields.auditorMembershipNumber} readOnly onChange={() => {}} />
+            <Input label="Auditor designation / qualification" value={fields.auditorDesignation} readOnly onChange={() => {}} />
+            <TextArea label="Selected office address" value={fields.firmAddress} readOnly onChange={() => {}} />
           </div>
 
           <div className="mt-4 rounded-md border border-gray-200 bg-white p-3">
-            <h5 className="text-sm font-semibold text-gray-800">Client signatories for financial-statement approval</h5>
+            <h5 className="text-sm font-semibold text-gray-800">Ordered management signatories for financial-statement approval</h5>
             {bundle.signatories.length === 0 ? <p className="mt-2 text-xs text-amber-800">No signatories are set up. Add an authorised client signatory below; the system will not select one automatically.</p> : (
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {bundle.signatories.map(item => <label key={item.id} className="flex items-center gap-2 text-sm">
@@ -530,6 +624,19 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
                 </label>)}
               </div>
             )}
+            {!!approval.signatoryIds.length && <ol className="mt-3 space-y-1 border-t border-gray-100 pt-2">
+              {approval.signatoryIds.map((id, index) => {
+                const item = bundle.signatories.find(signatoryItem => Number(signatoryItem.id) === Number(id))
+                return <li key={id} className="flex items-center gap-2 text-xs text-gray-700">
+                  <span className="w-5 text-right font-semibold text-gray-500">{index + 1}.</span>
+                  <span className="min-w-0 flex-1">{item?.name || 'Inactive signatory'}{item?.designation ? ` · ${item.designation}` : ''}</span>
+                  <button type="button" aria-label={`Move ${item?.name || 'signatory'} up`} disabled={!editable || index === 0}
+                    onClick={() => moveSignatory(index, -1)} className="rounded border px-2 py-1 disabled:opacity-40">↑</button>
+                  <button type="button" aria-label={`Move ${item?.name || 'signatory'} down`} disabled={!editable || index === approval.signatoryIds.length - 1}
+                    onClick={() => moveSignatory(index, 1)} className="rounded border px-2 py-1 disabled:opacity-40">↓</button>
+                </li>
+              })}
+            </ol>}
             {editable && <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
               <input placeholder="Signatory name" value={signatory.name} onChange={event => setSignatory(current => ({ ...current, name: event.target.value }))} className="rounded-md border px-2.5 py-2 text-sm" />
               <input placeholder="Designation" value={signatory.designation} onChange={event => setSignatory(current => ({ ...current, designation: event.target.value }))} className="rounded-md border px-2.5 py-2 text-sm" />

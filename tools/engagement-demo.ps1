@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true, Position = 0)]
-  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'launch')]
+  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch')]
   [string]$Action
 )
 
@@ -187,6 +187,45 @@ switch ($Action) {
     try {
       & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-reopen.mjs')
       if ($LASTEXITCODE -ne 0) { throw 'Saved-engagement restart UI verification failed.' }
+    } finally { Pop-Location }
+  }
+  'firm-settings-ui' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    Set-DisposableTestEnvironment $state
+    Wait-ForDemoDesktop
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-firm-settings.mjs')
+      if ($LASTEXITCODE -ne 0) { throw 'Firm Settings and reporting identity UI verification failed.' }
+    } finally { Pop-Location }
+  }
+  'firm-settings-reopen-ui' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    Set-DisposableTestEnvironment $state
+    Wait-ForDemoDesktop
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-firm-settings.mjs') reopen
+      if ($LASTEXITCODE -ne 0) { throw 'Firm Settings and saved report restart verification failed.' }
+    } finally { Pop-Location }
+  }
+  'firm-settings-verify-master-ui' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    Set-DisposableTestEnvironment $state
+    Wait-ForDemoDesktop
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-firm-settings.mjs') verify-master
+      if ($LASTEXITCODE -ne 0) { throw 'Firm master immutability UI verification failed.' }
     } finally { Pop-Location }
   }
   'launch' {

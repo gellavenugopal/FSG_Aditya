@@ -11,6 +11,7 @@ const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
 const BODY_MAX_BYTES = 1024 * 1024
 const TB_IMPORT_MAX_BODY_BYTES = 12 * 1024 * 1024
 const REPORT_OUTPUT_MAX_BODY_BYTES = 32 * 1024 * 1024
+const FIRM_LOGO_MAX_BODY_BYTES = 2 * 1024 * 1024
 const SESSION_TOKEN_BYTES = 32
 
 const ROUTES = {
@@ -21,6 +22,14 @@ const ROUTES = {
   'auth/change-password': { channel: 'engagementAuth:changePassword', args: body => [body.password] },
   'admin/users': { channel: 'engagementAdmin:listUsers', args: () => [] },
   'admin/users/create': { channel: 'engagementAdmin:createUser', args: body => [body] },
+  'admin/firm-settings': { channel: 'engagementAdmin:firmSettings', args: () => [] },
+  'admin/firm/save': {
+    channel: 'engagementAdmin:saveProfessionalFirm',
+    args: body => [body],
+    maxBodyBytes: FIRM_LOGO_MAX_BODY_BYTES,
+  },
+  'admin/office/save': { channel: 'engagementAdmin:saveFirmOffice', args: body => [body] },
+  'admin/partner/save': { channel: 'engagementAdmin:savePartnerProfile', args: body => [body] },
   options: { channel: 'engagement:listOptions', args: () => [] },
   clients: { channel: 'engagement:createClient', args: body => [body] },
   list: { channel: 'engagement:list', args: body => [body.scope || 'my'] },
@@ -45,6 +54,7 @@ const ROUTES = {
   'final-trial-balance/rows': { channel: 'engagement:finalTrialBalanceRows', args: body => [body] },
   'reporting/data': { channel: 'engagement:reportingData', args: body => [body] },
   'reporting/settings/save': { channel: 'engagement:reportingSettingsSave', args: body => [body] },
+  'reporting/selections/save': { channel: 'engagement:reportingSelectionsSave', args: body => [body] },
   'reporting/signatory/create': { channel: 'engagement:reportingSignatoryCreate', args: body => [body] },
   'reporting/note-disclosure/save': { channel: 'engagement:noteDisclosureSave', args: body => [body] },
   'reporting/outputs': { channel: 'engagement:reportOutputs', args: body => [body.engagementId] },

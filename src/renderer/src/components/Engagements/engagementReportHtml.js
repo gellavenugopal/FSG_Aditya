@@ -10,7 +10,7 @@ function reportParagraph(value) {
   return escapeHtml(value).replace(/\r?\n/g, '<br>')
 }
 
-export function makeAuditReportPage(fields, entity, engagement) {
+export function makeAuditReportPage(fields, entity, engagement, branding = null) {
   const section = (title, content) => content?.trim()
     ? `<section style="margin:5mm 0"><h2 style="font-size:11pt;margin:0 0 2mm">${escapeHtml(title)}</h2><div style="font-size:10.5pt;line-height:1.45;white-space:pre-wrap">${reportParagraph(content)}</div></section>`
     : ''
@@ -18,9 +18,13 @@ export function makeAuditReportPage(fields, entity, engagement) {
   const address = fields.firmAddress.trim()
     ? `<div style="margin-top:2mm;white-space:pre-wrap">${reportParagraph(fields.firmAddress)}</div>`
     : ''
+  const logo = branding?.logoBase64 && ['image/png', 'image/jpeg'].includes(branding.logoMimeType)
+    ? `<img alt="" src="data:${branding.logoMimeType};base64,${branding.logoBase64}" style="display:block;max-width:45mm;max-height:20mm;object-fit:contain;margin:0 auto 3mm">`
+    : ''
   return `
     <div class="print-page" style="page-break-after:always;min-height:262mm;padding:0 2mm;font-family:Calibri,Arial,sans-serif">
       <header style="text-align:center;border-bottom:1pt solid #111;padding-bottom:4mm;margin-bottom:7mm">
+        ${logo}
         <div style="font-size:14pt;font-weight:700;text-transform:uppercase">${escapeHtml(entity.name)}</div>
         <div style="font-size:10pt;margin-top:1mm">Independent Auditor's Report</div>
         <div style="font-size:10pt;margin-top:1mm">For the year ended ${escapeHtml(formatPeriodDate(engagement.periodEnd))}</div>

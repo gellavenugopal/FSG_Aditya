@@ -146,6 +146,10 @@ try {
       constitution_display TEXT,business_type TEXT,address TEXT,cin TEXT,pan TEXT,
       jurisdiction TEXT,legal_form TEXT
     );
+    CREATE TABLE auditor_firms (
+      id SERIAL PRIMARY KEY,firm_name TEXT NOT NULL,frn TEXT,is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMPTZ DEFAULT now(),pan TEXT,address TEXT,email TEXT
+    );
     CREATE TABLE global_signatories (id SERIAL PRIMARY KEY,name TEXT NOT NULL);
     CREATE TABLE financial_periods (
       id SERIAL PRIMARY KEY,year_label TEXT NOT NULL,date_from DATE NOT NULL,date_till DATE NOT NULL,

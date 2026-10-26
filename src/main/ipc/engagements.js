@@ -327,6 +327,88 @@ export function registerEngagementHandlers(ipcMain, database) {
   query = database.query
   runInTransaction = database.runInTransaction
 
+  async function reportingIdentity(engagement) {
+    const { rows: [selection] } = await query(
+      `SELECT responsible_auditor_firm_id,responsible_office_id,branding_auditor_firm_id,management_signatory_ids
+       FROM engagement_reporting_sets WHERE id=$1 AND engagement_id=$2`,
+      [engagement.reporting_set_id, engagement.id]
+    )
+    const { rows: firms } = await query(
+      `SELECT id,firm_name,frn,pan,address,email,phone,is_active
+       FROM auditor_firms WHERE service_firm_id=$1 ORDER BY firm_name,id`,
+      [engagement.firm_id]
+    )
+    const { rows: offices } = await query(
+      `SELECT id,auditor_firm_id,office_name,address,phone,email,is_active
+       FROM auditor_firm_offices WHERE service_firm_id=$1 ORDER BY office_name,id`,
+      [engagement.firm_id]
+    )
+    const { rows: partners } = await query(
+      `SELECT id,display_name,job_title,qualification,registration_number,active
+       FROM firm_users WHERE firm_id=$1 AND role='partner' ORDER BY display_name,id`,
+      [engagement.firm_id]
+    )
+    const responsibleFirm = firms.find(item => Number(item.id) === Number(selection?.responsible_auditor_firm_id))
+    const office = offices.find(item => Number(item.id) === Number(selection?.responsible_office_id))
+    const brandingFirm = firms.find(item => Number(item.id) === Number(selection?.branding_auditor_firm_id))
+    const partner = partners.find(item => Number(item.id) === Number(engagement.partner_user_id))
+    let logo = { logo_mime_type: null, logo_base64: null }
+    if (brandingFirm) {
+      const { rows: [branding] } = await query(
+        `SELECT logo_mime_type,replace(encode(logo_data,'base64'),E'\\n','') AS logo_base64
+         FROM auditor_firms WHERE id=$1 AND service_firm_id=$2`,
+        [brandingFirm.id, engagement.firm_id]
+      )
+      if (branding) logo = branding
+    }
+    const signatoryIds = Array.isArray(selection?.management_signatory_ids)
+      ? selection.management_signatory_ids.map(Number) : []
+    return {
+      selection: {
+        responsibleAuditorFirmId: selection?.responsible_auditor_firm_id == null ? '' : String(selection.responsible_auditor_firm_id),
+        responsibleOfficeId: selection?.responsible_office_id == null ? '' : String(selection.responsible_office_id),
+        brandingAuditorFirmId: selection?.branding_auditor_firm_id == null ? '' : String(selection.branding_auditor_firm_id),
+        managementSignatoryIds: signatoryIds,
+      },
+      firms,
+      offices,
+      partners,
+      responsibleFirm: responsibleFirm || null,
+      office: office || null,
+      brandingFirm: brandingFirm ? { ...brandingFirm, ...logo } : null,
+      partner: partner || null,
+      fields: {
+        firmName: responsibleFirm?.firm_name || '',
+        firmAddress: office?.address || responsibleFirm?.address || '',
+        firmRegistrationNumber: responsibleFirm?.frn || '',
+        auditorName: partner?.display_name || '',
+        auditorMembershipNumber: partner?.registration_number || '',
+        auditorDesignation: partner
+          ? [partner.job_title || 'Partner', partner.qualification].filter(Boolean).join(' · ')
+          : '',
+      },
+      identitySnapshot: {
+        responsibleFirm: responsibleFirm ? {
+          id: Number(responsibleFirm.id), name: responsibleFirm.firm_name, frn: responsibleFirm.frn,
+          pan: responsibleFirm.pan, address: responsibleFirm.address, email: responsibleFirm.email,
+          phone: responsibleFirm.phone, active: !!responsibleFirm.is_active,
+        } : null,
+        office: office ? {
+          id: Number(office.id), name: office.office_name, address: office.address,
+          phone: office.phone, email: office.email, active: !!office.is_active,
+        } : null,
+        partner: partner ? {
+          id: Number(partner.id), name: partner.display_name, designation: partner.job_title,
+          qualification: partner.qualification, registrationNumber: partner.registration_number,
+        } : null,
+        branding: brandingFirm ? {
+          id: Number(brandingFirm.id), name: brandingFirm.firm_name,
+          logoMimeType: logo.logo_mime_type || null, logoBase64: logo.logo_base64 || null,
+        } : null,
+      },
+    }
+  }
+
   ipcMain.handle('engagementAuth:status', async (event) => {
     const { rows: [result] } = await query(
       `SELECT EXISTS(SELECT 1 FROM firm_users WHERE role='administrator') AS configured`
@@ -458,6 +540,192 @@ export function registerEngagementHandlers(ipcMain, database) {
       return created
     })
     return { user: publicUser(row), initialPassword }
+  })
+
+  ipcMain.handle('engagementAdmin:firmSettings', async (event) => {
+    const actor = await authenticated(event)
+    const { rows: professionalFirms } = await query(
+      `SELECT id,firm_name,frn,pan,address,email,phone,is_active,logo_mime_type,
+              replace(encode(logo_data,'base64'),E'\\n','') AS logo_base64
+       FROM auditor_firms WHERE service_firm_id=$1 ORDER BY firm_name,id`,
+      [actor.firmId]
+    )
+    const { rows: offices } = await query(
+      `SELECT id,auditor_firm_id,office_name,address,phone,email,is_active
+       FROM auditor_firm_offices WHERE service_firm_id=$1 ORDER BY auditor_firm_id,office_name,id`,
+      [actor.firmId]
+    )
+    const { rows: partners } = await query(
+      `SELECT id,display_name,email,job_title,qualification,registration_number,active
+       FROM firm_users WHERE firm_id=$1 AND role='partner' ORDER BY display_name,id`,
+      [actor.firmId]
+    )
+    let availableProfessionalFirms = []
+    if (actor.role === 'administrator') {
+      const { rows } = await query(
+        `SELECT id,firm_name,frn,pan,address,email,phone,is_active
+         FROM auditor_firms WHERE service_firm_id IS NULL ORDER BY firm_name,id`
+      )
+      availableProfessionalFirms = rows
+    }
+    return {
+      professionalFirms: professionalFirms.map(row => ({ ...row, id: Number(row.id) })),
+      availableProfessionalFirms: availableProfessionalFirms.map(row => ({ ...row, id: Number(row.id) })),
+      offices: offices.map(row => ({ ...row, id: Number(row.id), auditor_firm_id: Number(row.auditor_firm_id) })),
+      partners: partners.map(row => ({ ...row, id: Number(row.id) })),
+      canManage: actor.role === 'administrator',
+    }
+  })
+
+  ipcMain.handle('engagementAdmin:saveProfessionalFirm', async (event, input = {}) => {
+    const actor = await authenticated(event)
+    if (actor.role !== 'administrator') throw new Error('Administrator access is required.')
+    const firmName = String(input.firmName || '').trim()
+    const frn = String(input.frn || '').trim()
+    const pan = String(input.pan || '').trim()
+    const address = String(input.address || '').trim()
+    const email = String(input.email || '').trim()
+    const phone = String(input.phone || '').trim()
+    const clearLogo = input.clearLogo === true
+    if (!firmName || firmName.length > 255 || frn.length > 100 || pan.length > 50
+      || address.length > 2000 || email.length > 255 || phone.length > 100) {
+      throw new Error('Enter valid firm details within the allowed lengths.')
+    }
+    const active = input.isActive !== false
+    let logo = null
+    let logoMime = null
+    if (input.logoBase64) {
+      const encoded = String(input.logoBase64)
+      if (encoded.length > 1024 * 1024 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+        throw new Error('Choose a PNG or JPEG logo no larger than 750 KB.')
+      }
+      logo = Buffer.from(encoded, 'base64')
+      if (logo.length > 750 * 1024 || logo.toString('base64') !== encoded) throw new Error('Choose a PNG or JPEG logo no larger than 750 KB.')
+      if (input.logoMimeType === 'image/png' && logo.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) {
+        logoMime = 'image/png'
+      } else if (input.logoMimeType === 'image/jpeg' && logo[0] === 0xff && logo[1] === 0xd8 && logo[2] === 0xff) {
+        logoMime = 'image/jpeg'
+      } else {
+        throw new Error('The selected logo content does not match its PNG or JPEG file type.')
+      }
+    } else if (input.logoMimeType) {
+      throw new Error('Logo data is required when specifying a logo file type.')
+    }
+
+    return runInTransaction(async () => {
+      let row
+      const id = input.id ? Number(input.id) : null
+      if (id && Number.isSafeInteger(id)) {
+        const { rows: [existing] } = await query(
+          `SELECT id,service_firm_id FROM auditor_firms WHERE id=$1 FOR UPDATE`,
+          [id]
+        )
+        if (!existing || (existing.service_firm_id && Number(existing.service_firm_id) !== actor.firmId)) {
+          throw new Error('This professional firm is not available to your firm.')
+        }
+        const { rows: [updated] } = await query(
+          `UPDATE auditor_firms SET service_firm_id=$1,firm_name=$2,frn=$3,pan=$4,address=$5,email=$6,phone=$7,
+             is_active=$8,logo_mime_type=CASE WHEN $9 THEN $10 WHEN $12 THEN NULL ELSE logo_mime_type END,
+             logo_data=CASE WHEN $9 THEN $11::bytea WHEN $12 THEN NULL ELSE logo_data END
+           WHERE id=$13 RETURNING id,firm_name,frn,is_active`,
+          [actor.firmId, firmName, frn || null, pan || null, address || null, email || null, phone || null,
+            active, !!logo, logoMime, logo, clearLogo && !logo, id]
+        )
+        row = updated
+      } else {
+        if (id) throw new Error('Choose a valid professional firm.')
+        const { rows: [existing] } = await query(
+          `SELECT id,service_firm_id FROM auditor_firms
+           WHERE lower(btrim(firm_name))=lower(btrim($1))
+             AND COALESCE(btrim(frn),'')=COALESCE(btrim($2),'')
+           ORDER BY id LIMIT 1 FOR UPDATE`,
+          [firmName, frn || null]
+        )
+        if (existing && existing.service_firm_id && Number(existing.service_firm_id) !== actor.firmId) {
+          throw new Error('A matching auditor firm is already associated with another service firm.')
+        }
+        if (existing) {
+          const { rows: [updated] } = await query(
+            `UPDATE auditor_firms SET service_firm_id=$1,firm_name=$2,frn=$3,pan=$4,address=$5,email=$6,phone=$7,
+               is_active=$8,logo_mime_type=CASE WHEN $9 THEN $10 WHEN $12 THEN NULL ELSE logo_mime_type END,
+               logo_data=CASE WHEN $9 THEN $11::bytea WHEN $12 THEN NULL ELSE logo_data END
+             WHERE id=$13 RETURNING id,firm_name,frn,is_active`,
+            [actor.firmId, firmName, frn || null, pan || null, address || null, email || null, phone || null,
+              active, !!logo, logoMime, logo, clearLogo && !logo, existing.id]
+          )
+          row = updated
+        } else {
+          const { rows: [created] } = await query(
+            `INSERT INTO auditor_firms
+               (service_firm_id,firm_name,frn,pan,address,email,phone,is_active,logo_mime_type,logo_data)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+             RETURNING id,firm_name,frn,is_active`,
+            [actor.firmId, firmName, frn || null, pan || null, address || null, email || null,
+              phone || null, active, logoMime, logo]
+          )
+          row = created
+        }
+      }
+      await logAudit(actor, 'firm.professional_master_updated', null, { auditorFirmId: Number(row.id), isActive: active })
+      return { ...row, id: Number(row.id) }
+    })
+  })
+
+  ipcMain.handle('engagementAdmin:saveFirmOffice', async (event, input = {}) => {
+    const actor = await authenticated(event)
+    if (actor.role !== 'administrator') throw new Error('Administrator access is required.')
+    const auditorFirmId = Number(input.auditorFirmId)
+    const officeName = String(input.officeName || '').trim()
+    const address = String(input.address || '').trim()
+    const phone = String(input.phone || '').trim()
+    const email = String(input.email || '').trim()
+    if (!Number.isSafeInteger(auditorFirmId) || auditorFirmId <= 0 || !officeName || officeName.length > 255
+      || !address || address.length > 2000 || phone.length > 100 || email.length > 255) {
+      throw new Error('Enter a valid office name, address and contact details.')
+    }
+    const { rows: [professionalFirm] } = await query(
+      `SELECT id FROM auditor_firms WHERE id=$1 AND service_firm_id=$2 AND is_active=TRUE`,
+      [auditorFirmId, actor.firmId]
+    )
+    if (!professionalFirm) throw new Error('Choose an active professional firm belonging to your firm.')
+    const officeId = input.id ? Number(input.id) : null
+    if (officeId && (!Number.isSafeInteger(officeId) || officeId <= 0)) throw new Error('Choose a valid office.')
+    const { rows: [office] } = officeId
+      ? await query(
+        `UPDATE auditor_firm_offices SET auditor_firm_id=$1,office_name=$2,address=$3,phone=$4,email=$5,
+           is_active=$6,updated_at=now()
+         WHERE id=$7 AND service_firm_id=$8 RETURNING id,auditor_firm_id,office_name,is_active`,
+        [auditorFirmId, officeName, address, phone || null, email || null, input.isActive !== false, officeId, actor.firmId]
+      )
+      : await query(
+        `INSERT INTO auditor_firm_offices
+           (service_firm_id,auditor_firm_id,office_name,address,phone,email,is_active)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,auditor_firm_id,office_name,is_active`,
+        [actor.firmId, auditorFirmId, officeName, address, phone || null, email || null, input.isActive !== false]
+      )
+    if (!office) throw new Error('This office is not available to your firm.')
+    await logAudit(actor, 'firm.office_updated', null, { officeId: Number(office.id), auditorFirmId })
+    return { ...office, id: Number(office.id), auditor_firm_id: Number(office.auditor_firm_id) }
+  })
+
+  ipcMain.handle('engagementAdmin:savePartnerProfile', async (event, input = {}) => {
+    const actor = await authenticated(event)
+    if (actor.role !== 'administrator') throw new Error('Administrator access is required.')
+    const partnerId = Number(input.partnerId)
+    const qualification = String(input.qualification || '').trim()
+    const registrationNumber = String(input.registrationNumber || '').trim()
+    if (!Number.isSafeInteger(partnerId) || partnerId <= 0 || qualification.length > 255 || registrationNumber.length > 100) {
+      throw new Error('Enter valid partner professional details.')
+    }
+    const { rows: [partner] } = await query(
+      `UPDATE firm_users SET qualification=$1,registration_number=$2,active=$3,updated_at=now()
+       WHERE id=$4 AND firm_id=$5 AND role='partner'
+       RETURNING id,display_name,qualification,registration_number,active`,
+      [qualification || null, registrationNumber || null, input.isActive !== false, partnerId, actor.firmId]
+    )
+    if (!partner) throw new Error('Choose an existing partner in this firm.')
+    await logAudit(actor, 'firm.partner_profile_updated', null, { partnerId })
+    return { ...partner, id: Number(partner.id) }
   })
 
   ipcMain.handle('engagement:listOptions', async (event) => {
@@ -1772,6 +2040,7 @@ export function registerEngagementHandlers(ipcMain, database) {
       `SELECT template_id,revision,fields,updated_at FROM engagement_audit_report_settings WHERE engagement_id=$1`,
       [engagement.id]
     )
+    const identity = await reportingIdentity(engagement)
     const { rows: auditors } = await query(`SELECT * FROM auditors WHERE entity_id=$1 AND is_active=TRUE ORDER BY id`, [entity.id])
     const { rows: signatories } = await query(`SELECT * FROM signatories WHERE entity_id=$1 AND is_active=TRUE ORDER BY id`, [entity.id])
     const { rows: [generalNotes] } = await query(
@@ -1803,8 +2072,89 @@ export function registerEngagementHandlers(ipcMain, database) {
       generalNotes: generalNotes?.segments || null,
       auditors,
       signatories,
-      auditReport: reportSettings || { template_id: 'india-basic-v1', revision: 0, fields: {} },
+      firmSettings: {
+        professionalFirms: identity.firms.map(row => ({ ...row, id: Number(row.id) })),
+        offices: identity.offices.map(row => ({ ...row, id: Number(row.id), auditor_firm_id: Number(row.auditor_firm_id) })),
+        partners: identity.partners.map(row => ({ ...row, id: Number(row.id) })),
+        branding: identity.brandingFirm ? {
+          id: Number(identity.brandingFirm.id),
+          name: identity.brandingFirm.firm_name,
+          logoMimeType: identity.brandingFirm.logo_mime_type || null,
+          logoBase64: identity.brandingFirm.logo_base64 || null,
+        } : null,
+      },
+      reportingSelections: identity.selection,
+      reportIdentitySnapshot: identity.identitySnapshot,
+      auditReport: {
+        ...(reportSettings || { template_id: 'india-basic-v1', revision: 0, fields: {} }),
+        fields: { ...validateAuditReportFields(reportSettings?.fields || {}), ...identity.fields },
+      },
     }
+  })
+
+  ipcMain.handle('engagement:reportingSelectionsSave', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertEngagementTBContext(user, input.engagementId)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    const firmId = input.responsibleAuditorFirmId ? Number(input.responsibleAuditorFirmId) : null
+    const officeId = input.responsibleOfficeId ? Number(input.responsibleOfficeId) : null
+    const brandingId = input.brandingAuditorFirmId ? Number(input.brandingAuditorFirmId) : firmId
+    if ([firmId, brandingId].some(value => value != null && (!Number.isSafeInteger(value) || value <= 0))
+      || (officeId != null && (!Number.isSafeInteger(officeId) || officeId <= 0))) {
+      throw new Error('Choose valid firm and office selections.')
+    }
+    const signatoryIds = input.managementSignatoryIds
+    if (!Array.isArray(signatoryIds) || signatoryIds.length > 20
+      || signatoryIds.some(id => !Number.isSafeInteger(Number(id)) || Number(id) <= 0)
+      || new Set(signatoryIds.map(Number)).size !== signatoryIds.length) {
+      throw new Error('Select up to 20 unique active management signatories in report order.')
+    }
+    if (firmId) {
+      const { rows: [selectedFirm] } = await query(
+        `SELECT id FROM auditor_firms WHERE id=$1 AND service_firm_id=$2 AND is_active=TRUE`,
+        [firmId, user.firmId]
+      )
+      if (!selectedFirm) throw new Error('Choose an active professional firm associated with your firm.')
+    }
+    if (brandingId) {
+      const { rows: [selectedBrand] } = await query(
+        `SELECT id FROM auditor_firms WHERE id=$1 AND service_firm_id=$2 AND is_active=TRUE`,
+        [brandingId, user.firmId]
+      )
+      if (!selectedBrand) throw new Error('Choose an active branding profile associated with your firm.')
+    }
+    if (officeId) {
+      const { rows: [selectedOffice] } = await query(
+        `SELECT id FROM auditor_firm_offices
+         WHERE id=$1 AND service_firm_id=$2 AND auditor_firm_id=$3 AND is_active=TRUE`,
+        [officeId, user.firmId, firmId]
+      )
+      if (!selectedOffice) throw new Error('Choose an active office belonging to the selected responsible firm.')
+    }
+    if (signatoryIds.length) {
+      const { rows: signatories } = await query(
+        `SELECT id FROM signatories
+         WHERE entity_id=$1 AND is_active=TRUE AND id=ANY($2::int[])`,
+        [context.engagement.entity_id, signatoryIds.map(Number)]
+      )
+      if (signatories.length !== signatoryIds.length) {
+        throw new Error('One or more management signatories are no longer active for this engagement.')
+      }
+    }
+    await query(
+      `UPDATE engagement_reporting_sets
+       SET responsible_auditor_firm_id=$1,responsible_office_id=$2,
+           branding_auditor_firm_id=$3,management_signatory_ids=$4::jsonb,updated_at=now()
+       WHERE id=$5 AND engagement_id=$6`,
+      [firmId, officeId, brandingId, JSON.stringify(signatoryIds.map(Number)),
+        context.engagement.reporting_set_id, context.engagement.id]
+    )
+    await logAudit(user, 'report.identity_selections_updated', context.engagement.id, {
+      responsibleFirmId: firmId, officeId, brandingFirmId: brandingId,
+      managementSignatoryIds: signatoryIds.map(Number),
+    })
+    return { ok: true }
   })
 
   ipcMain.handle('engagement:reportingSettingsSave', async (event, input = {}) => {
@@ -1812,7 +2162,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     const { engagement } = await assertEngagementTBContext(user, input.engagementId)
     await assertCanEdit(user, engagement)
     assertEngagementEditable(engagement, { locked: engagement.locked, is_final: engagement.is_final })
-    const fields = validateAuditReportFields(input.fields)
+    const fields = { ...validateAuditReportFields(input.fields), ...(await reportingIdentity(engagement)).fields }
     return runInTransaction(async () => {
       const { rows: [settings] } = await query(
         `INSERT INTO engagement_audit_report_settings (engagement_id,template_id,revision,fields,updated_by)
@@ -1982,21 +2332,34 @@ export function registerEngagementHandlers(ipcMain, database) {
       `SELECT template_id,revision,fields FROM engagement_audit_report_settings WHERE engagement_id=$1`,
       [context.engagement.id]
     )).rows[0] || { template_id: 'india-basic-v1', revision: 0, fields: {} }
-    const fields = validateAuditReportFields(settings.fields)
-    if (!fields.opinion || !fields.reportDate || !fields.reportPlace || !fields.firmName
-      || !fields.auditorName || !fields.auditorMembershipNumber) {
-      throw new Error('Complete the auditor-entered opinion, audit report date and place, audit firm, auditor name and membership number before generating the final PDF.')
+    const identity = await reportingIdentity(context.engagement)
+    const fields = { ...validateAuditReportFields(settings.fields), ...identity.fields }
+    if (!fields.opinion || !fields.reportDate || !fields.reportPlace) {
+      throw new Error('Complete the auditor-entered opinion, audit report date and place before generating the final PDF.')
+    }
+    if (!input.reportIdentitySnapshot || JSON.stringify(input.reportIdentitySnapshot) !== JSON.stringify(identity.identitySnapshot)) {
+      throw new Error('Firm, office, partner or branding details changed while the PDF was being generated. Refresh the engagement and generate again.')
+    }
+    if (!input.auditReportFields || JSON.stringify(validateAuditReportFields(input.auditReportFields)) !== JSON.stringify(fields)) {
+      throw new Error('Audit report details changed while the PDF was being generated. Refresh the report and generate again.')
+    }
+    if (!identity.responsibleFirm?.is_active || !identity.partner?.active || !identity.brandingFirm?.is_active
+      || (identity.selection.responsibleOfficeId && !identity.office?.is_active)
+      || !fields.firmName || !fields.auditorName || !fields.auditorMembershipNumber) {
+      throw new Error('Select an active responsible firm, branding profile and engagement partner with a membership or registration number before generating the final PDF.')
     }
     const signatoryIds = Array.isArray(signing.signatoryIds)
       ? [...new Set(signing.signatoryIds.map(Number).filter(value => Number.isSafeInteger(value) && value > 0))]
       : []
-    if (!signatoryIds.length || signatoryIds.length > 20) {
-      throw new Error('Select at least one active client signatory for the financial-statement approval page.')
+    if (!signatoryIds.length || signatoryIds.length > 20
+      || signatoryIds.length !== identity.selection.managementSignatoryIds.length
+      || signatoryIds.some((id, index) => id !== identity.selection.managementSignatoryIds[index])) {
+      throw new Error('Save at least one active management signatory in the displayed order before generating the financial-statement approval page.')
     }
     const { rows: signatoryRows } = await query(
       `SELECT id,name,din,designation,id_type FROM signatories
        WHERE entity_id=$1 AND is_active=TRUE AND id=ANY($2::int[])
-       ORDER BY id`,
+       ORDER BY array_position($2::int[],id)`,
       [context.engagement.entity_id, signatoryIds]
     )
     if (signatoryRows.length !== signatoryIds.length) {
@@ -2042,6 +2405,10 @@ export function registerEngagementHandlers(ipcMain, database) {
             signatories: signatoryRows,
             auditReportDate: fields.reportDate,
             auditReportPlace: fields.reportPlace,
+            responsibleAuditorFirmId: identity.selection.responsibleAuditorFirmId,
+            responsibleOfficeId: identity.selection.responsibleOfficeId,
+            brandingAuditorFirmId: identity.selection.brandingAuditorFirmId,
+            identitySnapshot: identity.identitySnapshot,
           }), dataHash, pdf, user.id,
         ]
       )
