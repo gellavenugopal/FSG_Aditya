@@ -30,6 +30,7 @@ function publicUser(row) {
     firmId: Number(row.firm_id),
     email: row.email,
     displayName: row.display_name,
+    firmName: row.firm_name || null,
     role: row.role,
     jobTitle: row.job_title || (row.role === 'partner' ? 'partner' : 'employee'),
     professionalSignatoryId: row.professional_signatory_id == null ? null : Number(row.professional_signatory_id),
@@ -44,8 +45,10 @@ async function authenticated(event, allowPasswordChange = false) {
     throw new Error('Sign in to use engagement management.')
   }
   const { rows: [row] } = await query(
-    `SELECT id,firm_id,email,display_name,role,job_title,professional_signatory_id,must_change_password
-     FROM firm_users WHERE id=$1 AND active=TRUE`,
+    `SELECT u.id,u.firm_id,u.email,u.display_name,u.role,u.job_title,u.professional_signatory_id,u.must_change_password,
+            f.name AS firm_name
+     FROM firm_users u JOIN firms f ON f.id=u.firm_id
+     WHERE u.id=$1 AND u.active=TRUE`,
     [session.user.id]
   )
   if (!row) {
@@ -435,8 +438,10 @@ export function registerEngagementHandlers(ipcMain, database) {
     let user = null
     if (session && session.expiresAt > Date.now()) {
       const { rows: [activeUser] } = await query(
-        `SELECT id,firm_id,email,display_name,role,job_title,professional_signatory_id,must_change_password
-         FROM firm_users WHERE id=$1 AND active=TRUE`,
+        `SELECT u.id,u.firm_id,u.email,u.display_name,u.role,u.job_title,u.professional_signatory_id,u.must_change_password,
+                f.name AS firm_name
+         FROM firm_users u JOIN firms f ON f.id=u.firm_id
+         WHERE u.id=$1 AND u.active=TRUE`,
         [session.user.id]
       )
       if (activeUser) {
@@ -467,15 +472,15 @@ export function registerEngagementHandlers(ipcMain, database) {
       if (existing.configured) throw new Error('Administrator setup has already been completed.')
       const { rows: [currentFirm] } = await query(`SELECT firm_id FROM firm_users ORDER BY id LIMIT 1`)
       const { rows: [firm] } = currentFirm
-        ? await query(`SELECT id FROM firms WHERE id=$1`, [currentFirm.firm_id])
-        : await query(`INSERT INTO firms(name) VALUES($1) RETURNING id`, [String(input.firmName).trim()])
+        ? await query(`SELECT id,name FROM firms WHERE id=$1`, [currentFirm.firm_id])
+        : await query(`INSERT INTO firms(name) VALUES($1) RETURNING id,name`, [String(input.firmName).trim()])
       if (!firm) throw new Error('The existing firm record is unavailable; contact the service administrator.')
       const { rows: [row] } = await query(
         `INSERT INTO firm_users (firm_id,email,display_name,job_title,password_salt,password_hash,role)
          VALUES ($1,$2,$3,'partner',$4,$5,'administrator') RETURNING *`,
         [firm.id, email, String(input.displayName).trim(), salt, hash]
       )
-      const administrator = publicUser(row)
+      const administrator = publicUser({ ...row, firm_name: firm.name })
       await logAudit(administrator, 'firm.admin_bootstrapped')
       return administrator
     })
@@ -486,7 +491,9 @@ export function registerEngagementHandlers(ipcMain, database) {
   ipcMain.handle('engagementAuth:login', async (event, input = {}) => {
     const email = cleanEmail(input.email)
     const { rows } = await query(
-      `SELECT * FROM firm_users WHERE lower(email)=$1 AND active=TRUE ORDER BY id LIMIT 2`,
+      `SELECT u.*,f.name AS firm_name
+       FROM firm_users u JOIN firms f ON f.id=u.firm_id
+       WHERE lower(u.email)=$1 AND u.active=TRUE ORDER BY u.id LIMIT 2`,
       [email]
     )
     const row = rows.length === 1 ? rows[0] : null
@@ -528,8 +535,10 @@ export function registerEngagementHandlers(ipcMain, database) {
     const user = await authenticated(event)
     if (user.role !== 'administrator') throw new Error('Administrator access is required.')
     const { rows } = await query(
-      `SELECT id,firm_id,email,display_name,role,job_title,professional_signatory_id,must_change_password
-       FROM firm_users WHERE firm_id=$1 AND active=TRUE ORDER BY display_name`,
+      `SELECT u.id,u.firm_id,u.email,u.display_name,u.role,u.job_title,u.professional_signatory_id,u.must_change_password,
+              f.name AS firm_name
+       FROM firm_users u JOIN firms f ON f.id=u.firm_id
+       WHERE u.firm_id=$1 AND u.active=TRUE ORDER BY u.display_name`,
       [user.firmId]
     )
     return rows.map(publicUser)
@@ -557,7 +566,7 @@ export function registerEngagementHandlers(ipcMain, database) {
       await logAudit(actor, 'user.created', null, { userId: Number(created.id), email, role, jobTitle })
       return created
     })
-    return { user: publicUser(row), initialPassword }
+    return { user: publicUser({ ...row, firm_name: actor.firmName }), initialPassword }
   })
 
   ipcMain.handle('engagementAdmin:firmSettings', async (event) => {

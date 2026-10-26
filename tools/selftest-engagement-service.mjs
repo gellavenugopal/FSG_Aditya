@@ -392,13 +392,17 @@ try {
     email: 'admin@example.test', firmName: 'Synthetic Firm', displayName: 'Synthetic Admin',
     password: 'Synthetic-Admin-Password!',
   }, null, service.clientOptions.setupToken)
-  check(!!setup.user && !!setup.sessionToken, 'server-authorized first administrator setup creates the initial account')
+  check(!!setup.user && !!setup.sessionToken && setup.user.firmName === 'Synthetic Firm',
+    'server-authorized first administrator setup returns the authenticated firm identity')
   await ok('auth/logout', {}, setup.sessionToken)
   const adminLogin = await login('admin@example.test', 'Synthetic-Admin-Password!')
   const adminToken = adminLogin.sessionToken
-  check(!!adminToken && adminLogin.user.role === 'administrator', 'first administrator can sign in after setup')
+  check(!!adminToken && adminLogin.user.role === 'administrator' && adminLogin.user.firmName === 'Synthetic Firm',
+    'first administrator can sign in with the correct firm identity')
   const statusAfterLogin = await ok('auth/status', {}, adminToken)
-  check(statusAfterLogin.data.user?.id === adminLogin.user.id, 'status refresh preserves the authenticated user session')
+  check(statusAfterLogin.data.user?.id === adminLogin.user.id
+    && statusAfterLogin.data.user.firmName === 'Synthetic Firm',
+  'status refresh preserves the authenticated user and firm identity')
   await fails('auth/setup', {
     email: 'second@example.test', firmName: 'Another Firm', displayName: 'Second Admin',
     password: 'Synthetic-Admin-Password!',
@@ -408,8 +412,9 @@ try {
     const jobTitle = role === 'partner' ? 'partner' : 'employee'
     const created = await ok('admin/users/create', { email, displayName: email.split('@')[0], jobTitle }, adminToken)
     check(created.data.user.mustChangePassword && created.data.initialPassword.length >= 12, `${role} user receives a one-time password`)
-    check(created.data.user.jobTitle === jobTitle && created.data.user.role === role,
-      `${jobTitle} position maps to the expected directory label and permission role`)
+    check(created.data.user.jobTitle === jobTitle && created.data.user.role === role
+      && created.data.user.firmName === 'Synthetic Firm',
+    `${jobTitle} position maps to the expected role and retains firm identity`)
     return login(email, created.data.initialPassword)
   }
   const owner = await createUser('owner@example.test', 'staff')

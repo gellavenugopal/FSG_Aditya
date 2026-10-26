@@ -70,7 +70,18 @@ Get-FileHash -LiteralPath $pdf -Algorithm SHA256
 
 Expected SHA-256: `059865a857f2dc5086e9a7d5765d89cc72201fce3ada3d539a776686ddf0e075`.
 
-## Reopen UAE Sample 01 and its saved draft PDF
+## Verify UAE engagement access and v5 download
+
+Keep the isolated desktop open and run this from a second PowerShell window at the repository root:
+
+```powershell
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 uae-access-ui
+```
+
+This signs in through the normal form as the harness-provisioned `Demo Administrator` in **FSG Isolated Demo Firm**, checks both engagement-list scopes, opens `UAE-SAMPLE-01-2025`, and downloads saved output v5 through the application's Save PDF dialog. The temporary verification copy is removed after its hash matches the service-stored PDF. It does not create an engagement or change saved outputs.
+
+## Reopen UAE Sample 01 and its saved draft PDFs
 
 The same persistent isolated cluster/profile contains the synthetic UAE demonstration. Do not run `init` or regenerate its data for routine review. From the repository root, close the desktop normally first, then:
 
@@ -81,16 +92,18 @@ $env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
 .\tools\engagement-demo.ps1 launch
 ```
 
-Sign in through the normal desktop screen with the harness administrator account, open **UAE-SAMPLE-01-2025**, then use **Saved combined PDF versions → Version 5 → Download PDF**. This reads the saved engagement; it does not regenerate or finalise the PDF. The verified current walkthrough fallback is:
+Sign in through the normal desktop screen with the harness administrator account and open **UAE-SAMPLE-01-2025**. Version 6 is the corrected review output; use **Saved combined PDF versions → Version 6 → Download PDF**. It was generated from final Trial Balance v3, is still a draft, and does not finalise or reopen the engagement. Preserve version 5 as the historical baseline. The local copies are:
 
 ```powershell
-$pdf = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v5.pdf'
-Get-FileHash -LiteralPath $pdf -Algorithm SHA256
+$v6 = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v6.pdf'
+Get-FileHash -LiteralPath $v6 -Algorithm SHA256
+$v5 = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v5.pdf'
+Get-FileHash -LiteralPath $v5 -Algorithm SHA256
 ```
 
-Expected SHA-256: `29936ef746e59428080ccc119e392678bcd0374b6ad88046523b647cf248ea7a`.
+Expected v6 SHA-256: `cefb5b714f1069c73af30970cd637d2049ddb9448333b953ff4773f121fb77a1` (11 physical pages). Expected preserved v5 SHA-256: `29936ef746e59428080ccc119e392678bcd0374b6ad88046523b647cf248ea7a` (17 physical pages).
 
-The saved output was retrieved through the desktop after an application/service restart against the same database/profile; stored and downloaded bytes matched this fallback. It has 17 visually inspected pages and remains **Draft for demonstration**. Use synthetic AED figures only; this path is not a validated IFRS or production pack. See [CURRENT_STATUS.md](./CURRENT_STATUS.md) for reconciliations and limitations.
+V6 was generated and downloaded through the normal desktop after restarting against the same database/profile; the downloaded bytes match the service-stored version. Every page and clickable contents destination was checked. V5 remains unchanged, and the firm identity/list fix does not broaden service authorization. Both outputs are **Draft for demonstration**. Use synthetic AED figures only; this path is not a validated IFRS or production pack. See [CURRENT_STATUS.md](./CURRENT_STATUS.md) for reconciliations and limitations.
 
 The earlier UAE Sample 01 v3 remains the preserved baseline at `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v3.pdf`, SHA-256 `916d0d08603132e564ddde93deaa2f922617f4480a5d3708910588b5e4179237`. Do not overwrite it. Version 4 is an intermediate, unfinalised output with a page-break/pagination defect; use v5 for the walkthrough.
 
@@ -106,7 +119,7 @@ $env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
 .\tools\engagement-demo.ps1 launch
 ```
 
-Then sign in normally, open **UAE-SAMPLE-01-2025**, and download saved output v5. The cluster is `127.0.0.1:64023/fsg_engagement_demo`; its data and Electron profile persist across these restarts. Do not launch a second app process against this profile.
+Then sign in as the harness-provisioned `Demo Administrator` in **FSG Isolated Demo Firm**, open **UAE-SAMPLE-01-2025**, and download saved output v6. The prior empty list was caused by signing in as `Sample Administrator` from a different firm; “All Engagements” remains firm-scoped. The cluster is `127.0.0.1:64023/fsg_engagement_demo`; its data and Electron profile persist across these restarts. Do not launch a second app process against this profile.
 
 ## EPIPE test
 

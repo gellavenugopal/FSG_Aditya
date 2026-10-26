@@ -1147,7 +1147,9 @@ export default function App() {
         <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-5 py-3">
           <div>
             <p className="text-sm font-bold text-gray-900">FSG Bharat · Firm service</p>
-            <p className="text-xs text-gray-500">Signed in as {auth.user.displayName} · Protected engagement mode</p>
+            <p className="text-xs text-gray-500">
+              Signed in as {auth.user.displayName} · {auth.user.firmName || 'Firm not identified'} · Protected engagement mode
+            </p>
           </div>
           <button disabled={signingOut} onClick={signOut} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out'}</button>
         </header>

@@ -133,7 +133,8 @@ export function PasswordChange({ user, onChanged }) {
 }
 
 function EngagementList({ user, onCreate, onOpen }) {
-  const [scope, setScope] = useState('my')
+  const canSeeAll = ['administrator', 'partner'].includes(user.role)
+  const [scope, setScope] = useState(canSeeAll ? 'all' : 'my')
   const [rows, setRows] = useState([])
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
@@ -178,7 +179,9 @@ function EngagementList({ user, onCreate, onOpen }) {
         {['administrator', 'partner'].includes(user.role) && (
           <button onClick={() => setScope('all')} className={`border-b-2 px-3 py-2 text-sm font-medium ${scope === 'all' ? 'border-blue-700 text-blue-800' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>All Engagements</button>
         )}
-        <span className="ml-auto text-xs text-gray-500">Signed in as {user.displayName} · {user.jobTitle || user.role}</span>
+        <span className="ml-auto text-xs text-gray-500">
+          Signed in as {user.displayName} · {user.firmName || 'Firm not identified'} · {user.jobTitle || user.role}
+        </span>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-3">
@@ -188,10 +191,43 @@ function EngagementList({ user, onCreate, onOpen }) {
         </Select>
       </div>
 
-      {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && (
+        <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          <span>Engagements could not be loaded: {error}</span>
+          <button type="button" onClick={load} className="font-semibold underline">Retry</button>
+        </div>
+      )}
       <div className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white">
         {loading ? <p className="p-8 text-center text-sm text-gray-500">Loading engagements…</p>
-          : visible.length === 0 ? <div className="p-10 text-center"><p className="text-sm font-semibold text-gray-800">No engagements found</p><p className="mt-1 text-sm text-gray-500">Create an engagement or adjust your search and filters.</p></div>
+          : visible.length === 0 ? (
+            <div className="p-10 text-center">
+              <p className="text-sm font-semibold text-gray-800">
+                {search.trim() || status !== 'all'
+                  ? 'No engagements match these search and status filters.'
+                  : scope === 'all'
+                    ? `No engagements are available in ${user.firmName || 'this firm'}`
+                    : 'No engagements are assigned to you.'}
+              </p>
+              <p className="mt-1 text-sm text-gray-500">
+                Signed in as {user.displayName} · {user.firmName || 'Firm not identified'}.
+                {scope === 'all'
+                  ? ' Engagements are kept within their firm; confirm this is the firm that owns the client.'
+                  : ' Your access is limited to owned, assigned, or explicitly shared engagements.'}
+              </p>
+              <div className="mt-4 flex justify-center gap-3">
+                {canSeeAll && scope === 'my' && (
+                  <button type="button" onClick={() => setScope('all')} className="text-sm font-semibold text-blue-700 hover:text-blue-900">
+                    Check all firm engagements
+                  </button>
+                )}
+                {(search.trim() || status !== 'all') && (
+                  <button type="button" onClick={() => { setSearch(''); setStatus('all') }} className="text-sm font-semibold text-blue-700 hover:text-blue-900">
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            </div>
+          )
             : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[980px] text-left text-sm">

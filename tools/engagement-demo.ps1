@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true, Position = 0)]
-  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'generate-uae-tbs', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui')]
+  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'generate-uae-tbs', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'uae-access-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui')]
   [string]$Action
 )
 
@@ -199,6 +199,19 @@ switch ($Action) {
     try {
       & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-reopen.mjs')
       if ($LASTEXITCODE -ne 0) { throw 'Saved-engagement restart UI verification failed.' }
+    } finally { Pop-Location }
+  }
+  'uae-access-ui' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    Set-DisposableTestEnvironment $state
+    Wait-ForDemoDesktop
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-uae-access.mjs')
+      if ($LASTEXITCODE -ne 0) { throw 'Isolated UAE engagement access and saved-PDF download verification failed.' }
     } finally { Pop-Location }
   }
   'firm-settings-ui' {

@@ -20,6 +20,20 @@ export const UAE_DEMO_ACCOUNT_LINES = [
   { id: 'dividends', label: 'Dividends', note: 7 },
 ]
 
+const UAE_NOTE_TITLES = new Map([
+  [1, 'Cash and cash equivalents'],
+  [2, 'Trade receivables'],
+  [3, 'Inventories'],
+  [4, 'Property and equipment'],
+  [5, 'Trade payables'],
+  [6, 'Borrowings'],
+  [7, 'Equity'],
+  [8, 'Revenue and other income'],
+  [9, 'Expenses'],
+  [10, 'Income tax'],
+  [11, 'Other comprehensive income'],
+])
+
 const LINE_BY_ID = new Map(UAE_DEMO_ACCOUNT_LINES.map(line => [line.id, line]))
 const DEBIT_NATURED = new Set([
   'cash', 'trade_receivables', 'inventory', 'property_plant_equipment', 'ppe_revaluation_adjustment',
@@ -319,11 +333,16 @@ export function buildUaeDemoFinancials({
     const currentRowsForLine = current.filter(row => row.lineId === line.id)
     const priorRowsForLine = comparative.filter(row => row.lineId === line.id)
     if (!currentRowsForLine.length && !priorRowsForLine.length) continue
-    const existing = noteData.get(line.note) || { number: line.note, title: `Note ${line.note}`, accounts: [] }
+    const existing = noteData.get(line.note) || {
+      number: line.note,
+      title: UAE_NOTE_TITLES.get(line.note) || `Note ${line.note}`,
+      accounts: [],
+    }
     for (const row of currentRowsForLine) {
       const currentAmount = row.lineId === 'accumulated_depreciation' ? -row.amount : row.amount
       existing.accounts.push({
         name: row.name,
+        lineId: row.lineId,
         current: currentAmount,
         comparative: roundAmount(priorRowsForLine
           .filter(prior => (row.ledger_code && row.ledger_code === prior.ledger_code) || row.name === prior.name)
@@ -391,8 +410,8 @@ function statementTable(rows, currentLabel, priorLabel) {
     .join('')}</tbody></table>`
 }
 
-function page(title, content, number, totalPages, engagementName) {
-  return `<section class="report-page"><div class="draft">DRAFT FOR DEMONSTRATION</div><h1>${escapeHtml(title)}</h1>${content}<footer>${escapeHtml(engagementName)} · AED · Draft for demonstration · Page ${number} of ${totalPages}</footer></section>`
+function page(title, content, number, totalPages, engagementName, id) {
+  return `<section class="report-page" id="${escapeHtml(id)}"><div class="draft">DRAFT FOR DEMONSTRATION</div><h1>${escapeHtml(title)}</h1>${content}<footer>${escapeHtml(engagementName)} - AED - Draft for demonstration - Page ${number} of ${totalPages}</footer></section>`
 }
 
 export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bundle }) {
@@ -404,16 +423,16 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
     {
       title: 'Statement of financial position',
       rows: [
-        { label: 'Cash and cash equivalents · Note 1', current: current.position.cash, comparative: prior.position.cash },
-        { label: 'Trade receivables · Note 2', current: current.position.receivables, comparative: prior.position.receivables },
-        { label: 'Inventories · Note 3', current: current.position.inventory, comparative: prior.position.inventory },
-        { label: 'Property and equipment, net · Note 4', current: current.position.ppeNet, comparative: prior.position.ppeNet },
+        { label: 'Cash and cash equivalents - Note 1', current: current.position.cash, comparative: prior.position.cash },
+        { label: 'Trade receivables - Note 2', current: current.position.receivables, comparative: prior.position.receivables },
+        { label: 'Inventories - Note 3', current: current.position.inventory, comparative: prior.position.inventory },
+        { label: 'Property and equipment, net - Note 4', current: current.position.ppeNet, comparative: prior.position.ppeNet },
         { label: 'Total assets', current: current.position.assets, comparative: prior.position.assets, total: true },
-        { label: 'Trade payables · Note 5', current: current.position.payables, comparative: prior.position.payables },
-        { label: 'Borrowings · Note 6', current: current.position.borrowings, comparative: prior.position.borrowings },
+        { label: 'Trade payables - Note 5', current: current.position.payables, comparative: prior.position.payables },
+        { label: 'Borrowings - Note 6', current: current.position.borrowings, comparative: prior.position.borrowings },
         { label: 'Total liabilities', current: current.position.liabilities, comparative: prior.position.liabilities, total: true },
-        { label: 'Share capital · Note 7', current: current.position.shareCapital, comparative: prior.position.shareCapital },
-        { label: 'Retained earnings · Note 7', current: current.position.retainedClosing, comparative: prior.position.retainedClosing },
+        { label: 'Share capital - Note 7', current: current.position.shareCapital, comparative: prior.position.shareCapital },
+        { label: 'Retained earnings - Note 7', current: current.position.retainedClosing, comparative: prior.position.retainedClosing },
         { label: 'Total equity', current: current.position.equity, comparative: prior.position.equity, total: true },
         { label: 'Total liabilities and equity', current: current.position.totalLiabilitiesAndEquity, comparative: prior.position.totalLiabilitiesAndEquity, total: true },
       ],
@@ -421,15 +440,15 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
     {
       title: 'Statement of profit or loss and other comprehensive income',
       rows: [
-        { label: 'Revenue · Note 8', current: current.profit.revenue, comparative: prior.profit.revenue },
-        { label: 'Other income · Note 8', current: current.profit.otherIncome, comparative: prior.profit.otherIncome },
-        { label: 'Cost of sales · Note 9', current: -current.profit.costOfSales, comparative: -prior.profit.costOfSales },
-        { label: 'Operating expenses · Note 9', current: -current.profit.operatingExpenses, comparative: -prior.profit.operatingExpenses },
-        { label: 'Depreciation · Note 9', current: -current.profit.depreciation, comparative: -prior.profit.depreciation },
+        { label: 'Revenue - Note 8', current: current.profit.revenue, comparative: prior.profit.revenue },
+        { label: 'Other income - Note 8', current: current.profit.otherIncome, comparative: prior.profit.otherIncome },
+        { label: 'Cost of sales - Note 9', current: -current.profit.costOfSales, comparative: -prior.profit.costOfSales },
+        { label: 'Operating expenses - Note 9', current: -current.profit.operatingExpenses, comparative: -prior.profit.operatingExpenses },
+        { label: 'Depreciation - Note 9', current: -current.profit.depreciation, comparative: -prior.profit.depreciation },
         { label: 'Profit before tax', current: current.profit.profitBeforeTax, comparative: prior.profit.profitBeforeTax, total: true },
-        { label: 'Income tax expense · Note 10', current: -current.profit.tax, comparative: -prior.profit.tax },
+        { label: 'Income tax expense - Note 10', current: -current.profit.tax, comparative: -prior.profit.tax },
         { label: 'Profit for the year', current: current.profit.profitForYear, comparative: prior.profit.profitForYear, total: true },
-        { label: 'Other comprehensive income · Note 11', current: current.profit.otherComprehensiveIncome, comparative: prior.profit.otherComprehensiveIncome },
+        { label: 'Other comprehensive income - Note 11', current: current.profit.otherComprehensiveIncome, comparative: prior.profit.otherComprehensiveIncome },
         { label: 'Total comprehensive income', current: current.profit.totalComprehensiveIncome, comparative: prior.profit.totalComprehensiveIncome, total: true },
       ],
     },
@@ -471,23 +490,61 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
       ],
     },
   ]
-  const notePages = financials.notes.map(note => {
+  const noteSections = financials.notes.map(note => {
     const narrative = bundle.noteDisclosures?.find(item => Number(item.note_num) === note.number)?.text || ''
-    const accounts = note.accounts
+    const groupedAccounts = note.number === 9
+      ? note.accounts.reduce((groups, account) => {
+        const key = account.lineId || account.name
+        const existing = groups.get(key) || {
+          name: UAE_DEMO_ACCOUNT_LINES.find(line => line.id === key)?.label || account.name,
+          current: 0,
+          comparative: 0,
+        }
+        existing.current = roundAmount(existing.current + account.current)
+        existing.comparative = roundAmount(existing.comparative + account.comparative)
+        groups.set(key, existing)
+        return groups
+      }, new Map()).values()
+      : note.accounts
+    const accounts = [...groupedAccounts]
     return {
+      id: `note-${note.number}`,
       title: `Note ${note.number} - ${note.title}`,
-      html: `<p>${escapeHtml(narrative || 'Supporting account balances derived from the saved final Trial Balance.')}</p>${statementTable([
+      rows: accounts.length + 1,
+      length: narrative.length + accounts.reduce((total, account) => total + account.name.length, 0),
+      html: `<section class="note-block" id="note-${note.number}"><h2>${escapeHtml(`Note ${note.number} - ${note.title}`)}</h2><p>${escapeHtml(narrative || 'Supporting account balances derived from the saved final Trial Balance.')}</p>${statementTable([
         ...accounts.map(account => ({ label: account.name, current: account.current, comparative: account.comparative })),
         { label: 'Note total', current: note.currentTotal, comparative: note.comparativeTotal, total: true },
-      ], currentLabel, priorLabel)}`,
+      ], currentLabel, priorLabel)}</section>`,
     }
   })
-  const contents = [
-    'Auditor-entered report',
-    ...statementPages.map(item => item.title),
-    ...notePages.map(item => item.title),
-    'Financial statement approval',
-  ]
+  const notePageGroups = []
+  let noteGroup = []
+  let noteRows = 0
+  let noteLength = 0
+  const finishNoteGroup = () => {
+    if (!noteGroup.length) return
+    const first = noteGroup[0]
+    const last = noteGroup[noteGroup.length - 1]
+    notePageGroups.push({
+      id: `notes-${first.id}-${last.id}`,
+      title: 'Notes',
+      contentsEntries: noteGroup.map(note => ({ title: note.title, targetId: note.id })),
+      content: noteGroup.map(note => note.html).join(''),
+    })
+    noteGroup = []
+    noteRows = 0
+    noteLength = 0
+  }
+  for (const note of noteSections) {
+    if (noteGroup.length && (noteGroup.length >= 4 || noteRows + note.rows > 10 || noteLength + note.length > 2200)) {
+      finishNoteGroup()
+    }
+    noteGroup.push(note)
+    noteRows += note.rows
+    noteLength += note.length
+  }
+  finishNoteGroup()
   const reportFields = bundle.auditReport?.fields || {}
   const branding = bundle.firmSettings?.branding
   const logo = branding?.logoBase64 && ['image/png', 'image/jpeg'].includes(branding.logoMimeType)
@@ -504,27 +561,33 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
   const auditContent = `
     <header>${logo}<h2>${escapeHtml(entity.name)}</h2><p>Year ended ${escapeHtml(currentLabel)}</p></header>
     <p><strong>${escapeHtml(reportFields.addressee)}</strong></p>${auditSections}
-    <div class="signature"><p>${escapeHtml(reportFields.reportPlace)} · ${escapeHtml(reportFields.reportDate)}</p>
+    <div class="signature"><p>${escapeHtml(reportFields.reportPlace)} - ${escapeHtml(reportFields.reportDate)}</p>
     <strong>${escapeHtml(reportFields.auditorName)}</strong><p>${escapeHtml(reportFields.auditorDesignation)}</p>
-    <p>${escapeHtml(reportFields.firmName)} · ${escapeHtml(reportFields.firmRegistrationNumber)}</p>
+    <p>${escapeHtml(reportFields.firmName)} - ${escapeHtml(reportFields.firmRegistrationNumber)}</p>
     <p>${escapeHtml(reportFields.firmAddress)}</p></div>`
   const pages = [
     {
+      id: 'contents',
       title: 'Contents',
-      content: `<p>${escapeHtml(entity.name)} · ${escapeHtml(engagement.name)} · ${escapeHtml(currentLabel)} · AED</p>
-        <table><tbody>${contents.map((title, index) => `<tr><td>${escapeHtml(title)}</td><td>${index + 2}</td></tr>`).join('')}</tbody></table>`,
+      content: '',
     },
-    { title: 'Auditor-entered report', content: auditContent },
-    ...statementPages.map(item => ({
+    { id: 'auditor-report', title: 'Auditor-entered report', content: auditContent },
+    ...statementPages.map((item, index) => ({
+      id: `statement-${index + 1}`,
       title: item.title,
-      content: `<p>${escapeHtml(entity.name)} · AED</p>${statementTable(item.rows, currentLabel, priorLabel)}`,
+      content: `<p>${escapeHtml(entity.name)} - AED</p>${statementTable(item.rows, currentLabel, priorLabel)}`,
     })),
-    ...notePages.map(item => ({ title: item.title, content: item.html })),
-    { title: 'Financial statement approval', content: `
+    ...notePageGroups,
+    { id: 'approval', title: 'Financial statement approval', content: `
       <p>The financial statements were approved on ${escapeHtml(bundle.approvalDate)} at ${escapeHtml(bundle.approvalPlace)}.</p>
-      <ol>${(bundle.approvalSignatories || []).map(item => `<li><strong>${escapeHtml(item.name)}</strong>${item.designation ? ` · ${escapeHtml(item.designation)}` : ''}</li>`).join('')}</ol>
+      <ol>${(bundle.approvalSignatories || []).map(item => `<li><strong>${escapeHtml(item.name)}</strong>${item.designation ? ` - ${escapeHtml(item.designation)}` : ''}</li>`).join('')}</ol>
     ` },
   ]
+  const contents = pages.slice(1).flatMap((item, index) => (item.contentsEntries || [
+    { title: item.title, targetId: item.id },
+  ]).map(entry => ({ ...entry, pageNumber: index + 2 })))
+  pages[0].content = `<p>${escapeHtml(entity.name)} - ${escapeHtml(engagement.name)} - ${escapeHtml(currentLabel)} - AED</p>
+    <table><tbody>${contents.map(item => `<tr><td><a href="#${escapeHtml(item.targetId)}">${escapeHtml(item.title)}</a></td><td>${item.pageNumber}</td></tr>`).join('')}</tbody></table>`
   const styles = `
     <style>
       @page{size:A4;margin:15mm}
@@ -533,6 +596,11 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
       body{font-family:Arial,sans-serif;color:#17202a;font-size:10pt}
       .report-page{position:relative;min-height:260mm;padding:6mm 4mm 14mm;page-break-after:always}
       .report-page:last-child{page-break-after:auto}
+      .note-block{break-inside:avoid;page-break-inside:avoid}
+      .note-block+.note-block{margin-top:7mm}
+      .note-block h2{margin:3mm 0}
+      .note-block table{margin-top:2mm}
+      a{color:inherit;text-decoration:none}
       .draft{position:absolute;top:0;right:0;color:#9a3412;border:1px solid #c2410c;padding:3px 8px;font-size:8pt;font-weight:700;letter-spacing:.08em}
       h1{font-size:17pt;margin:13mm 0 8mm;border-bottom:1px solid #334155;padding-bottom:3mm}
       h2{font-size:12pt;margin:3mm 0}
@@ -548,6 +616,6 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
       footer{position:absolute;bottom:4mm;left:4mm;right:4mm;border-top:1px solid #cbd5e1;padding-top:2mm;color:#7c2d12;font-size:8pt}
     </style>`
   const engagementName = engagement.name || 'UAE synthetic engagement'
-  const renderedPages = pages.map((item, index) => page(item.title, item.content, index + 1, pages.length, engagementName)).join('')
+  const renderedPages = pages.map((item, index) => page(item.title, item.content, index + 1, pages.length, engagementName, item.id)).join('')
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(engagementName)} - Draft for demonstration</title>${styles}</head><body>${renderedPages}</body></html>`
 }

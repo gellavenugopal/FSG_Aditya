@@ -80,8 +80,9 @@ try {
     fs.writeFileSync(htmlPath, html, { flag: 'wx' })
     renderToPdf(htmlPath, pdfPath, profilePath)
     const pdf = await PDFDocument.load(await fs.promises.readFile(pdfPath))
-    if (pdf.getPageCount() !== financials.notes.length + 7) {
-      throw new Error(`${fixture.id} PDF page count does not match its contents list.`)
+    const expectedPages = (html.match(/<section class="report-page"/g) || []).length
+    if (pdf.getPageCount() !== expectedPages) {
+      throw new Error(`${fixture.id} PDF has ${pdf.getPageCount()} pages; its rendered contents layout requires ${expectedPages}.`)
     }
     results.push({ case: fixture.id, filename, pages: pdf.getPageCount(), bytes: fs.statSync(pdfPath).size })
   }

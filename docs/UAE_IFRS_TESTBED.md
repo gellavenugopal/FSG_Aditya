@@ -59,13 +59,13 @@ This is a test-only treatment assumption, not a user-approved accounting policy 
 
 Latest verified renderer-fixture run:
 
-`%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-IFRS-Testbed\run-2026-10-26T20-58-38-113Z`
+`%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-IFRS-Testbed\run-2026-10-26T21-24-11-842Z`
 
-- `A-UAE-SAMPLE-01-BASELINE.pdf` — 17 pages.
-- `B-SIMPLE-TRADING-LLC.pdf` — 17 pages.
-- `C-IAS16-REVALUATION-OCI.pdf` — 18 pages.
+- `A-UAE-SAMPLE-01-BASELINE.pdf` — 11 pages; SHA-256 `e022bb6540f3a803b8d9696da8ece94e2083156162ed1f9aaa7c67ee81493f9c`.
+- `B-SIMPLE-TRADING-LLC.pdf` — 11 pages; SHA-256 `2c6bbc89a0be5ea420167616935ce6d22fe4a51b5edfb609921ba4eeec0f8c09`.
+- `C-IAS16-REVALUATION-OCI.pdf` — 11 pages; SHA-256 `4bb0cb41a0e0227b45332e7ba8b690eb119d15bd4508af22bfdbc16ba9d325b8`.
 
-All 52 pages in the latest run were text-checked for non-empty content, the demonstration label, and absence of India-specific terms. The same report content was reviewed together in a rendered contact sheet, and the key C statement/OCI/note pages were visually inspected. SHA-256: A `D4146DA0ED43A04D927138B1E3608AADF0B3010A9678EC8D2E44BC1D8ACFCDEA`; B `0F1F9150514D3C6FF8E148667DDFD5518E2FB652CD4764220529AA506705C66F`; C `BA4EB64CFA14AED8A28EC31C00564EC80C5AF498AE31DBD2A7E9C70F1CCF0FBB`. These files were rendered from the production statement-builder HTML with local Edge; they are **not** PDFs saved by the engagement service and do not prove application UI or restart behavior for cases A/B/C.
+All 33 pages in the latest run were checked for correct footer numbering, the demonstration label, and absence of India-specific wording, replacement glyphs and the obsolete adjustment caption. The 16/16/17 clickable contents destinations resolve to the titled page and printed page number. Every page was visually inspected in the generated contact sheets. These files were rendered from the production statement-builder HTML with local Edge; they are **not** PDFs saved by the engagement service and do not prove application UI or restart behavior for cases A/B/C.
 
 The preserved UAE Sample 01 v5 remains `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v5.pdf`, SHA-256 `29936ef746e59428080ccc119e392678bcd0374b6ad88046523b647cf248ea7a`. India finalised v5 remains SHA-256 `059865a857f2dc5086e9a7d5765d89cc72201fce3ada3d539a776686ddf0e075`.
 
@@ -73,7 +73,7 @@ The preserved UAE Sample 01 v5 remains `%USERPROFILE%\FSG-Aditya-engagement-demo
 
 | Capability | Status | Scope / evidence |
 |---|---|---|
-| Deterministic synthetic entity/engagement, current/prior TB, journals, mappings and disclosures for A/B/C | **Implemented and tested** | 222 assertions; no database access |
+| Deterministic synthetic entity/engagement, current/prior TB, journals, mappings and disclosures for A/B/C | **Implemented and tested** | 232 assertions; no database access |
 | TB and statement balance; selected comparatives; note totals; rounding immutability | **Implemented and tested** | Independent static expected values in fixtures and regression assertions |
 | Controlled IAS 16 revaluation OCI / revaluation reserve / non-cash cash-flow exclusion | **Implemented and tested** | Case C only, under the explicit assumptions above |
 | Journal imbalance, unmapped account, inconsistent supplied note total, missing comparative | **Implemented and tested** | Actionable errors; disclosure-total helper has no editing UI |

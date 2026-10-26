@@ -121,6 +121,11 @@ for (const fixture of fixtures) {
     `${fixture.id} narrative disclosure reaches report HTML`)
   check(html.includes('Total comprehensive income'), `${fixture.id} report includes comprehensive income`)
   check(!/Schedule III|Companies Act|INR|India/i.test(html), `${fixture.id} has no India-specific report captions`)
+  check(!/Note \d+ · Note \d+/.test(html), `${fixture.id} note titles are descriptive rather than repeated placeholders`)
+  check((html.match(/<a href="#note-\d+"/g) || []).length === financials.notes.length,
+    `${fixture.id} contents has a destination link for every note`)
+  check((html.match(/<section class="report-page"/g) || []).length < financials.notes.length + 7,
+    `${fixture.id} supporting notes are grouped to avoid one-note-per-page whitespace`)
   calculated.set(fixture.id, financials)
   htmlByScenario.set(fixture.id, html)
 }
@@ -201,6 +206,26 @@ check(displayHtml.includes('77,000.00'), 'display amount is rounded to two decim
 check(displayFinancials.current.position.cash === 77000
   && displayRows.find(row => row.ledger_code === '1000').closing_balance === originalCash,
 'PDF display formatting does not mutate underlying trial-balance balances')
+
+const tradingFinancials = calculated.get(trading.id)
+const noteHtmlFinancials = {
+  ...tradingFinancials,
+  notes: tradingFinancials.notes.map(note => note.number === 9 ? {
+    ...note,
+    accounts: [...note.accounts, {
+      name: 'Unmapped demonstration adjustment',
+      lineId: 'operating_expenses',
+      current: 1250,
+      comparative: 0,
+    }],
+    currentTotal: note.currentTotal + 1250,
+  } : note),
+}
+const groupedExpensesHtml = buildHtml(trading, noteHtmlFinancials)
+check(!groupedExpensesHtml.includes('Unmapped demonstration adjustment')
+  && groupedExpensesHtml.includes('Operating expenses')
+  && groupedExpensesHtml.includes('41,250.00'),
+'note presentation groups mapped synthetic adjustments under their classified expense line')
 
 check(htmlByScenario.get(baseline.id).includes('Draft for demonstration'),
   'Sample 01 baseline recalculation remains a draft')
