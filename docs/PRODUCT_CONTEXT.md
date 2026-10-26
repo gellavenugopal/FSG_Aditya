@@ -26,7 +26,7 @@ The existing protected India basis remains legacy Schedule III in INR, without c
 The intended sequence is:
 
 1. Preserve and complete the existing India reporting workflow.
-2. Validate and implement the UAE IFRS workflow, beginning with **UAE Sample 01** as its first synthetic case. The current synthetic demonstration is not that validation.
+2. Validate and implement the UAE IFRS workflow, beginning with **UAE Sample 01** as its first synthetic case. The current synthetic demonstration and first-cut A/B/C test bed are not complete IFRS validation; see [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md).
 3. Implement India Ind AS.
 4. Implement US GAAP.
 

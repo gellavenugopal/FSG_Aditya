@@ -10,12 +10,13 @@ Last updated: **2026-10-27**
 - Relevant application commits remain present: `6dea749` reporting workflow, `a683914` firm settings, and `666b110` EPIPE guard.
 - Previous relevant checkpoint: `a683914ce057df67691e04efe709073bb90fad9e` — Firm Settings and report identity.
 - Latest application checkpoint: `dd154c0` — `Fix UAE demo report persistence and layout`.
-- The UAE implementation and earlier context updates are committed. Application changes for this bounded readiness pass are committed; this documentation follow-up records its verified state.
+- UAE IFRS test-bed implementation checkpoint: `a5785c8` — `test: add synthetic UAE IFRS test bed`.
+- Context updates for this task are committed separately from the implementation.
 - No push or merge has been performed.
 
 ## Current task and next action
 
-The bounded UAE Sample 01 readiness pass is complete. Next action: rehearse the saved v5 walkthrough; do not expand this into general UAE/IFRS implementation. The preserved India engagement and finalised version 5 output remain unchanged. See [ROADMAP.md](./ROADMAP.md).
+The first-cut UAE IFRS test-bed slice is implemented and locally verified. UAE Sample 01 v5 remains the immediate demonstration fallback; do not overwrite it. Next action: provision cases B and C as separate isolated engagement records, then exercise their saved outputs through the desktop and an application restart. The current fixtures and renderer PDFs are not saved engagement outputs. See [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md) and [ROADMAP.md](./ROADMAP.md).
 
 The broad legacy migration and extended EPIPE investigation are deferred for this window unless they block the isolated demonstration. Their unresolved status is retained below.
 
@@ -47,6 +48,14 @@ The saved engagement includes current/prior TBs, balanced journals, final TB, a 
 - `UAESample1.zip` and its listed `Notes.docx`, `AR .docx`, `Schedules & PL.xlsx`, `GL v2 full.xlsx`, and `Finanicals.pdf` were not found in the repository, isolated demo files, session files, or the checked Downloads/Desktop/Documents locations. Those exact files could not be examined for suitability. Earlier handover notes mention an Emirates-named flight-ticket PDF and an India/Rupee charitable-trust workbook, but their exact filenames were not preserved; they cannot be attributed to `UAESample1.zip`. The synthetic demonstration remains unchanged and does not claim to use those client records.
 - This limited synthetic example is not a validated IFRS or production reporting pack. The narrow source-TB generator remains test-mode-only; there is no currency translation.
 
+### First-cut UAE IFRS test bed
+
+- Deterministic synthetic fixtures cover A) a Sample 01 baseline-calibrated recalculation, B) a simple trading LLC and C) a controlled IAS 16 revaluation-OCI example. The A fixture matches documented Sample 01 headline results but is not an export of saved TB ledger rows.
+- The case calculations, notes, selected comparatives, journal/mapping/narrative changes and actionable failure cases passed `npm run uae:test` (222 assertions). `npm run engagement:test` passed 99 assertions, including edit permission denial, exact journal imbalance detail, versioned output data and signing-selection retrieval after a service restart.
+- `npm run build` passed with the existing `tallyParsers.js` mixed import warning. The latest `npm run uae:pdf` generated A/B/C renderer-fixture PDFs (17/17/18 pages) in `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-IFRS-Testbed\run-2026-10-26T20-58-38-113Z`. The rendered content was unchanged from the visually inspected run; all 52 pages were text-checked, reviewed in a contact sheet, and key OCI statements/notes were inspected visually. India-specific terms were absent.
+- These PDFs are generated from the production statement HTML by local Edge; they are not application/service-saved report outputs. Separate B/C engagement records, editable structured disclosure schedules and desktop restart/reopen coverage for these cases remain unverified/unsupported. Coverage matrix and details: [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md).
+- Preserved UAE v3, UAE v5 and India finalised v5 were rehashed after test-bed PDF generation; all match their recorded SHA-256 values. Keep them unchanged.
+
 ## EPIPE
 
 - The HMR logger stack belongs to Vite's logger in the `electron-vite` Node process. The prior `9ce8abe` launcher guard covered launcher stdout/stderr, and the main-process guard covered Electron main, but neither preloaded a handler into the Vite CLI process.
@@ -61,7 +70,7 @@ Verified for the current implementation or recent reporting checkpoints:
 - `node tools/selftest-dev-vite-output-guard.mjs` — passed (Vite logger EPIPE fallback, bounded file logging, unrelated `EIO`, process survival).
 - `node tools/selftest-dev-output-guard.mjs` — passed.
 - `npm run build` — passed; Vite emits the existing `tallyParsers.js` dynamic/static import chunk warning.
-- `npm run engagement:test` — passed, 95 assertions against PostgreSQL 18, including persisted approval date/place and ordered signatory metadata.
+- `npm run engagement:test` — passed, 99 assertions against temporary PostgreSQL 18, including persisted approval date/place, ordered signatory metadata, versioned output and restart retrieval.
 - `npm run isolation:test` — passed, 23 assertions after adding the missing `tb_rows` fixture to the disposable schema in this checkpoint.
 - `node tools/selftest-uae-demo-reporting.mjs` — passed; validates UAE AED/current-comparative reconciliation, cash flow/equity/notes and the 60×15 mm aspect-safe PDF logo box.
 - `node tools/selftest-fs-snapshot.mjs` and `node tools/selftest-final-signing.mjs` — passed against disposable test data.

@@ -128,6 +128,24 @@ All demo logs are inside the isolated Electron profile:
 
 These development logs are bounded. A startup identity records PID, parent PID, timestamp, checkout and launcher version. Match the PID to the executable, command line and parent before attributing a popup or stopping a process. Stop only a verified project-owned process by its exact PID.
 
+## Separate reporting test-bed commands
+
+Starting or reopening the demo does not run the test suite. From the repository root, run these only when you intentionally want verification:
+
+```powershell
+npm run uae:test
+npm run engagement:test
+npm run build
+npm run uae:pdf
+```
+
+- `uae:test` runs the deterministic synthetic A/B/C calculations and failure cases without connecting to a database.
+- `engagement:test` creates and removes its own temporary PostgreSQL test cluster; it exercises permissions, actionable journal validation and report-output persistence across a service restart.
+- `build` compiles the desktop and is not part of `launch`.
+- `uae:pdf` renders synthetic fixture HTML through local Edge into a timestamped folder under `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-IFRS-Testbed`. It requires the existing isolated `target.json`, does not connect to the database, and does not alter saved UAE Sample 01 or India outputs. These renderer PDFs are not service-saved engagement outputs.
+
+See [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md) for case results, PDF paths, coverage status and known gaps. Do not run `init` against the existing demo.
+
 ## Isolation safeguards
 
 - Require `FSG_TEST_MODE=true`, complete explicit `FSG_TEST_DB_*` settings, harness target manifest and a distinct `FSG_TEST_USER_DATA_PATH`. Incomplete or conflicting settings fail closed; there is no saved-profile or default-credential fallback.

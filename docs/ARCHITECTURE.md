@@ -56,14 +56,21 @@ The desktop reuses the India financial statement/notes builders and Electron PDF
 
 - `AE_UAE_DEMO` is implemented only as a synthetic UAE LLC demonstration path; it is not a general UAE or IFRS reporting engine.
 - `src/renderer/src/components/Engagements/uaeDemoReporting.js` derives its supported statement totals, cash flows and notes from saved current/prior final-TB rows plus the saved UAE account mappings. It normalizes the repository's negative-debit/positive-credit convention, checks balance/reconciliation, and builds a separate AED report layout rather than relabelling the India report.
+- The same builder now includes a narrow revaluation-OCI branch used by deterministic synthetic test-bed cases. A controlled PPE revaluation increase is presented outside profit or loss, accumulated as a revaluation surplus and excluded from cash-flow totals as non-cash. This case is covered by fixture tests only; it is not a general IAS 16 engine.
 - The mapping save operation is authorized by the engagement service and persists to `engagement_uae_demo_mappings`. Report output uses the selected firm/office/branding/signatories and saved auditor inputs; the resulting combined PDF remains a versioned service output.
 - UAE Sample 01 is synthetic AED data, clearly marked “Draft for demonstration.” Saved v5 is the current visually inspected 17-page draft; v3 is preserved as the original baseline. Verification and hashes are recorded in [CURRENT_STATUS.md](./CURRENT_STATUS.md).
+- Synthetic A/B/C fixtures, static expected balances and the coverage matrix are documented in [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md). Fixture PDFs are rendered from the production HTML builder but are not persisted service outputs or saved engagement records.
 - New `AE_UAE_DEMO` final-TB snapshots leave `mapping_rule_set_id` null and skip the India mapping engine, including for prior-year TB selection. UAE statement mappings remain separately authorized and persisted in `engagement_uae_demo_mappings`. Historic v1/v2 snapshots retain their prior reference; it did not drive UAE calculations or authorization.
 - The UAE wordmark is rendered in fixed aspect-safe preview and PDF boxes using `object-fit: contain`. PDF box dimensions are chosen to preserve the auditor-report page break and contents/footer numbering.
 
-### Planned
+### Implemented only in the test bed
 
-New reporting frameworks and localization remain governed by [ROADMAP.md](./ROADMAP.md). General UAE IFRS reporting and validation, India Ind AS, US GAAP and currency translation are not implemented.
+- The test suite covers a baseline-calibrated Sample 01 fixture, a simple trading LLC and one controlled IAS 16 revaluation-OCI scenario. The controlled treatment assumptions and unsupported adjacent cases are recorded in [DECISIONS.md](./DECISIONS.md).
+- The disclosure-total validator is callable by tests but is not connected to editable structured schedules in the UI. The fixture engagements have not been provisioned as separate persistent engagement records or run through the desktop after restart.
+
+### Planned / unsupported
+
+New reporting frameworks and localization remain governed by [ROADMAP.md](./ROADMAP.md). General UAE IFRS reporting, full IAS 16 coverage, structured schedule editing, India Ind AS, US GAAP and currency translation are not implemented.
 
 ## Known legacy database/IPC bypasses
 
