@@ -22,7 +22,20 @@ const engagementReference = 'UAE-SAMPLE-01-2025'
 const engagementId = 2
 const expectedPdfHash = '29936ef746e59428080ccc119e392678bcd0374b6ad88046523b647cf248ea7a'
 const helperPath = path.join(repositoryRoot, 'tools', 'engagement-demo-select-dialog.ps1')
-const outputPath = path.join(demoHome, 'outputs', `UAE-Sample-01-v5-access-check-${process.pid}.pdf`)
+const outputsDirectory = path.join(demoHome, 'outputs')
+const requestedOutputPath = process.env.FSG_UAE_ACCESS_DOWNLOAD_PATH
+const outputPath = requestedOutputPath
+  ? path.resolve(requestedOutputPath)
+  : path.join(outputsDirectory, `UAE-Sample-01-v5-access-check-${process.pid}.pdf`)
+const relativeOutputPath = path.relative(outputsDirectory, outputPath)
+if (requestedOutputPath && (
+  relativeOutputPath.startsWith('..')
+  || path.isAbsolute(relativeOutputPath)
+  || path.extname(outputPath).toLowerCase() !== '.pdf'
+)) {
+  throw new Error('The retained UAE v5 download must be a PDF inside the isolated demo outputs folder.')
+}
+const preserveDownload = Boolean(requestedOutputPath)
 
 function getJson(url) {
   return new Promise((resolve, reject) => {
@@ -220,6 +233,8 @@ try {
     'the authenticated administrator owns the existing UAE engagement')
   assert.ok(allRows.some(row => row.reference === engagementReference),
     'firm-wide list returns the existing UAE engagement')
+  assert.equal(myRows.find(row => row.reference === engagementReference).id, engagementId,
+    'the authorised UAE reference resolves to the expected engagement id')
 
   const defaultScope = await evaluate(`(()=>{
     const button=[...document.querySelectorAll('button')].find(item=>item.innerText.trim()==='All Engagements');
@@ -236,6 +251,23 @@ try {
   assert.equal(opened, true, 'the existing UAE engagement row is clickable in the visible list')
   await waitFor(`text.includes('Saved combined PDF versions')`, 'the saved output list')
   await waitFor(`text.includes('Version 5') && text.includes('Download PDF')`, 'saved output version 5')
+  const visibleEngagement = await evaluate('document.body?.innerText || ""')
+  assert.ok(visibleEngagement.includes('UAE Sample 01 Demo LLC'),
+    'the visible reporting screen belongs to UAE Sample 01 Demo LLC')
+  const savedNarrative = await evaluate(`(async()=>{
+    const snapshots=await window.api.listEngagementFinalTrialBalances(${engagementId});
+    const snapshot=snapshots.find(item=>Number(item.version)===3);
+    if(!snapshot)throw new Error('Final Trial Balance v3 is missing from the UAE engagement.');
+    const reporting=await window.api.getEngagementReportingData({
+      engagementId:${engagementId},trialBalanceId:Number(snapshot.id)
+    });
+    return {
+      finalTrialBalanceId:Number(snapshot.id),
+      notes:(reporting.noteDisclosures||[]).map(item=>({
+        noteNumber:Number(item.note_num),title:item.note_title,text:item.text
+      }))
+    };
+  })()`)
 
   const output = await evaluate(`(async()=>{
     const outputs=await window.api.listEngagementReportOutputs(${engagementId});
@@ -252,14 +284,14 @@ try {
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true })
   assert.equal(fs.existsSync(outputPath), false, 'the verification download path is new')
-  removeTemporaryDownload = true
+  removeTemporaryDownload = !preserveDownload
   await clickOutputButton('Version 5 ·', 'Download PDF')
   savePdfThroughDesktopDialog()
   await waitForDownloadedFile()
   assert.equal(fs.existsSync(outputPath), true, 'the ordinary desktop save dialog wrote the selected PDF')
   const downloadedHash = crypto.createHash('sha256').update(fs.readFileSync(outputPath)).digest('hex')
   assert.equal(downloadedHash, storedHash, 'the UI download matches the exact persisted v5 bytes')
-  fs.unlinkSync(outputPath)
+  if (!preserveDownload) fs.unlinkSync(outputPath)
   removeTemporaryDownload = false
 
   console.info(JSON.stringify({
@@ -270,6 +302,8 @@ try {
     access: myRows.find(row => row.reference === engagementReference).currentAccess,
     outputVersion: output.version,
     pdfSha256: downloadedHash,
+    downloadedPath: preserveDownload ? outputPath : null,
+    savedNarrative: savedNarrative.notes,
   }, null, 2))
 } finally {
   socket.close()

@@ -121,7 +121,7 @@ The preserved UAE Sample 01 v5 remains `%USERPROFILE%\FSG-Aditya-engagement-demo
 
 | Capability | Status | Scope / evidence |
 |---|---|---|
-| Deterministic synthetic entity/engagement, current/prior TB, journals, mappings and disclosures for A/B/C | **Implemented and tested** | 237 assertions; no database access |
+| Deterministic synthetic entity/engagement, current/prior TB, journals, mappings and disclosures for A/B/C | **Implemented and tested** | 241 assertions; no database access |
 | TB and statement balance; selected comparatives; note totals; rounding immutability | **Implemented and tested** | Independent static expected values in fixtures and regression assertions |
 | Controlled IAS 16 revaluation OCI / revaluation reserve / non-cash cash-flow exclusion | **Implemented and tested** | Case C only, under the explicit assumptions above |
 | Journal imbalance, unmapped account, inconsistent supplied note total, missing comparative | **Implemented and tested** | Actionable errors; disclosure-total helper has no editing UI |

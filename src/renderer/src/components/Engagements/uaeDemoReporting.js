@@ -419,22 +419,24 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
   const priorLabel = `31 December ${String(financials.periods.comparative).slice(0, 4)}`
   const current = financials.current
   const prior = financials.comparative
-  const hasOtherComprehensiveIncome = current.profit.otherComprehensiveIncome !== 0
-    || prior.profit.otherComprehensiveIncome !== 0
+  const includedNoteNumbers = new Set(financials.notes.map(note => Number(note.number)))
+  const withNoteReference = (label, noteNumber) => includedNoteNumbers.has(noteNumber)
+    ? `${label} - Note ${noteNumber}`
+    : label
   const statementPages = [
     {
       title: 'Statement of financial position',
       rows: [
-        { label: 'Cash and cash equivalents - Note 1', current: current.position.cash, comparative: prior.position.cash },
-        { label: 'Trade receivables - Note 2', current: current.position.receivables, comparative: prior.position.receivables },
-        { label: 'Inventories - Note 3', current: current.position.inventory, comparative: prior.position.inventory },
-        { label: 'Property and equipment, net - Note 4', current: current.position.ppeNet, comparative: prior.position.ppeNet },
+        { label: withNoteReference('Cash and cash equivalents', 1), current: current.position.cash, comparative: prior.position.cash },
+        { label: withNoteReference('Trade receivables', 2), current: current.position.receivables, comparative: prior.position.receivables },
+        { label: withNoteReference('Inventories', 3), current: current.position.inventory, comparative: prior.position.inventory },
+        { label: withNoteReference('Property and equipment, net', 4), current: current.position.ppeNet, comparative: prior.position.ppeNet },
         { label: 'Total assets', current: current.position.assets, comparative: prior.position.assets, total: true },
-        { label: 'Trade payables - Note 5', current: current.position.payables, comparative: prior.position.payables },
-        { label: 'Borrowings - Note 6', current: current.position.borrowings, comparative: prior.position.borrowings },
+        { label: withNoteReference('Trade payables', 5), current: current.position.payables, comparative: prior.position.payables },
+        { label: withNoteReference('Borrowings', 6), current: current.position.borrowings, comparative: prior.position.borrowings },
         { label: 'Total liabilities', current: current.position.liabilities, comparative: prior.position.liabilities, total: true },
-        { label: 'Share capital - Note 7', current: current.position.shareCapital, comparative: prior.position.shareCapital },
-        { label: 'Retained earnings - Note 7', current: current.position.retainedClosing, comparative: prior.position.retainedClosing },
+        { label: withNoteReference('Share capital', 7), current: current.position.shareCapital, comparative: prior.position.shareCapital },
+        { label: withNoteReference('Retained earnings', 7), current: current.position.retainedClosing, comparative: prior.position.retainedClosing },
         { label: 'Total equity', current: current.position.equity, comparative: prior.position.equity, total: true },
         { label: 'Total liabilities and equity', current: current.position.totalLiabilitiesAndEquity, comparative: prior.position.totalLiabilitiesAndEquity, total: true },
       ],
@@ -442,16 +444,16 @@ export function buildUaeDemoFinancialsHtml({ financials, entity, engagement, bun
     {
       title: 'Statement of profit or loss and other comprehensive income',
       rows: [
-        { label: 'Revenue - Note 8', current: current.profit.revenue, comparative: prior.profit.revenue },
-        { label: 'Other income - Note 8', current: current.profit.otherIncome, comparative: prior.profit.otherIncome },
-        { label: 'Cost of sales - Note 9', current: -current.profit.costOfSales, comparative: -prior.profit.costOfSales },
-        { label: 'Operating expenses - Note 9', current: -current.profit.operatingExpenses, comparative: -prior.profit.operatingExpenses },
-        { label: 'Depreciation - Note 9', current: -current.profit.depreciation, comparative: -prior.profit.depreciation },
+        { label: withNoteReference('Revenue', 8), current: current.profit.revenue, comparative: prior.profit.revenue },
+        { label: withNoteReference('Other income', 8), current: current.profit.otherIncome, comparative: prior.profit.otherIncome },
+        { label: withNoteReference('Cost of sales', 9), current: -current.profit.costOfSales, comparative: -prior.profit.costOfSales },
+        { label: withNoteReference('Operating expenses', 9), current: -current.profit.operatingExpenses, comparative: -prior.profit.operatingExpenses },
+        { label: withNoteReference('Depreciation', 9), current: -current.profit.depreciation, comparative: -prior.profit.depreciation },
         { label: 'Profit before tax', current: current.profit.profitBeforeTax, comparative: prior.profit.profitBeforeTax, total: true },
-        { label: 'Income tax expense - Note 10', current: -current.profit.tax, comparative: -prior.profit.tax },
+        { label: withNoteReference('Income tax expense', 10), current: -current.profit.tax, comparative: -prior.profit.tax },
         { label: 'Profit for the year', current: current.profit.profitForYear, comparative: prior.profit.profitForYear, total: true },
         {
-          label: `Other comprehensive income${hasOtherComprehensiveIncome ? ' - Note 11' : ''}`,
+          label: withNoteReference('Other comprehensive income', 11),
           current: current.profit.otherComprehensiveIncome,
           comparative: prior.profit.otherComprehensiveIncome,
         },

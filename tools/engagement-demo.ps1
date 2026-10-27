@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true, Position = 0)]
-  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'generate-uae-tbs', 'generate-ifrs-testbed-tbs', 'ifrs-cases-create-ui', 'ifrs-cases-reopen-ui', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'uae-access-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui')]
+  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'generate-uae-tbs', 'generate-ifrs-testbed-tbs', 'ifrs-cases-create-ui', 'ifrs-cases-reopen-ui', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'uae-access-ui', 'uae-correct-output-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui')]
   [string]$Action
 )
 
@@ -250,6 +250,19 @@ switch ($Action) {
     try {
       & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-uae-access.mjs')
       if ($LASTEXITCODE -ne 0) { throw 'Isolated UAE engagement access and saved-PDF download verification failed.' }
+    } finally { Pop-Location }
+  }
+  'uae-correct-output-ui' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    Set-DisposableTestEnvironment $state
+    Wait-ForDemoDesktop
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-uae-corrected-output.mjs')
+      if ($LASTEXITCODE -ne 0) { throw 'UAE Sample 01 corrected report generation and download verification failed.' }
     } finally { Pop-Location }
   }
   'firm-settings-ui' {

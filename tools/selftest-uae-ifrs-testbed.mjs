@@ -128,6 +128,10 @@ for (const fixture of fixtures) {
   check(!/Note \d+ · Note \d+/.test(html), `${fixture.id} note titles are descriptive rather than repeated placeholders`)
   check((html.match(/<a href="#note-\d+"/g) || []).length === financials.notes.length,
     `${fixture.id} contents has a destination link for every note`)
+  const noteReferences = [...html.matchAll(/ - Note (\d+)/g)].map(([, number]) => Number(number))
+  const includedNoteNumbers = new Set(financials.notes.map(note => Number(note.number)))
+  check(noteReferences.every(number => includedNoteNumbers.has(number)),
+    `${fixture.id} every statement note reference has a rendered note`)
   check((html.match(/<section class="report-page"/g) || []).length < financials.notes.length + 7,
     `${fixture.id} supporting notes are grouped to avoid one-note-per-page whitespace`)
   calculated.set(fixture.id, financials)
@@ -140,6 +144,8 @@ check(!htmlByScenario.get(trading.id).includes('Other comprehensive income - Not
   'a zero-OCI statement does not reference an omitted Note 11')
 check(htmlByScenario.get(oci.id).includes('Other comprehensive income - Note 11'),
   'a non-zero OCI statement references its rendered Note 11')
+check(htmlByScenario.get(oci.id).includes(oci.disclosures.narrative[0].text),
+  'the saved non-zero OCI narrative is rendered inside Note 11')
 check(ociFinancials.current.profit.profitForYear === calculated.get(trading.id).current.profit.profitForYear,
   'the revaluation OCI is not forced through profit or loss')
 check(ociFinancials.current.profit.otherComprehensiveIncome === 10000,
