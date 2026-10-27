@@ -14,6 +14,7 @@ Last updated: **2026-10-28**
 - The test-bed source and coverage/roadmap documentation are committed locally. The UAE access/download evidence, corrected-output UI verification, note-reference fix and refreshed context documents are committed locally.
 - The Excel workbook checkpoint is committed locally; no push or merge has been performed.
 - Word export implementation checkpoint: `b7461e4` — `feat: add editable UAE Word reporting export`. The exact output and remaining print-render limitation are recorded below; no push or merge has been performed.
+- Engagement navigation and protected comparative Trial Balance-list checkpoint: `cfe4f7c` — `feat: add shared engagement navigation shell`. The implementation, UI harness and affected context docs are committed locally; no push or merge has been performed.
 - No push or merge has been performed.
 
 ## Current task and next action
