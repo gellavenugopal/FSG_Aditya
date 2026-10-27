@@ -40,6 +40,12 @@ The verified non-secret target is loopback PostgreSQL `127.0.0.1:64023`, databas
 
 Do not run a second app process against the same profile. Do not run `init` to fix an ordinary startup issue; first inspect the manifest, exact process tree and logs.
 
+## Sign-in recovery
+
+The sign-in form pre-fills the last successful username for this service. On Windows, optionally select **Keep me signed in on this Windows profile** to store a revocable 30-day token using Electron's protected storage. The profile keeps one locally resumable account per service; a successful login replaces older local remembered accounts, and sign out clears the service's local remembered files. The service still enforces account status and permissions.
+
+For a forgotten password, an authenticated firm administrator uses **Firm Team → Issue reset** and securely gives the user the single-use 30-minute credential. The user selects **Forgot password?** on the sign-in screen and chooses a new password. No email is sent. Sole-administrator recovery requires separately verified operator access on the service host; follow the guarded procedure in [ENGAGEMENT_SERVICE.md](../ENGAGEMENT_SERVICE.md#remembered-sign-in-and-password-recovery). Do not use database initialization or credential reseeding to recover access.
+
 ## Reopen the preserved India v5 output
 
 The existing finalized India pack is version 5; preserve it and verify it through the normal UI after starting the isolated demo:

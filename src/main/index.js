@@ -139,7 +139,7 @@ app.whenReady().then(async () => {
 
   if (shouldUseLocalDevelopmentService()) {
     try {
-      localEngagementService = await startLocalEngagementService(loadConfig())
+      localEngagementService = await startLocalEngagementService(loadConfig(), { userDataPath: app.getPath('userData') })
       Object.assign(engagementClientOptions, localEngagementService.clientOptions)
       console.info('Local development engagement service started on localhost.')
     } catch (err) {
@@ -160,7 +160,7 @@ app.whenReady().then(async () => {
       localEngagementService = null
     }
     try {
-      localEngagementService = await startLocalEngagementService(loadConfig())
+      localEngagementService = await startLocalEngagementService(loadConfig(), { userDataPath: app.getPath('userData') })
       Object.assign(engagementClientOptions, localEngagementService.clientOptions)
       delete engagementClientOptions.startupError
       console.info('Local development engagement service started on localhost.')

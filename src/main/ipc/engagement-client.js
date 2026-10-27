@@ -1,8 +1,10 @@
-import { app, ipcMain } from 'electron'
+import { app, ipcMain, safeStorage } from 'electron'
 import { request } from 'node:https'
 import { dialog } from 'electron'
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
+import { createHash, randomUUID } from 'node:crypto'
+import os from 'node:os'
 import { sanitizePublicSvg } from '../services/branding-domain.mjs'
 
 const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
@@ -21,6 +23,8 @@ const OPERATIONS = {
   'engagementAuth:login': { path: 'auth/login', args: input => [input] },
   'engagementAuth:logout': { path: 'auth/logout', args: () => [] },
   'engagementAuth:changePassword': { path: 'auth/change-password', args: password => [{ password }] },
+  'engagementAuth:passwordResetIssue': { path: 'auth/password-reset/issue', args: targetUserId => [{ targetUserId }] },
+  'engagementAuth:passwordResetComplete': { path: 'auth/password-reset/complete', args: input => [input] },
   'engagementAdmin:listUsers': { path: 'admin/users', args: () => [] },
   'engagementAdmin:createUser': { path: 'admin/users/create', args: input => [input] },
   'engagementAdmin:firmSettings': { path: 'admin/firm-settings', args: () => [] },
@@ -91,6 +95,155 @@ function describeConnectionError(error, url) {
   return new Error(`Could not connect to the engagement service at ${url.origin}: ${details}`, { cause: error })
 }
 
+function configuredServerIdentity(configured) {
+  const url = new URL(configured || process.env.ENGAGEMENT_SERVICE_URL)
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
+}
+
+function authStoreDirectory() {
+  return join(app.getPath('userData'), 'engagement-auth')
+}
+
+function profileBinding() {
+  return createHash('sha256')
+    .update([app.getPath('userData'), os.homedir(), os.userInfo().username].join('\0'), 'utf8')
+    .digest('hex')
+}
+
+function serverKey(identity) {
+  return createHash('sha256').update(identity, 'utf8').digest('hex')
+}
+
+function rememberFile(identity, firmId, userId) {
+  return join(authStoreDirectory(), `remember-${serverKey(identity)}-${Number(firmId)}-${Number(userId)}.bin`)
+}
+
+async function saveRememberedToken(identity, origin, user, clientBinding, token, storage = safeStorage) {
+  if (process.platform !== 'win32' || !storage.isEncryptionAvailable()) {
+    throw new Error('Windows-protected secure storage is unavailable on this device.')
+  }
+  const directory = authStoreDirectory()
+  await mkdir(directory, { recursive: true })
+  const path = rememberFile(identity, user.firmId, user.id)
+  const temporaryPath = `${path}.${randomUUID()}.tmp`
+  const encrypted = storage.encryptString(JSON.stringify({
+    serverIdentity: identity,
+    initialServiceOrigin: origin,
+    firmId: Number(user.firmId),
+    userId: Number(user.id),
+    clientBinding,
+    token,
+  }))
+  try {
+    await writeFile(temporaryPath, encrypted, { mode: 0o600 })
+    await rename(temporaryPath, path)
+  } catch (error) {
+    await unlink(temporaryPath).catch(() => {})
+    throw error
+  }
+}
+
+async function readRememberedToken(path, storage = safeStorage) {
+  if (process.platform !== 'win32' || !storage.isEncryptionAvailable()) {
+    throw new Error('Windows-protected secure storage is unavailable on this device.')
+  }
+  try {
+    return JSON.parse(storage.decryptString(await readFile(path)))
+  } catch (error) {
+    throw Object.assign(new Error('Saved sign-in data could not be decrypted or parsed.'), { code: 'INVALID_REMEMBERED_TOKEN', cause: error })
+  }
+}
+
+async function removeRememberedToken(path) {
+  await unlink(path).catch(error => {
+    if (error.code !== 'ENOENT') throw error
+  })
+}
+
+async function writeLastUsername(identity, user) {
+  const directory = authStoreDirectory()
+  await mkdir(directory, { recursive: true })
+  const path = join(directory, `last-user-${serverKey(identity)}.json`)
+  const temporaryPath = `${path}.${randomUUID()}.tmp`
+  const content = JSON.stringify({
+    serverIdentity: identity,
+    firmId: Number(user.firmId),
+    email: String(user.email || ''),
+    updatedAt: new Date().toISOString(),
+  })
+  try {
+    await writeFile(temporaryPath, content, { mode: 0o600, encoding: 'utf8' })
+    await rename(temporaryPath, path)
+  } catch (error) {
+    await unlink(temporaryPath).catch(() => {})
+    throw error
+  }
+}
+
+async function readLastUsername(identity) {
+  try {
+    const record = JSON.parse(await readFile(join(authStoreDirectory(), `last-user-${serverKey(identity)}.json`), 'utf8'))
+    return record.serverIdentity === identity && typeof record.email === 'string'
+      ? { email: record.email, firmId: Number(record.firmId) }
+      : null
+  } catch (error) {
+    if (error.code === 'ENOENT' || error instanceof SyntaxError) return null
+    throw error
+  }
+}
+
+async function removeFirmRememberedToken(identity, firmId, userId) {
+  await removeRememberedToken(rememberFile(identity, firmId, userId))
+}
+
+async function removeServerRememberedTokens(identity, preservedPath = null) {
+  const directory = authStoreDirectory()
+  const prefix = `remember-${serverKey(identity)}-`
+  let names
+  try {
+    names = await readdir(directory)
+  } catch (error) {
+    if (error.code === 'ENOENT') return
+    throw error
+  }
+  await Promise.all(names
+    .filter(name => name.startsWith(prefix) && name.endsWith('.bin'))
+    .map(name => join(directory, name))
+    .filter(path => path !== preservedPath)
+    .map(removeRememberedToken))
+}
+
+async function removeLegacyLocalTokens(identity, firmId, userId, clientBinding) {
+  const directory = authStoreDirectory()
+  let names
+  try {
+    names = await readdir(directory)
+  } catch (error) {
+    if (error.code === 'ENOENT') return
+    throw error
+  }
+  for (const name of names.filter(item => item.startsWith('remember-') && item.endsWith('.bin'))) {
+    const path = join(directory, name)
+    if (path === rememberFile(identity, firmId, userId)) continue
+    let saved
+    try {
+      saved = await readRememberedToken(path)
+    } catch (error) {
+      if (error.code === 'INVALID_REMEMBERED_TOKEN') continue
+      if (error.message === 'Windows-protected secure storage is unavailable on this device.') return
+      throw error
+    }
+    const previousOrigin = saved.initialServiceOrigin || saved.serverOrigin || ''
+    if (saved.serverIdentity !== identity
+      && saved.clientBinding === clientBinding
+      && Number(saved.firmId) === Number(firmId)
+      && Number(saved.userId) === Number(userId)
+      && /^https:\/\/127\.0\.0\.1:\d+$/.test(previousOrigin)) {
+      await removeRememberedToken(path)
+    }
+  }
+}
+
 function post(url, payload, bearer, setupToken, ca) {
   const body = JSON.stringify(payload ?? {})
   return new Promise((resolve, reject) => {
@@ -115,7 +268,9 @@ function post(url, payload, bearer, setupToken, ca) {
         let result
         try { result = raw ? JSON.parse(raw) : {} } catch { reject(new Error('Engagement service returned an invalid response.')); return }
         if ((response.statusCode || 500) < 200 || (response.statusCode || 500) >= 300) {
-          reject(new Error(result.error || `Engagement service request failed (${response.statusCode}).`))
+          reject(Object.assign(new Error(result.error || `Engagement service request failed (${response.statusCode}).`), {
+            statusCode: response.statusCode || 500,
+          }))
           return
         }
         resolve(result)
@@ -125,6 +280,63 @@ function post(url, payload, bearer, setupToken, ca) {
     req.on('error', error => reject(describeConnectionError(error, url)))
     req.end(body)
   })
+}
+
+const pendingRememberedSignIns = new Map()
+
+async function tryResumeRememberedSignIn(senderId, identity, options) {
+  const binding = profileBinding()
+  const directory = authStoreDirectory()
+  const prefix = `remember-${serverKey(identity)}-`
+  let filenames = []
+  try {
+    filenames = (await readdir(directory)).filter(name => name.startsWith(prefix) && name.endsWith('.bin'))
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
+  for (const filename of filenames) {
+    const path = join(directory, filename)
+    let saved
+    try {
+      saved = await readRememberedToken(path)
+      if (saved.serverIdentity !== identity || saved.clientBinding !== binding
+        || !Number.isSafeInteger(Number(saved.firmId)) || !Number.isSafeInteger(Number(saved.userId))
+        || typeof saved.token !== 'string') {
+        await removeRememberedToken(path)
+        continue
+      }
+      const resumed = await post(
+        serviceUrl('auth/remember/resume', options.serviceUrl),
+        { token: saved.token, clientBinding: binding },
+        null,
+        null,
+        options.ca,
+      )
+      if (!resumed.sessionToken || !resumed.user
+        || Number(resumed.user.firmId) !== Number(saved.firmId)
+        || Number(resumed.user.id) !== Number(saved.userId)) {
+        await removeRememberedToken(path)
+        continue
+      }
+      sessions.set(senderId, {
+        token: resumed.sessionToken,
+        firmId: Number(resumed.user.firmId),
+        userId: Number(resumed.user.id),
+        rememberToken: saved.token,
+        expiresAt: Date.now() + SESSION_MAX_AGE,
+      })
+      return resumed.user
+    } catch (error) {
+      if (error.code === 'INVALID_REMEMBERED_TOKEN'
+        || error.statusCode === 400 || error.statusCode === 401 || error.statusCode === 403) {
+        await removeRememberedToken(path)
+        continue
+      }
+      if (error.message === 'Windows-protected secure storage is unavailable on this device.') return null
+      throw error
+    }
+  }
+  return null
 }
 
 export function registerEngagementClientHandlers(handlerRegistry = ipcMain, options = {}) {
@@ -149,6 +361,7 @@ export function registerEngagementClientHandlers(handlerRegistry = ipcMain, opti
         event.sender.once('destroyed', () => {
           attachedSenders.delete(event.sender.id)
           sessions.delete(event.sender.id)
+          pendingRememberedSignIns.delete(event.sender.id)
         })
       }
       if (operation.selectFile) {
@@ -173,27 +386,149 @@ export function registerEngagementClientHandlers(handlerRegistry = ipcMain, opti
       }
       const [payload, setupToken] = operation.args(input, ...additionalArgs)
       const session = sessions.get(event.sender.id)
+      const requestUrl = serviceUrl(operation.path, options.serviceUrl)
+      const serverIdentity = options.authIdentity || configuredServerIdentity(options.serviceUrl)
       const response = await post(
-        serviceUrl(operation.path, options.serviceUrl),
+        requestUrl,
         payload,
         session?.expiresAt > Date.now() ? session.token : null,
         setupToken || options.setupToken,
         options.ca,
       )
+      let clientNotice = ''
 
       if (channel === 'engagementAuth:login' || channel === 'engagementAuth:setup') {
         if (!response.sessionToken || !response.user) throw new Error('Engagement service did not establish a valid session.')
-        sessions.set(event.sender.id, { token: response.sessionToken, firmId: Number(response.user.firmId), expiresAt: Date.now() + SESSION_MAX_AGE })
-        return response.user
+        const user = response.user
+        sessions.set(event.sender.id, { token: response.sessionToken, firmId: Number(user.firmId), userId: Number(user.id), expiresAt: Date.now() + SESSION_MAX_AGE })
+        if (channel === 'engagementAuth:login') {
+          const warnings = []
+          try { await writeLastUsername(serverIdentity, user) } catch { warnings.push('The username could not be saved on this Windows profile.') }
+          const binding = profileBinding()
+          if (input?.keepSignedIn === true) {
+            let storedSuccessfully = false
+            try {
+              const issued = await post(
+                serviceUrl('auth/remember/create', options.serviceUrl),
+                { clientBinding: binding },
+                response.sessionToken,
+                null,
+                options.ca,
+              )
+              if (!issued.data?.token) throw new Error('The service did not issue a remembered sign-in token.')
+              await saveRememberedToken(serverIdentity, requestUrl.origin, user, binding, issued.data.token)
+              storedSuccessfully = true
+            } catch (error) {
+              await removeFirmRememberedToken(serverIdentity, user.firmId, user.id)
+              try {
+                await post(
+                  serviceUrl('auth/remember/revoke', options.serviceUrl),
+                  { clientBinding: binding },
+                  response.sessionToken,
+                  null,
+                  options.ca,
+                )
+              } catch (revokeError) {
+                warnings.push(`The unpersisted remembered sign-in could not be revoked: ${revokeError.message}`)
+              }
+              warnings.push(`Keep me signed in was not saved: ${error.message}`)
+            }
+            if (storedSuccessfully && options.localDevelopment) {
+              try { await removeLegacyLocalTokens(serverIdentity, user.firmId, user.id, binding) } catch (error) {
+                warnings.push(`An older local remembered sign-in file could not be removed: ${error.message}`)
+              }
+            }
+            try {
+              await removeServerRememberedTokens(
+                serverIdentity,
+                storedSuccessfully ? rememberFile(serverIdentity, user.firmId, user.id) : null,
+              )
+            } catch (error) {
+              warnings.push(`Other remembered sign-in files could not be removed from this Windows profile: ${error.message}`)
+            }
+          } else {
+            try {
+              await post(
+                serviceUrl('auth/remember/revoke', options.serviceUrl),
+                { clientBinding: binding },
+                response.sessionToken,
+                null,
+                options.ca,
+              )
+              await removeFirmRememberedToken(serverIdentity, user.firmId, user.id)
+              if (options.localDevelopment) await removeLegacyLocalTokens(serverIdentity, user.firmId, user.id, binding)
+            } catch (error) {
+              warnings.push(`An earlier remembered sign-in could not be revoked: ${error.message}`)
+            }
+            try {
+              await removeServerRememberedTokens(serverIdentity)
+            } catch (error) {
+              warnings.push(`Remembered sign-in files could not be cleared from this Windows profile: ${error.message}`)
+            }
+          }
+          return warnings.length ? { ...user, signInStorageWarning: warnings.join(' ') } : user
+        }
+        return user
       }
-      if (channel === 'engagementAuth:logout') sessions.delete(event.sender.id)
+      if (channel === 'engagementAuth:logout') {
+        const current = sessions.get(event.sender.id)
+        sessions.delete(event.sender.id)
+        if (current?.firmId) {
+          try {
+            await removeFirmRememberedToken(serverIdentity, current.firmId, current.userId)
+            if (options.localDevelopment) await removeLegacyLocalTokens(serverIdentity, current.firmId, current.userId, profileBinding())
+            await removeServerRememberedTokens(serverIdentity)
+          } catch (error) {
+            clientNotice = `You are signed out, but the encrypted local sign-in file could not be removed: ${error.message}`
+          }
+        }
+      }
+      if (channel === 'engagementAuth:changePassword') {
+        const current = sessions.get(event.sender.id)
+        if (current?.firmId) {
+          try {
+            await removeFirmRememberedToken(serverIdentity, current.firmId, current.userId)
+            if (options.localDevelopment) await removeLegacyLocalTokens(serverIdentity, current.firmId, current.userId, profileBinding())
+          } catch (error) {
+            clientNotice = `Password changed, but the local remembered sign-in file could not be removed: ${error.message}`
+          }
+        }
+      }
+      if (channel === 'engagementAuth:passwordResetComplete') {
+        const resetTarget = response.data
+        if (Number.isSafeInteger(Number(resetTarget?.firmId)) && Number.isSafeInteger(Number(resetTarget?.userId))) {
+          try {
+            await removeFirmRememberedToken(serverIdentity, resetTarget.firmId, resetTarget.userId)
+            if (options.localDevelopment) {
+              await removeLegacyLocalTokens(serverIdentity, resetTarget.firmId, resetTarget.userId, profileBinding())
+            }
+          } catch (error) {
+            clientNotice = `Password reset succeeded, but the user's local remembered sign-in file could not be removed: ${error.message}`
+          }
+        }
+      }
       if (channel === 'engagementAuth:status' && !response.data?.user) sessions.delete(event.sender.id)
       if (session) session.expiresAt = Date.now() + SESSION_MAX_AGE
       if (channel === 'engagementAuth:status' && response.data) {
-        const user = response.data.user
+        let user = response.data.user
         if (user && session) session.firmId = Number(user.firmId)
+        if (!user) {
+          let attempt = pendingRememberedSignIns.get(event.sender.id)
+          if (!attempt) {
+            attempt = tryResumeRememberedSignIn(event.sender.id, serverIdentity, options)
+            pendingRememberedSignIns.set(event.sender.id, attempt)
+          }
+          try {
+            user = await attempt
+          } finally {
+            if (pendingRememberedSignIns.get(event.sender.id) === attempt) pendingRememberedSignIns.delete(event.sender.id)
+          }
+        }
+        const loginHint = await readLastUsername(serverIdentity)
         return {
           ...response.data,
+          user,
+          loginHint,
           ...(options.localDevelopment ? { localDevelopment: true } : {}),
           ...(options.serviceOnlyMode ? { serviceOnlyMode: true } : {}),
         }
@@ -221,7 +556,9 @@ export function registerEngagementClientHandlers(handlerRegistry = ipcMain, opti
           await writeFile(join(directory, `${profileId}.${mimeType === 'image/svg+xml' ? 'svg' : mimeType === 'image/png' ? 'png' : 'jpg'}`), bytes)
         } catch {}
       }
-      return response.data
+      return clientNotice && response.data && typeof response.data === 'object'
+        ? { ...response.data, clientNotice }
+        : response.data
     })
   }
 }

@@ -10,6 +10,20 @@ After sign-in, use the **Engagements** workspace for client engagements and **Fi
 
 The engagement client keeps the service session after an authentication-status refresh. If a session expires, sign in again; engagement reads and edits continue to be checked by the trusted service.
 
+### Remembered sign-in and password recovery
+
+The sign-in form remembers the last successful username for the configured service. **Keep me signed in** is optional and currently enabled only on Windows when Electron reports protected storage available. The main process encrypts the 30-day random token with Electron `safeStorage` (Windows profile protection) under that profile's `userData`; the renderer never receives the token. The service stores only its SHA-256 hash and binds it to the service firm, user and client-profile binding. A profile keeps at most one locally resumable account per service: choosing a different account replaces earlier local remembered sign-ins, and sign out clears the service's local remembered files. Each resumed session is a normal eight-hour service session, and active account status and permissions are rechecked on protected requests. Password changes, resets and account deactivation revoke remembered credentials in the service database.
+
+An authenticated firm administrator can select **Issue reset** beside an active person in **Firm Team**. The one-time credential is displayed once to the administrator, expires after 30 minutes and must be delivered to the user securely; the application does not send email. The user selects **Forgot password?**, enters that credential and chooses a new password. A reset is firm-scoped, single-use, invalidates the user's other reset credentials and remembered tokens, and ends their existing sessions. There is no unauthenticated email reset endpoint or master password.
+
+If a firm has exactly one active administrator and that administrator cannot authenticate, a separately authorised operator with access to the engagement-service database can issue a reset on the service host. First verify the service environment points to the intended isolated database and confirm the firm/user identity; then run:
+
+```powershell
+node .\tools\recover-sole-engagement-admin.mjs --firm-id 123 --email admin@example.test --confirm-sole-admin-recovery I_HAVE_VERIFIED_THE_SERVER_AND_FIRM
+```
+
+Replace the example firm ID and email with the independently verified values. The command refuses non-unique users and firms with more than one active administrator, does not initialise or migrate the database, stores only a token hash and audits the operator recovery. It prints the one-time 30-minute credential once; deliver it through a separately verified secure channel. Never run this procedure against an unapproved or production database.
+
 The startup screen is an application-entry gate, not complete authorization for legacy data. Legacy financial IPC still has direct PostgreSQL access and does not enforce per-user engagement permissions. Do not treat the login gate as securing those operations or as production-ready multi-user isolation.
 
 ## Firm branding and report style

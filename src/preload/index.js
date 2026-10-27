@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 // Every call goes through inv(): a call that SAVES something also tells the main process, which tells the app's other windows
 // (App.jsx offers them a refresh). Reads, dialogs and file writes do not.
-const WRITE_RX = /^(?:notes)?(save|set|add|upsert|update|override|approve|delete|remove|run|upload|import|clear|lock|unlock|finali[sz]e|attach|revert|resolve|bulk|markReview|publish|create|insert|replace|apply|merge|rename|reset|restore|toggle|accept|move|propagate|record|submit|enable|disable|link|assign|fix|dismiss|mark|insertManualRow|activate|reopen|requestAccess|resolveAccess|confirmLegacy|setup|changePassword)/i
+const WRITE_RX = /^(?:notes)?(save|set|add|upsert|update|override|approve|delete|remove|run|upload|import|clear|lock|unlock|finali[sz]e|attach|revert|resolve|bulk|markReview|publish|create|insert|replace|apply|merge|rename|reset|restore|toggle|accept|move|propagate|record|submit|enable|disable|link|assign|fix|dismiss|mark|insertManualRow|activate|reopen|requestAccess|resolveAccess|confirmLegacy|setup|changePassword|passwordReset)/i
 const isWrite = (channel) => {
   const ch = String(channel || '')
   if (/^(dialog|file|settings|window|app|db):/.test(ch)) return false
@@ -20,8 +20,10 @@ contextBridge.exposeInMainWorld('api', {
   engagementAuthStatus:       () => inv('engagementAuth:status'),
   setupEngagementAdmin:       (data) => inv('engagementAuth:setup', data),
   loginEngagementUser:        (data) => inv('engagementAuth:login', data),
-  logoutEngagementUser:       () => inv('engagementAuth:logout'),
-  changeEngagementPassword:   (password) => inv('engagementAuth:changePassword', password),
+  logoutEngagementUser:      () => inv('engagementAuth:logout'),
+  changeEngagementPassword:  (password) => inv('engagementAuth:changePassword', password),
+  issueEngagementPasswordReset: (userId) => inv('engagementAuth:passwordResetIssue', userId),
+  completeEngagementPasswordReset: (data) => inv('engagementAuth:passwordResetComplete', data),
   canConfigureLocalEngagement:() => inv('engagementService:localSetupAvailable'),
   restartLocalEngagement:     () => inv('engagementService:restartLocal'),
   listEngagementUsers:        () => inv('engagementAdmin:listUsers'),

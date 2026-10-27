@@ -1078,7 +1078,7 @@ function ApplicationWorkspace({ user, onSignOut, signingOut, appearance }) {
 }
 
 export default function App() {
-  const [auth, setAuth] = useState({ loading: true, setupRequired: false, localDevelopment: false, serviceOnlyMode: false, localSetupAvailable: false, user: null, error: '' })
+  const [auth, setAuth] = useState({ loading: true, setupRequired: false, localDevelopment: false, serviceOnlyMode: false, localSetupAvailable: false, user: null, error: '', loginHint: null, loginNotice: '' })
   const [signingOut, setSigningOut] = useState(false)
   const [showDatabaseSetup, setShowDatabaseSetup] = useState(false)
   const [firmAppearance, setFirmAppearance] = useState(readCachedAppearance)
@@ -1095,6 +1095,8 @@ export default function App() {
         serviceOnlyMode: !!result.serviceOnlyMode,
         localSetupAvailable,
         user: result.user,
+        loginHint: result.loginHint,
+        loginNotice: '',
         error: '',
       })
     } catch (error) {
@@ -1157,8 +1159,8 @@ export default function App() {
   const signOut = async () => {
     setSigningOut(true)
     try {
-      await window.api.logoutEngagementUser()
-      setAuth(current => ({ ...current, user: null }))
+      const result = await window.api.logoutEngagementUser()
+      setAuth(current => ({ ...current, user: null, loginNotice: result?.clientNotice || '' }))
     } catch (error) {
       setAuth(current => ({ ...current, error: error.message || 'Unable to sign out.' }))
     } finally {
@@ -1207,11 +1209,13 @@ export default function App() {
           {firmAppearance.logoBase64 && <img alt="" src={`data:${firmAppearance.logoMimeType};base64,${firmAppearance.logoBase64}`} className="h-9 max-w-36 object-contain" />}
           <span className="font-bold text-gray-900">{firmAppearance.displayName}</span>
         </header>
+        {auth.loginNotice && <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-sm text-amber-900">{auth.loginNotice}</div>}
         <AuthGate
           setupRequired={auth.setupRequired}
           localDevelopment={auth.localDevelopment}
+          loginHint={auth.loginHint}
           requireLoginAfterSetup
-          onAuthenticated={user => setAuth(current => ({ ...current, user, error: '' }))}
+          onAuthenticated={user => setAuth(current => ({ ...current, user, error: '', loginNotice: user.signInStorageWarning || '' }))}
         />
         <p className="mx-auto max-w-md px-5 pb-5 text-center text-xs leading-relaxed text-gray-500">
           Sign-in currently controls access to the workspace and engagement service. Legacy financial operations still require migration to permission-enforced server APIs.
@@ -1220,7 +1224,10 @@ export default function App() {
     )
   }
   if (auth.user.mustChangePassword) {
-    return <div className="h-screen overflow-y-auto bg-gray-50"><PasswordChange user={auth.user} onChanged={user => setAuth(current => ({ ...current, user }))} /></div>
+    return <div className="h-screen overflow-y-auto bg-gray-50">
+      {auth.user.signInStorageWarning && <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-sm text-amber-900">{auth.user.signInStorageWarning}</div>}
+      <PasswordChange user={auth.user} onChanged={user => setAuth(current => ({ ...current, user }))} />
+    </div>
   }
 
   if (auth.serviceOnlyMode) {
@@ -1241,11 +1248,17 @@ export default function App() {
         <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-5 py-2 text-xs text-blue-900">
           Service-connected desktop: no local PostgreSQL connection is opened. Engagement imports, journals, final Trial Balances, mapping, notes and reporting use the trusted service; legacy standalone financial operations remain unavailable. UAE reporting is a synthetic demonstration only.
         </div>
+        {auth.loginNotice && <div role="status" className="shrink-0 border-b border-amber-200 bg-amber-50 px-5 py-2 text-sm text-amber-900">{auth.loginNotice}</div>}
         <main className="min-h-0 flex-1">
           <EngagementHub key={auth.user.id} user={auth.user} serviceOnlyMode />
         </main>
       </div>
     )
   }
-  return <ApplicationWorkspace key={auth.user.id} user={auth.user} onSignOut={signOut} signingOut={signingOut} appearance={firmAppearance} />
+  return (
+    <>
+      {auth.loginNotice && <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-sm text-amber-900">{auth.loginNotice}</div>}
+      <ApplicationWorkspace key={auth.user.id} user={auth.user} onSignOut={signOut} signingOut={signingOut} appearance={firmAppearance} />
+    </>
+  )
 }

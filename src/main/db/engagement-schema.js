@@ -42,6 +42,59 @@ export async function ensureEngagementSchema(query) {
   await query(`ALTER TABLE firm_users ALTER COLUMN job_title SET NOT NULL`)
   await query(`ALTER TABLE firm_users ADD COLUMN IF NOT EXISTS qualification TEXT`)
   await query(`ALTER TABLE firm_users ADD COLUMN IF NOT EXISTS registration_number TEXT`)
+  await query(`ALTER TABLE firm_users ADD COLUMN IF NOT EXISTS auth_version INTEGER NOT NULL DEFAULT 0`)
+  await query(`
+    CREATE TABLE IF NOT EXISTS engagement_remember_tokens (
+      id BIGSERIAL PRIMARY KEY,
+      firm_id INTEGER NOT NULL REFERENCES firms(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      client_binding TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      last_used_at TIMESTAMPTZ,
+      revoked_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `)
+  await query(`CREATE INDEX IF NOT EXISTS idx_engagement_remember_tokens_user ON engagement_remember_tokens(firm_id,user_id,expires_at)`)
+  await query(`
+    CREATE TABLE IF NOT EXISTS engagement_password_resets (
+      id BIGSERIAL PRIMARY KEY,
+      firm_id INTEGER NOT NULL REFERENCES firms(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      issued_by INTEGER REFERENCES firm_users(id) ON DELETE SET NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      consumed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `)
+  await query(`CREATE INDEX IF NOT EXISTS idx_engagement_password_resets_user ON engagement_password_resets(firm_id,user_id,expires_at)`)
+  await query(`
+    CREATE OR REPLACE FUNCTION revoke_engagement_credentials_after_user_change()
+    RETURNS trigger AS $$
+    BEGIN
+      IF OLD.active IS DISTINCT FROM NEW.active
+        OR OLD.password_salt IS DISTINCT FROM NEW.password_salt
+        OR OLD.password_hash IS DISTINCT FROM NEW.password_hash THEN
+        UPDATE firm_users SET auth_version=auth_version+1 WHERE id=NEW.id;
+        UPDATE engagement_remember_tokens
+        SET revoked_at=COALESCE(revoked_at,now())
+        WHERE user_id=NEW.id AND revoked_at IS NULL;
+        UPDATE engagement_password_resets
+        SET consumed_at=COALESCE(consumed_at,now())
+        WHERE user_id=NEW.id AND consumed_at IS NULL;
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `)
+  await query(`DROP TRIGGER IF EXISTS trg_revoke_engagement_credentials_after_user_change ON firm_users`)
+  await query(`
+    CREATE TRIGGER trg_revoke_engagement_credentials_after_user_change
+    AFTER UPDATE OF active,password_salt,password_hash ON firm_users
+    FOR EACH ROW EXECUTE FUNCTION revoke_engagement_credentials_after_user_change()
+  `)
 
   await query(`
     CREATE TABLE IF NOT EXISTS auditor_firms (

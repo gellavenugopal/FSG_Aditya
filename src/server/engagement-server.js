@@ -20,6 +20,11 @@ const ROUTES = {
   'auth/login': { channel: 'engagementAuth:login', args: body => [body] },
   'auth/logout': { channel: 'engagementAuth:logout', args: () => [] },
   'auth/change-password': { channel: 'engagementAuth:changePassword', args: body => [body.password] },
+  'auth/remember/create': { channel: 'engagementAuth:rememberCreate', args: body => [body.clientBinding] },
+  'auth/remember/revoke': { channel: 'engagementAuth:rememberRevoke', args: body => [body.clientBinding] },
+  'auth/remember/resume': { channel: 'engagementAuth:rememberResume', args: body => [body] },
+  'auth/password-reset/issue': { channel: 'engagementAuth:passwordResetIssue', args: body => [body.targetUserId] },
+  'auth/password-reset/complete': { channel: 'engagementAuth:passwordResetComplete', args: body => [body] },
   'admin/users': { channel: 'engagementAdmin:listUsers', args: () => [] },
   'admin/users/create': { channel: 'engagementAdmin:createUser', args: body => [body] },
   'admin/firm-settings': { channel: 'engagementAdmin:firmSettings', args: () => [] },
@@ -216,8 +221,8 @@ export async function createEngagementServer(options = {}) {
         return
       }
       const remoteAddress = request.socket.remoteAddress || 'unknown'
-      const isLogin = routeName === 'auth/login' || routeName === 'auth/setup'
-      if (isLogin) limiter.assertAllowed(remoteAddress)
+      const isCredentialAttempt = ['auth/login', 'auth/setup', 'auth/remember/resume', 'auth/password-reset/complete'].includes(routeName)
+      if (isCredentialAttempt) limiter.assertAllowed(remoteAddress)
       if (routeName === 'auth/setup' && !setupTokenMatches(
         request.headers['x-engagement-setup-token'],
         options.setupToken,
@@ -230,7 +235,7 @@ export async function createEngagementServer(options = {}) {
 
       let token = null
       let senderId
-      if (['auth/status', 'auth/login', 'auth/setup'].includes(routeName)) {
+      if (['auth/status', 'auth/login', 'auth/setup', 'auth/remember/resume', 'auth/password-reset/complete'].includes(routeName)) {
         token = requestSessionToken(request)
         senderId = (token && sessions.get(token)?.expiresAt > Date.now() && sessions.get(token)?.senderId) || randomUUID()
       } else {
@@ -253,12 +258,12 @@ export async function createEngagementServer(options = {}) {
       try {
         result = await handler({ sender: { id: senderId } }, ...route.args(body))
       } catch (error) {
-        if (isLogin) limiter.failed(remoteAddress)
+        if (isCredentialAttempt) limiter.failed(remoteAddress)
         throw error
       }
-      if (isLogin) limiter.succeeded(remoteAddress)
+      if (isCredentialAttempt) limiter.succeeded(remoteAddress)
 
-      if (routeName === 'auth/login' || routeName === 'auth/setup') {
+      if (['auth/login', 'auth/setup', 'auth/remember/resume'].includes(routeName)) {
         const sessionToken = randomBytes(SESSION_TOKEN_BYTES).toString('hex')
         sessions.set(sessionToken, { senderId, expiresAt: Date.now() + SESSION_MAX_AGE })
         statusCode = 200

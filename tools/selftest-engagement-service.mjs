@@ -9,6 +9,7 @@ import { PDFDocument } from 'pdf-lib'
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 import { startLocalEngagementService } from '../src/server/dev-engagement-service.js'
 import { DEFAULT_FINANCIAL_PERIODS, financialPeriodLabel } from '../src/shared/financial-periods.mjs'
 import { createEngagementPasswordRecord } from '../src/main/services/engagement-password.js'
@@ -327,7 +328,7 @@ try {
 
   service = await startLocalEngagementService({
     host: '127.0.0.1', port: pgPort, database: 'postgres', user: 'selftest', password: '',
-  })
+  }, { userDataPath: rootDirectory })
   const address = new URL(service.clientOptions.serviceUrl)
   servicePort = Number(address.port)
   serviceCa = service.clientOptions.ca
@@ -336,6 +337,9 @@ try {
     'local development service uses HTTPS and binds only to loopback')
   check(Buffer.isBuffer(serviceCa) && service.clientOptions.setupToken.length >= 64,
     'local development creates a private setup authorization and trusted local CA')
+  const localAuthIdentity = service.clientOptions.authIdentity
+  check(typeof localAuthIdentity === 'string' && localAuthIdentity.startsWith('local-profile:'),
+    'local remembered sign-in is scoped to a persistent isolated service identity')
   console.info('Local HTTPS engagement service started.')
   const periodMasters = await pool.query(`
     SELECT date_from::text,date_till::text,year_label,id
@@ -400,10 +404,34 @@ try {
   const adminToken = adminLogin.sessionToken
   check(!!adminToken && adminLogin.user.role === 'administrator' && adminLogin.user.firmName === 'Synthetic Firm',
     'first administrator can sign in with the correct firm identity')
+  const incorrectPassword = await fails('auth/login', { email: 'admin@example.test', password: 'Definitely-Wrong-Password!' }, null, /incorrect/i)
+  check(incorrectPassword.status === 400, 'incorrect passwords are rejected as authentication failures')
   const statusAfterLogin = await ok('auth/status', {}, adminToken)
   check(statusAfterLogin.data.user?.id === adminLogin.user.id
     && statusAfterLogin.data.user.firmName === 'Synthetic Firm',
   'status refresh preserves the authenticated user and firm identity')
+  const rememberBinding = 'a'.repeat(64)
+  const remembered = await ok('auth/remember/create', { clientBinding: rememberBinding }, adminToken)
+  check(/^[a-f0-9]{64}$/.test(remembered.data.token)
+    && new Date(remembered.data.expiresAt).getTime() > Date.now(),
+  'remember-me issues a random, expiring credential only after normal authentication')
+  const resumedAdmin = await ok('auth/remember/resume', {
+    token: remembered.data.token, clientBinding: rememberBinding,
+  })
+  check(resumedAdmin.user.id === adminLogin.user.id && !!resumedAdmin.sessionToken,
+    'remembered sign-in restores the same active user after service-session loss')
+  await ok('auth/logout', {}, resumedAdmin.sessionToken)
+  await fails('auth/remember/resume', {
+    token: remembered.data.token, clientBinding: rememberBinding,
+  }, null, /expired or .*revoked/i)
+  const expiringRemember = await ok('auth/remember/create', { clientBinding: rememberBinding }, adminToken)
+  await pool.query(
+    `UPDATE engagement_remember_tokens SET expires_at=now()-interval '1 second' WHERE token_hash=$1`,
+    [createHash('sha256').update(expiringRemember.data.token, 'utf8').digest('hex')]
+  )
+  await fails('auth/remember/resume', {
+    token: expiringRemember.data.token, clientBinding: rememberBinding,
+  }, null, /expired or .*revoked/i)
   const otherTenantPassword = 'Other-Tenant-Admin-2026!'
   const otherTenantRecord = await createEngagementPasswordRecord(otherTenantPassword)
   const otherTenant = await pool.query(`INSERT INTO firms(name) VALUES ('Other Synthetic Tenant') RETURNING id`)
@@ -437,6 +465,7 @@ try {
   const outsider = await createUser('outsider@example.test', 'staff')
   const partner = await createUser('partner@example.test', 'partner')
   const substitute = await createUser('substitute@example.test', 'partner')
+  const recoveryUser = await createUser('recovery@example.test', 'staff')
   const ownerToken = owner.sessionToken
   const readerToken = reader.sessionToken
   const editorToken = editor.sessionToken
@@ -444,6 +473,79 @@ try {
   const outsiderToken = outsider.sessionToken
   const partnerToken = partner.sessionToken
   const substituteToken = substitute.sessionToken
+  await fails('auth/password-reset/issue', { targetUserId: recoveryUser.user.id }, ownerToken, /administrator access/i)
+  await fails('auth/password-reset/issue', { targetUserId: recoveryUser.user.id }, otherTenantToken, /active user in your firm/i)
+  const resetIssue = await ok('auth/password-reset/issue', { targetUserId: recoveryUser.user.id }, adminToken)
+  check(resetIssue.data.userId === recoveryUser.user.id
+    && resetIssue.data.credential.length === 64
+    && new Date(resetIssue.data.expiresAt).getTime() > Date.now(),
+  'firm administrators can issue a scoped, expiring single-use password reset credential')
+  const rememberBeforeReset = await ok('auth/remember/create', { clientBinding: rememberBinding }, recoveryUser.sessionToken)
+  const changedRecoveryPassword = 'Recovery-Updated-Password-2026!'
+  await ok('auth/password-reset/complete', {
+    credential: resetIssue.data.credential, password: changedRecoveryPassword,
+  })
+  const resetRevocation = await pool.query(
+    `SELECT revoked_at FROM engagement_remember_tokens WHERE token_hash=$1`,
+    [createHash('sha256').update(rememberBeforeReset.data.token, 'utf8').digest('hex')]
+  )
+  check(!!resetRevocation.rows[0]?.revoked_at,
+    'completing a password reset revokes existing remembered sign-in tokens')
+  await fails('auth/password-reset/complete', {
+    credential: resetIssue.data.credential, password: 'Recovery-Second-Password-2026!',
+  }, null, /invalid, expired or already used/i)
+  await fails('auth/login', {
+    email: recoveryUser.user.email, password: recoveryUser.password,
+  }, null, /incorrect/i)
+  const recoveredLogin = await ok('auth/login', {
+    email: recoveryUser.user.email, password: changedRecoveryPassword,
+  })
+  check(recoveredLogin.user.id === recoveryUser.user.id && !!recoveredLogin.sessionToken,
+    'a recovered user can authenticate using the newly chosen password')
+  const otherFirmRemember = await ok('auth/remember/create', {
+    clientBinding: rememberBinding,
+  }, otherTenantToken)
+  const [priorUserRemember, currentUserRemember] = await Promise.all([
+    ok('auth/remember/create', { clientBinding: rememberBinding }, adminToken),
+    ok('auth/remember/create', { clientBinding: rememberBinding }, recoveredLogin.sessionToken),
+  ])
+  const scopedRememberTokens = await pool.query(
+    `SELECT token_hash,firm_id,revoked_at FROM engagement_remember_tokens
+     WHERE token_hash=ANY($1::text[])`,
+    [[otherFirmRemember.data.token, priorUserRemember.data.token, currentUserRemember.data.token]
+      .map(token => createHash('sha256').update(token, 'utf8').digest('hex'))]
+  )
+  const rememberByHash = new Map(scopedRememberTokens.rows.map(row => [row.token_hash, row]))
+  const priorUserHash = createHash('sha256').update(priorUserRemember.data.token, 'utf8').digest('hex')
+  const currentUserHash = createHash('sha256').update(currentUserRemember.data.token, 'utf8').digest('hex')
+  const otherFirmHash = createHash('sha256').update(otherFirmRemember.data.token, 'utf8').digest('hex')
+  const activeSameFirmTokens = [rememberByHash.get(priorUserHash), rememberByHash.get(currentUserHash)]
+    .filter(record => record && !record.revoked_at)
+  check(activeSameFirmTokens.length === 1
+    && !rememberByHash.get(otherFirmHash)?.revoked_at,
+  'concurrent remembered sign-ins leave one resumable user per firm/profile without affecting a different firm')
+  await fails('options', {}, recoveryUser.sessionToken, /sign in/i)
+  const expiringReset = await ok('auth/password-reset/issue', { targetUserId: recoveryUser.user.id }, adminToken)
+  await pool.query(
+    `UPDATE engagement_password_resets SET expires_at=now()-interval '1 second' WHERE token_hash=$1`,
+    [createHash('sha256').update(expiringReset.data.credential, 'utf8').digest('hex')]
+  )
+  await fails('auth/password-reset/complete', {
+    credential: expiringReset.data.credential, password: 'Recovery-Expired-Password-2026!',
+  }, null, /invalid, expired or already used/i)
+  const rememberForDeactivation = await ok('auth/remember/create', { clientBinding: rememberBinding }, recoveredLogin.sessionToken)
+  await pool.query(`UPDATE firm_users SET auth_version=auth_version+1 WHERE id=$1`, [recoveryUser.user.id])
+  await fails('options', {}, recoveredLogin.sessionToken, /credentials changed/i)
+  await pool.query(`UPDATE firm_users SET active=FALSE WHERE id=$1`, [recoveryUser.user.id])
+  const revokedAfterDeactivation = await pool.query(
+    `SELECT revoked_at FROM engagement_remember_tokens WHERE token_hash=$1`,
+    [createHash('sha256').update(rememberForDeactivation.data.token, 'utf8').digest('hex')]
+  )
+  check(!!revokedAfterDeactivation.rows[0]?.revoked_at,
+    'deactivating an account revokes its remembered sign-in tokens')
+  await fails('auth/remember/resume', {
+    token: rememberForDeactivation.data.token, clientBinding: rememberBinding,
+  }, null, /expired or .*revoked/i)
   await fails('admin/users/create', {
     email: 'forbidden-admin@example.test', displayName: 'Forbidden', jobTitle: 'administrator',
   }, adminToken, /valid team position/i)
@@ -1105,16 +1207,27 @@ try {
   await pool.query(`UPDATE firm_users SET active=FALSE WHERE id=$1`, [reader.user.id])
   await fails('overview', { engagementId }, readerToken, /disabled/i)
 
+  const restartRemember = await ok('auth/remember/create', {
+    clientBinding: rememberBinding,
+  }, adminToken)
   const oldToken = adminToken
   await pool.query(`ALTER TABLE firm_users DROP COLUMN job_title`)
   await service.close()
   service = null
   service = await startLocalEngagementService({
     host: '127.0.0.1', port: pgPort, database: 'postgres', user: 'selftest', password: '',
-  })
+  }, { userDataPath: rootDirectory })
+  check(service.clientOptions.authIdentity === localAuthIdentity,
+    'the isolated local service identity survives service restart even when its HTTPS port changes')
   servicePort = Number(new URL(service.clientOptions.serviceUrl).port)
   serviceCa = service.clientOptions.ca
   await fails('list', { scope: 'all' }, oldToken, /sign in/i)
+  const rememberedAfterRestart = await ok('auth/remember/resume', {
+    token: restartRemember.data.token, clientBinding: rememberBinding,
+  })
+  check(rememberedAfterRestart.user.id === adminLogin.user.id && !!rememberedAfterRestart.sessionToken,
+    'remembered sign-in token survives service restart and restores the same account')
+  await ok('auth/logout', {}, rememberedAfterRestart.sessionToken)
   const loggedBackIn = await login('admin@example.test', 'Synthetic-Admin-Password!')
   const appearanceAfterRestart = await ok('admin/appearance', {}, loggedBackIn.sessionToken)
   const stylesAfterRestart = await ok('admin/report-styles', {}, loggedBackIn.sessionToken)

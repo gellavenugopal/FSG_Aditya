@@ -17,10 +17,20 @@ let query
 let runInTransaction
 const sessions = new Map()
 const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
+const REMEMBER_TOKEN_MAX_AGE = 30 * 24 * 60 * 60 * 1000
+const PASSWORD_RESET_MAX_AGE = 30 * 60 * 1000
 const BOOTSTRAP_LOCK = 517203841
 
 function cleanEmail(value) {
   return String(value || '').trim().toLowerCase()
+}
+
+function hashCredential(value) {
+  return createHash('sha256').update(value, 'utf8').digest('hex')
+}
+
+function isCredential(value) {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 }
 
 async function fetchKrestonPublicResource(initialUrl, expectedType) {
@@ -83,17 +93,27 @@ async function authenticated(event, allowPasswordChange = false) {
     throw new Error('Sign in to use engagement management.')
   }
   const { rows: [row] } = await query(
-    `SELECT u.id,u.firm_id,u.email,u.display_name,u.role,u.job_title,u.professional_signatory_id,u.must_change_password,
+    `SELECT u.id,u.firm_id,u.email,u.display_name,u.role,u.job_title,u.professional_signatory_id,u.must_change_password,u.auth_version,
             f.name AS firm_name
      FROM firm_users u JOIN firms f ON f.id=u.firm_id
      WHERE u.id=$1 AND u.active=TRUE`,
     [session.user.id]
   )
   if (!row) {
+    await query(
+      `UPDATE engagement_remember_tokens SET revoked_at=COALESCE(revoked_at,now())
+       WHERE user_id=$1 AND revoked_at IS NULL`,
+      [session.user.id]
+    )
     sessions.delete(event.sender.id)
     throw new Error('This firm account is disabled. Contact your firm administrator.')
   }
+  if (Number(row.auth_version) !== Number(session.authVersion)) {
+    sessions.delete(event.sender.id)
+    throw new Error('Your sign-in expired because the account credentials changed. Sign in again.')
+  }
   session.user = publicUser(row)
+  session.authVersion = Number(row.auth_version)
   if (session.user.mustChangePassword && !allowPasswordChange) {
     throw new Error('Change your temporary password before continuing.')
   }
@@ -476,15 +496,16 @@ export function registerEngagementHandlers(ipcMain, database) {
     let user = null
     if (session && session.expiresAt > Date.now()) {
       const { rows: [activeUser] } = await query(
-        `SELECT u.id,u.firm_id,u.email,u.display_name,u.role,u.job_title,u.professional_signatory_id,u.must_change_password,
+        `SELECT u.id,u.firm_id,u.email,u.display_name,u.role,u.job_title,u.professional_signatory_id,u.must_change_password,u.auth_version,
                 f.name AS firm_name
          FROM firm_users u JOIN firms f ON f.id=u.firm_id
          WHERE u.id=$1 AND u.active=TRUE`,
         [session.user.id]
       )
-      if (activeUser) {
+      if (activeUser && Number(activeUser.auth_version) === Number(session.authVersion)) {
         user = publicUser(activeUser)
         session.user = user
+        session.authVersion = Number(activeUser.auth_version)
         session.expiresAt = Date.now() + SESSION_MAX_AGE
       } else {
         sessions.delete(event.sender.id)
@@ -522,7 +543,7 @@ export function registerEngagementHandlers(ipcMain, database) {
       await logAudit(administrator, 'firm.admin_bootstrapped')
       return administrator
     })
-    sessions.set(event.sender.id, { user, expiresAt: Date.now() + SESSION_MAX_AGE })
+    sessions.set(event.sender.id, { user, authVersion: 0, expiresAt: Date.now() + SESSION_MAX_AGE })
     return user
   })
 
@@ -538,15 +559,170 @@ export function registerEngagementHandlers(ipcMain, database) {
     if (!row || !(await verifyEngagementPassword(input.password, row.password_salt, row.password_hash))) {
       throw new Error('Email or password is incorrect.')
     }
+    const priorSession = sessions.get(event.sender.id)
+    if (priorSession?.rememberTokenId) {
+      await query(
+        `UPDATE engagement_remember_tokens SET revoked_at=COALESCE(revoked_at,now()) WHERE id=$1`,
+        [priorSession.rememberTokenId]
+      )
+    }
     const user = publicUser(row)
     await logAudit(user, 'user.signed_in', null, {})
-    sessions.set(event.sender.id, { user, expiresAt: Date.now() + SESSION_MAX_AGE })
+    sessions.set(event.sender.id, { user, authVersion: Number(row.auth_version || 0), expiresAt: Date.now() + SESSION_MAX_AGE })
     return user
+  })
+
+  ipcMain.handle('engagementAuth:rememberCreate', async (event, clientBinding) => {
+    const user = await authenticated(event)
+    if (!isCredential(clientBinding)) throw new Error('Secure sign-in could not be bound to this Windows profile.')
+    const token = randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + REMEMBER_TOKEN_MAX_AGE)
+    const { rows: [record] } = await runInTransaction(async () => {
+      await query(`SELECT pg_advisory_xact_lock($1::integer,hashtext($2))`, [user.firmId, clientBinding])
+      await query(
+        `UPDATE engagement_remember_tokens SET revoked_at=COALESCE(revoked_at,now())
+         WHERE firm_id=$1 AND client_binding=$2 AND revoked_at IS NULL`,
+        [user.firmId, clientBinding]
+      )
+      return query(
+        `INSERT INTO engagement_remember_tokens (firm_id,user_id,token_hash,client_binding,expires_at)
+         VALUES ($1,$2,$3,$4,$5) RETURNING id,expires_at`,
+        [user.firmId, user.id, hashCredential(token), clientBinding, expiresAt]
+      )
+    })
+    const session = sessions.get(event.sender.id)
+    if (session) session.rememberTokenId = Number(record.id)
+    return { token, expiresAt: record.expires_at }
+  })
+
+  ipcMain.handle('engagementAuth:rememberRevoke', async (event, clientBinding) => {
+    const user = await authenticated(event)
+    if (!isCredential(clientBinding)) throw new Error('Secure sign-in could not be bound to this Windows profile.')
+    await runInTransaction(async () => {
+      await query(`SELECT pg_advisory_xact_lock($1::integer,hashtext($2))`, [user.firmId, clientBinding])
+      await query(
+        `UPDATE engagement_remember_tokens SET revoked_at=COALESCE(revoked_at,now())
+         WHERE firm_id=$1 AND client_binding=$2 AND revoked_at IS NULL`,
+        [user.firmId, clientBinding]
+      )
+    })
+    const session = sessions.get(event.sender.id)
+    if (session) delete session.rememberTokenId
+    return { ok: true }
+  })
+
+  ipcMain.handle('engagementAuth:rememberResume', async (event, input = {}) => {
+    if (!isCredential(input.token) || !isCredential(input.clientBinding)) {
+      throw new Error('Remembered sign-in is unavailable. Please sign in with your password.')
+    }
+    const resumed = await runInTransaction(async () => {
+      const { rows: [record] } = await query(
+        `SELECT t.id AS remember_token_id,t.client_binding,u.id,u.firm_id,u.email,u.display_name,u.role,
+                u.job_title,u.professional_signatory_id,u.must_change_password,u.active,u.auth_version,f.name AS firm_name
+         FROM engagement_remember_tokens t
+         JOIN firm_users u ON u.id=t.user_id AND u.firm_id=t.firm_id
+         JOIN firms f ON f.id=t.firm_id
+         WHERE t.token_hash=$1 AND t.client_binding=$2 AND t.revoked_at IS NULL
+           AND t.expires_at>now()
+         FOR UPDATE OF t`,
+        [hashCredential(input.token), input.clientBinding]
+      )
+      if (!record) throw new Error('Remembered sign-in has expired or was revoked. Please sign in with your password.')
+      if (!record.active) {
+        await query(`UPDATE engagement_remember_tokens SET revoked_at=now() WHERE id=$1`, [record.remember_token_id])
+        return { disabled: true }
+      }
+      if (record.must_change_password) {
+        throw new Error('Change your password before using remembered sign-in.')
+      }
+      await query(`UPDATE engagement_remember_tokens SET last_used_at=now() WHERE id=$1`, [record.remember_token_id])
+      return { user: publicUser(record), rememberTokenId: Number(record.remember_token_id), authVersion: Number(record.auth_version) }
+    })
+    if (resumed.disabled) throw new Error('This firm account is disabled. Contact your firm administrator.')
+    const { user, rememberTokenId } = resumed
+    sessions.set(event.sender.id, { user, rememberTokenId, authVersion: resumed.authVersion, expiresAt: Date.now() + SESSION_MAX_AGE })
+    await logAudit(user, 'user.remembered_sign_in')
+    return user
+  })
+
+  ipcMain.handle('engagementAuth:passwordResetIssue', async (event, targetUserId) => {
+    const actor = await authenticated(event)
+    if (actor.role !== 'administrator') throw new Error('Administrator access is required to issue a password reset.')
+    const id = Number(targetUserId)
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Select an active firm user.')
+    const { rows: [target] } = await query(
+      `SELECT id,firm_id,email,display_name,active FROM firm_users WHERE id=$1 AND firm_id=$2`,
+      [id, actor.firmId]
+    )
+    if (!target || !target.active) throw new Error('Select an active user in your firm.')
+    const credential = randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_MAX_AGE)
+    await runInTransaction(async () => {
+      await query(
+        `UPDATE engagement_password_resets SET consumed_at=COALESCE(consumed_at,now())
+         WHERE firm_id=$1 AND user_id=$2 AND consumed_at IS NULL`,
+        [actor.firmId, id]
+      )
+      await query(
+        `INSERT INTO engagement_password_resets (firm_id,user_id,token_hash,issued_by,expires_at)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [actor.firmId, id, hashCredential(credential), actor.id, expiresAt]
+      )
+      await logAudit(actor, 'user.password_reset_issued', null, { targetUserId: id })
+    })
+    return { userId: id, email: target.email, displayName: target.display_name, credential, expiresAt }
+  })
+
+  ipcMain.handle('engagementAuth:passwordResetComplete', async (_event, input = {}) => {
+    if (!isCredential(input.credential)) throw new Error('Reset credential is invalid or expired. Ask your firm administrator for a new one.')
+    const { salt, hash } = await createEngagementPasswordRecord(input.password)
+    const resetTarget = await runInTransaction(async () => {
+      const { rows: [reset] } = await query(
+        `SELECT id,firm_id,user_id,issued_by FROM engagement_password_resets
+         WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>now()
+         FOR UPDATE`,
+        [hashCredential(input.credential)]
+      )
+      if (!reset) throw new Error('Reset credential is invalid, expired or already used. Ask your firm administrator for a new one.')
+      const { rows: [target] } = await query(
+        `SELECT id,active FROM firm_users WHERE id=$1 AND firm_id=$2 FOR UPDATE`,
+        [reset.user_id, reset.firm_id]
+      )
+      if (!target?.active) throw new Error('This firm account is disabled. Contact your firm administrator.')
+      await query(
+        `UPDATE firm_users SET password_salt=$1,password_hash=$2,must_change_password=FALSE,updated_at=now()
+         WHERE id=$3 AND firm_id=$4`,
+        [salt, hash, reset.user_id, reset.firm_id]
+      )
+      await query(
+        `UPDATE engagement_password_resets SET consumed_at=COALESCE(consumed_at,now())
+         WHERE firm_id=$1 AND user_id=$2 AND consumed_at IS NULL`,
+        [reset.firm_id, reset.user_id]
+      )
+      await query(
+        `INSERT INTO engagement_audit_log (firm_id,actor_user_id,action,details)
+         VALUES ($1,$2,'user.password_reset_completed',$3::jsonb)`,
+        [reset.firm_id, reset.issued_by, JSON.stringify({ targetUserId: Number(reset.user_id) })]
+      )
+      return { userId: Number(reset.user_id), firmId: Number(reset.firm_id) }
+    })
+    for (const [senderId, activeSession] of sessions) {
+      if (activeSession.user.id === resetTarget.userId) sessions.delete(senderId)
+    }
+    return { ok: true, ...resetTarget }
   })
 
   ipcMain.handle('engagementAuth:logout', async (event) => {
     const session = sessions.get(event.sender.id)
-    if (session) await logAudit(session.user, 'user.signed_out')
+    if (session) {
+      if (session.rememberTokenId) {
+        await query(
+          `UPDATE engagement_remember_tokens SET revoked_at=COALESCE(revoked_at,now()) WHERE id=$1`,
+          [session.rememberTokenId]
+        )
+      }
+      await logAudit(session.user, 'user.signed_out')
+    }
     sessions.delete(event.sender.id)
     return { ok: true }
   })
@@ -554,18 +730,23 @@ export function registerEngagementHandlers(ipcMain, database) {
   ipcMain.handle('engagementAuth:changePassword', async (event, password) => {
     const user = await authenticated(event, true)
     const { salt, hash } = await createEngagementPasswordRecord(password)
-    await runInTransaction(async () => {
+    const authVersion = await runInTransaction(async () => {
       await query(
         `UPDATE firm_users SET password_salt=$1,password_hash=$2,must_change_password=FALSE,updated_at=now() WHERE id=$3`,
         [salt, hash, user.id]
       )
       await logAudit(user, 'user.password_changed')
+      const { rows: [updated] } = await query(`SELECT auth_version FROM firm_users WHERE id=$1`, [user.id])
+      return Number(updated.auth_version)
     })
     for (const [senderId, activeSession] of sessions) {
       if (senderId !== event.sender.id && activeSession.user.id === user.id) sessions.delete(senderId)
     }
     const currentSession = sessions.get(event.sender.id)
-    if (currentSession) currentSession.user = { ...user, mustChangePassword: false }
+    if (currentSession) {
+      currentSession.user = { ...user, mustChangePassword: false }
+      currentSession.authVersion = authVersion
+    }
     return { ok: true }
   })
 

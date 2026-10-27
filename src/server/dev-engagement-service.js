@@ -1,6 +1,6 @@
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createEngagementServer } from './engagement-server.js'
@@ -32,7 +32,28 @@ function describeStartupError(error) {
   return error?.message || String(error)
 }
 
-export async function startLocalEngagementService(databaseConfig) {
+function localAuthIdentity(userDataPath) {
+  if (!userDataPath) return null
+  const identityPath = join(userDataPath, 'engagement-service-identity.json')
+  try {
+    const saved = JSON.parse(readFileSync(identityPath, 'utf8'))
+    if (typeof saved.id !== 'string' || !/^[a-f0-9-]{36}$/i.test(saved.id)) {
+      throw new Error('The saved local engagement-service identity is invalid; do not reset it until the profile has been reviewed.')
+    }
+    return `local-profile:${saved.id}`
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      if (error instanceof SyntaxError) throw new Error('The saved local engagement-service identity is unreadable; do not reset it until the profile has been reviewed.')
+      throw error
+    }
+  }
+  const identity = randomUUID()
+  mkdirSync(userDataPath, { recursive: true })
+  writeFileSync(identityPath, JSON.stringify({ id: identity }), { encoding: 'utf8', mode: 0o600 })
+  return `local-profile:${identity}`
+}
+
+export async function startLocalEngagementService(databaseConfig, options = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'fsg-engagement-dev-'))
   const keyPath = join(directory, 'localhost-key.pem')
   const certificatePath = join(directory, 'localhost-cert.pem')
@@ -70,6 +91,7 @@ export async function startLocalEngagementService(databaseConfig) {
         setupToken,
         ca: certificate,
         localDevelopment: true,
+        ...(options.userDataPath ? { authIdentity: localAuthIdentity(options.userDataPath) } : {}),
       },
       async close() {
         try {

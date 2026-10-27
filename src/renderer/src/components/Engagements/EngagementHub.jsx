@@ -47,13 +47,20 @@ function ShieldNotice({ children }) {
   return <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900">{children}</div>
 }
 
-export function AuthGate({ setupRequired, localDevelopment, requireLoginAfterSetup = false, onAuthenticated }) {
+export function AuthGate({ setupRequired, localDevelopment, loginHint, requireLoginAfterSetup = false, onAuthenticated }) {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [showSetup, setShowSetup] = useState(setupRequired)
-  const [values, setValues] = useState({ firmName: '', displayName: '', email: '', password: '', setupAuthorizationToken: '' })
+  const [showReset, setShowReset] = useState(false)
+  const [reset, setReset] = useState({ credential: '', password: '' })
+  const [values, setValues] = useState({ firmName: '', displayName: '', email: '', password: '', setupAuthorizationToken: '', keepSignedIn: false })
   const set = (key, value) => setValues(prev => ({ ...prev, [key]: value }))
+
+  useEffect(() => {
+    if (showSetup) return
+    if (loginHint?.email) setValues(current => current.email ? current : { ...current, email: loginHint.email })
+  }, [showSetup, loginHint])
 
   const submit = async (event) => {
     event.preventDefault()
@@ -82,17 +89,37 @@ export function AuthGate({ setupRequired, localDevelopment, requireLoginAfterSet
     }
   }
 
+  const completeReset = async event => {
+    event.preventDefault()
+    setError('')
+    setMessage('')
+    setBusy(true)
+    try {
+      const result = await window.api.completeEngagementPasswordReset(reset)
+      setShowReset(false)
+      setReset({ credential: '', password: '' })
+      setValues(current => ({ ...current, password: '', keepSignedIn: false }))
+      setMessage(result?.clientNotice || 'Password updated. Sign in with your new password.')
+    } catch (err) {
+      setError(err.message || 'Unable to reset the password.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="flex min-h-full items-center justify-center p-5">
-      <form onSubmit={submit} className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">{showSetup ? 'Secure first-run setup' : 'Firm access'}</p>
-        <h2 className="mt-1 text-xl font-bold text-gray-900">{showSetup ? 'Create the firm administrator' : 'Sign in to FSG Bharat'}</h2>
+      <form onSubmit={showReset ? completeReset : submit} className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">{showSetup ? 'Secure first-run setup' : showReset ? 'Account recovery' : 'Firm access'}</p>
+        <h2 className="mt-1 text-xl font-bold text-gray-900">{showSetup ? 'Create the firm administrator' : showReset ? 'Set a new password' : 'Sign in to FSG Bharat'}</h2>
         <p className="mt-2 text-sm leading-relaxed text-gray-500">
           {showSetup
             ? localDevelopment
               ? 'Create the first administrator for this firm workspace. After signing in, the administrator can add or invite firm users.'
               : 'The first account becomes the firm administrator. Enter the one-time setup authorization issued by the firm server administrator.'
-            : 'Use your firm account to continue to the workspace.'}
+            : showReset
+              ? 'Ask your firm administrator for a single-use reset credential. It expires after 30 minutes. No reset email is sent.'
+              : 'Use your firm account to continue to the workspace.'}
         </p>
         {showSetup && (
           <>
@@ -101,11 +128,25 @@ export function AuthGate({ setupRequired, localDevelopment, requireLoginAfterSet
             {!localDevelopment && <div className="mt-4"><Field label="One-time setup authorization"><Input required autoComplete="off" type="password" value={values.setupAuthorizationToken} onChange={e => set('setupAuthorizationToken', e.target.value)} /></Field></div>}
           </>
         )}
-        <div className="mt-4"><Field label="Work email"><Input required type="email" autoComplete="username" value={values.email} onChange={e => set('email', e.target.value)} /></Field></div>
-        <div className="mt-4"><Field label="Password" hint={showSetup ? 'Use at least 12 characters.' : undefined}><Input required type="password" autoComplete={showSetup ? 'new-password' : 'current-password'} value={values.password} onChange={e => set('password', e.target.value)} /></Field></div>
+        {!showReset && <div className="mt-4"><Field label="Work email"><Input required type="email" autoComplete="username" value={values.email} onChange={e => set('email', e.target.value)} /></Field></div>}
+        {!showReset && <div className="mt-4"><Field label="Password" hint={showSetup ? 'Use at least 12 characters.' : undefined}><Input required type="password" autoComplete={showSetup ? 'new-password' : 'current-password'} value={values.password} onChange={e => set('password', e.target.value)} /></Field></div>}
+        {showReset && <>
+          <div className="mt-5"><Field label="Single-use reset credential"><Input required autoComplete="off" type="password" value={reset.credential} onChange={e => setReset(current => ({ ...current, credential: e.target.value.trim() }))} /></Field></div>
+          <div className="mt-4"><Field label="New password" hint="At least 12 characters."><Input required minLength={12} type="password" autoComplete="new-password" value={reset.password} onChange={e => setReset(current => ({ ...current, password: e.target.value }))} /></Field></div>
+        </>}
+        {!showSetup && !showReset && <div className="mt-4 flex items-center justify-between gap-3">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={values.keepSignedIn} onChange={e => set('keepSignedIn', e.target.checked)} />
+            Keep me signed in on this Windows profile
+          </label>
+          <button type="button" className="shrink-0 text-sm font-medium text-blue-700 hover:underline" onClick={() => { setError(''); setShowReset(true) }}>Forgot password?</button>
+        </div>}
         {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
         {message && <p role="status" className="mt-4 text-sm text-green-700">{message}</p>}
-        <PrimaryButton type="submit" disabled={busy} className="mt-5 w-full">{busy ? 'Please wait…' : showSetup ? 'Create administrator' : 'Sign in'}</PrimaryButton>
+        <PrimaryButton type="submit" disabled={busy} className="mt-5 w-full">
+          {busy ? 'Please wait…' : showSetup ? 'Create administrator' : showReset ? 'Reset password' : 'Sign in'}
+        </PrimaryButton>
+        {showReset && <button type="button" className="mt-3 w-full text-sm font-medium text-gray-600 hover:underline" onClick={() => { setShowReset(false); setError('') }}>Back to sign in</button>}
       </form>
     </div>
   )
@@ -120,8 +161,8 @@ export function PasswordChange({ user, onChanged }) {
     setError('')
     setBusy(true)
     try {
-      await window.api.changeEngagementPassword(password)
-      onChanged({ ...user, mustChangePassword: false })
+      const result = await window.api.changeEngagementPassword(password)
+      onChanged({ ...user, mustChangePassword: false, ...(result?.clientNotice ? { signInStorageWarning: result.clientNotice } : {}) })
     } catch (err) {
       setError(err.message || 'Unable to update password.')
     } finally {
@@ -270,6 +311,7 @@ export function FirmTeam({ user }) {
   const [users, setUsers] = useState([])
   const [form, setForm] = useState({ displayName: '', email: '', jobTitle: 'employee' })
   const [createdUser, setCreatedUser] = useState(null)
+  const [resetCredential, setResetCredential] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -303,6 +345,20 @@ export function FirmTeam({ user }) {
       await load()
     } catch (err) {
       setError(err.message || 'Unable to add the team member.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const issueReset = async member => {
+    if (!window.confirm(`Issue a 30-minute, single-use password reset credential for ${member.displayName}?`)) return
+    setSaving(true)
+    setError('')
+    setResetCredential(null)
+    try {
+      setResetCredential(await window.api.issueEngagementPasswordReset(member.id))
+    } catch (err) {
+      setError(err.message || 'Unable to issue a password reset credential.')
     } finally {
       setSaving(false)
     }
@@ -346,6 +402,12 @@ export function FirmTeam({ user }) {
         <p className="mt-1 text-xs text-amber-800">{createdUser.user.displayName} · {createdUser.user.email}</p>
         <p className="mt-2 select-all break-all font-mono text-sm text-amber-950">{createdUser.initialPassword}</p>
       </div>}
+      {resetCredential && <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <p className="text-sm font-semibold text-amber-900">Share this single-use reset credential securely</p>
+        <p className="mt-1 text-xs text-amber-800">{resetCredential.displayName} · {resetCredential.email} · Expires {new Date(resetCredential.expiresAt).toLocaleString()}</p>
+        <p className="mt-2 select-all break-all font-mono text-sm text-amber-950">{resetCredential.credential}</p>
+        <p className="mt-2 text-xs text-amber-800">It is shown once here. The user must enter it on the sign-in screen and choose a new password.</p>
+      </div>}
       {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
       <section className="mt-6 overflow-hidden rounded-xl border border-gray-200 bg-white">
@@ -354,7 +416,10 @@ export function FirmTeam({ user }) {
           : users.length === 0 ? <p className="p-6 text-center text-sm text-gray-500">No team members have been added.</p>
             : <div className="divide-y divide-gray-100">{users.map(member => <div key={member.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
               <div><p className="text-sm font-medium text-gray-900">{member.displayName}</p><p className="text-xs text-gray-500">{member.email}</p></div>
-              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs capitalize text-gray-700">{member.jobTitle || member.role}</span>
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs capitalize text-gray-700">{member.jobTitle || member.role}</span>
+                <button type="button" disabled={saving} onClick={() => issueReset(member)} className="text-sm font-medium text-blue-700 hover:underline disabled:opacity-50">Issue reset</button>
+              </div>
             </div>)}</div>}
       </section>
     </div>

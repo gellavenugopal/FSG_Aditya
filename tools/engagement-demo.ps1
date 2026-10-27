@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true, Position = 0)]
-  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'generate-uae-tbs', 'generate-ifrs-testbed-tbs', 'ifrs-cases-create-ui', 'ifrs-cases-reopen-ui', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'uae-access-ui', 'uae-correct-output-ui', 'uae-workbook-export-ui', 'uae-word-export-ui', 'navigation-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui')]
+  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'generate-uae-tbs', 'generate-ifrs-testbed-tbs', 'ifrs-cases-create-ui', 'ifrs-cases-reopen-ui', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'uae-access-ui', 'uae-correct-output-ui', 'uae-workbook-export-ui', 'uae-word-export-ui', 'navigation-ui', 'auth-ui', 'auth-resume-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui')]
   [string]$Action
 )
 
@@ -350,6 +350,32 @@ switch ($Action) {
     try {
       & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-navigation-ui.mjs')
       if ($LASTEXITCODE -ne 0) { throw 'Engagement navigation visual verification failed.' }
+    } finally { Pop-Location }
+  }
+  'auth-ui' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    Set-DisposableTestEnvironment $state
+    Wait-ForDemoDesktop
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-auth-ui.mjs') fresh
+      if ($LASTEXITCODE -ne 0) { throw 'Fresh sign-in UI verification failed.' }
+    } finally { Pop-Location }
+  }
+  'auth-resume-ui' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    Set-DisposableTestEnvironment $state
+    Wait-ForDemoDesktop
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-auth-ui.mjs') resume
+      if ($LASTEXITCODE -ne 0) { throw 'Remembered sign-in and logout UI verification failed.' }
     } finally { Pop-Location }
   }
   'epipe-ui' {
