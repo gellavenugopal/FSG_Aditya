@@ -175,7 +175,7 @@ $env:FSG_UAE_WORD_REOPEN_ONLY = 'true'
 
 The reopen check does not create a new output. It verifies the existing engagement and saved UAE PDF v7 through the desktop, then confirms the Word file is an OOXML document and reports its hash. To export another Word copy, clear `FSG_UAE_WORD_REOPEN_ONLY`, choose a different path in `FSG_UAE_WORD_OUTPUT_PATH`, and run the same action. External Word edits remain in that document and do not update the engagement.
 
-The prior export opened normally in Microsoft Word, but its printed rendering has not been visually verified: Word's `ExportAsFixedFormat` stalled even for a minimal document. Do not treat package structure/page text checks as a visual print check. `npm run uae:word:test` tests baseline and non-zero OCI fixture documents without opening the desktop or connecting to a database.
+The latest export opened in a separate Microsoft Word process and paginated to 10 pages / 14 tables. Both Word `ExportAsFixedFormat` (previously even for a minimal document) and `SaveAs2` on this output stalled; no local alternate Office/PDF renderer is installed, so printed pages remain unverified. Do not treat successful DOCX opening, OOXML structure or page counts as visual print inspection. `npm run uae:word:test` tests baseline and non-zero OCI fixture documents without opening the desktop or connecting to a database.
 
 ## EPIPE test
 
