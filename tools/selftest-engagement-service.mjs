@@ -11,6 +11,7 @@ import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { startLocalEngagementService } from '../src/server/dev-engagement-service.js'
 import { DEFAULT_FINANCIAL_PERIODS, financialPeriodLabel } from '../src/shared/financial-periods.mjs'
+import { createEngagementPasswordRecord } from '../src/main/services/engagement-password.js'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const require = createRequire(import.meta.url)
@@ -403,6 +404,18 @@ try {
   check(statusAfterLogin.data.user?.id === adminLogin.user.id
     && statusAfterLogin.data.user.firmName === 'Synthetic Firm',
   'status refresh preserves the authenticated user and firm identity')
+  const otherTenantPassword = 'Other-Tenant-Admin-2026!'
+  const otherTenantRecord = await createEngagementPasswordRecord(otherTenantPassword)
+  const otherTenant = await pool.query(`INSERT INTO firms(name) VALUES ('Other Synthetic Tenant') RETURNING id`)
+  await pool.query(
+    `INSERT INTO firm_users(firm_id,email,display_name,job_title,password_salt,password_hash,role)
+     VALUES ($1,'other-admin@example.test','Other Tenant Admin','partner',$2,$3,'administrator')`,
+    [otherTenant.rows[0].id, otherTenantRecord.salt, otherTenantRecord.hash]
+  )
+  const otherTenantLogin = await login('other-admin@example.test', otherTenantPassword)
+  const otherTenantToken = otherTenantLogin.sessionToken
+  check(otherTenantLogin.user.firmId !== adminLogin.user.firmId,
+    'branding fixture uses two explicitly separate synthetic service firms')
   await fails('auth/setup', {
     email: 'second@example.test', firmName: 'Another Firm', displayName: 'Second Admin',
     password: 'Synthetic-Admin-Password!',
@@ -438,6 +451,39 @@ try {
   check(emptyFirmSettings.data.professionalFirms.length === 0
     && emptyFirmSettings.data.canManage,
   'administrator firm settings are scoped to the signed-in service firm')
+  const appearanceSaved = await ok('admin/appearance/save', {
+    settings: { displayName: 'Synthetic Tenant One', logoMimeType: 'image/svg+xml',
+      logoBase64: Buffer.from('<svg viewBox="0 0 1 1"><path d="M0 0"/></svg>').toString('base64'),
+      primaryColor: '#0f766e', fontFamily: 'Tahoma', fontFallback: 'Arial, sans-serif',
+      baseFontSize: 15, headingFontSize: 22, headingWeight: 700, density: 'compact' },
+  }, adminToken)
+  const otherAppearance = await ok('admin/appearance', {}, otherTenantToken)
+  check(appearanceSaved.data.settings.primaryColor === '#0f766e'
+    && appearanceSaved.data.settings.displayName === 'Synthetic Tenant One'
+    && Buffer.from(appearanceSaved.data.settings.logoBase64, 'base64').toString('utf8').startsWith('<svg')
+    && otherAppearance.data.settings.primaryColor === '#1e40af'
+    && otherAppearance.data.settings.displayName !== 'Synthetic Tenant One',
+  'application appearance persists per authenticated firm and does not cross tenant boundaries')
+  await fails('admin/appearance/save', { settings: { primaryColor: 'red' } }, adminToken, /hexadecimal/i)
+  await fails('admin/appearance/save', { settings: { logoMimeType: 'image/svg+xml',
+    logoBase64: Buffer.from('<svg onload="bad"></svg>').toString('base64') } }, adminToken, /active or externally linked/i)
+  await fails('admin/appearance/save', { settings: { primaryColor: '#abcdef' } }, ownerToken, /administrator/i)
+  const savedBrandStyle = await ok('admin/report-styles/save', {
+    name: 'Synthetic Corporate', settings: {
+      fontFamily: 'Tahoma', fontFallback: 'Arial, sans-serif', bodyFontSize: 10, headingFontSize: 14,
+      headingWeight: 700, logoPlacement: 'top-center', logoWidthMm: 45, headerText: 'Synthetic',
+      footerText: 'Draft', tableHeaderColor: '#123456', tableHeaderTextColor: '#ffffff',
+      tableStripeColor: '#f3f4f6', pageSize: 'A4', pageOrientation: 'portrait', pageMarginMm: 15,
+    },
+  }, adminToken)
+  const foreignStyles = await ok('admin/report-styles', {}, otherTenantToken)
+  check(savedBrandStyle.data.version === 1 && foreignStyles.data.length === 0,
+    'report style versions remain firm-scoped and hidden from a separate tenant')
+  const foreignStyle = await ok('admin/report-styles/save', {
+    name: 'Private other tenant style', settings: savedBrandStyle.data.settings,
+  }, otherTenantToken)
+  await fails('admin/report-styles/save', { name: 'Invalid', settings: { ...savedBrandStyle.data.settings, pageMarginMm: 50 } }, adminToken, /between 8 and 30/i)
+  await fails('admin/firm/source-preview', { websiteUrl: 'https://127.0.0.1/' }, adminToken, /restricted/i)
   await fails('admin/firm/save', {
     firmName: 'Synthetic Audit LLP', frn: 'FRN-TEST-001',
   }, ownerToken, /administrator/i)
@@ -470,6 +516,22 @@ try {
     && firmSettings.data.offices.some(item => Number(item.id) === office.data.id)
     && firmSettings.data.partners.find(item => Number(item.id) === partner.user.id)?.registration_number === 'M-TEST-1001',
   'firm logo, office contact and existing partner professional details persist in their existing masters')
+  const separateDemoProfile = await ok('admin/firm/save', {
+    firmName: 'Synthetic Audit LLP', frn: 'FRN-TEST-001', websiteUrl: 'https://example.test/',
+    profileStatus: 'demo', createSeparateProfile: true,
+    sourceUrls: ['https://example.test/'], sourceRetrievedAt: '2026-10-27T00:00:00.000Z',
+  }, adminToken)
+  const profilesAfterSeparateSave = await ok('admin/firm-settings', {}, adminToken)
+  const preservedStandardFirm = profilesAfterSeparateSave.data.professionalFirms.find(item => Number(item.id) === professionalFirm.data.id)
+  const separateDraft = profilesAfterSeparateSave.data.professionalFirms.find(item => Number(item.id) === separateDemoProfile.data.id)
+  check(separateDemoProfile.data.id !== professionalFirm.data.id
+    && profilesAfterSeparateSave.data.professionalFirms.length === 2
+    && preservedStandardFirm?.pan === 'ABCDE1234F'
+    && separateDraft?.profile_status === 'demo'
+    && separateDraft?.website_url === 'https://example.test/'
+    && separateDraft?.source_urls?.[0] === 'https://example.test/'
+    && !!separateDraft?.source_retrieved_at,
+  'explicit demo-profile save creates a separate master and leaves a matching existing professional firm untouched')
 
   await fails('list', {
     scope: 'all', userId: 1, role: 'administrator',
@@ -728,11 +790,25 @@ try {
     && finalSnapshotList.data[0].journal_watermark > finalSnapshotList.data[1].journal_watermark,
   'each journal cut produces a new immutable final TB version with a journal watermark')
 
+  await fails('reporting/style/select', {
+    engagementId, styleId: foreignStyle.data.id,
+  }, ownerToken, /not available to this firm/i)
+  await fails('reporting/style/select', {
+    engagementId: unrelatedEngagement.data.id, styleId: savedBrandStyle.data.id,
+  }, readerToken, /not found|access is not permitted/i)
+  const selectedStyle = await ok('reporting/style/select', {
+    engagementId, styleId: savedBrandStyle.data.id,
+  }, ownerToken)
+  check(selectedStyle.data.styleId === savedBrandStyle.data.id,
+    'report style selection is engagement-scoped and rejects another tenant’s style ID')
   const reportingData = await ok('reporting/data', {
     engagementId, trialBalanceId: finalSnapshot2.data.trialBalance.id,
   }, readerToken)
   check(reportingData.data.financialRows.length === 3 && reportingData.data.levelFormat.length === 3,
     'reader can view India statement inputs for an authorized final TB')
+  check(reportingData.data.reportStyle.id === savedBrandStyle.data.id
+    && reportingData.data.reportStyle.version === 1,
+  'reporting data resolves the engagement’s immutable firm-owned report style version')
   check(reportingData.data.reportingSelections.managementSignatoryIds[0] === orderedSignatoryIds[0]
     && reportingData.data.firmSettings.branding.logoBase64 === testLogo
     && reportingData.data.auditReport.fields.firmName === 'Synthetic Audit LLP'
@@ -778,6 +854,7 @@ try {
   const completedSettings = await ok('reporting/settings/save', { engagementId, fields: completedFields }, ownerToken)
   reportPayload.auditReportFields = completedSettings.data.fields
   reportPayload.reportIdentitySnapshot = reportingData.data.reportIdentitySnapshot
+  reportPayload.reportStyleSnapshot = reportingData.data.reportStyle
   const savedOutput = await ok('reporting/output/save', reportPayload, ownerToken)
   check(savedOutput.data.version === 1 && savedOutput.data.template_revision === 2
     && savedOutput.data.financial_data_sha256.length === 64,
@@ -788,10 +865,21 @@ try {
     && listedOutput?.approval_place === 'Approval City'
     && JSON.stringify(listedOutput?.approval_signatory_ids) === JSON.stringify(orderedSignatoryIds),
   'report output list restores its saved financial-statement approval date, place and ordered signatories')
+  check(listedOutput?.report_style_snapshot?.id === savedBrandStyle.data.id
+    && listedOutput?.report_style_snapshot?.version === 1,
+  'immutable output stores a report-style snapshot with its saved revision')
   const storedOutput = await ok('reporting/output/read', { outputId: savedOutput.data.id }, readerToken)
   const storedPdf = Buffer.from(storedOutput.data.pdfContentBase64, 'base64')
   const parsedPdf = await PDFDocument.load(storedPdf)
   check(parsedPdf.getPageCount() === 1, 'saved report PDF bytes survive a protected read and remain a valid PDF')
+  check(storedOutput.data.report_style_snapshot?.id === savedBrandStyle.data.id,
+    'saved report style snapshot is returned with output bytes after protected read')
+  const concurrentStyleCreates = await Promise.all(['Update A', 'Update B'].map(name => ok('admin/report-styles/save', {
+    name, settings: { ...savedBrandStyle.data.settings, tableHeaderColor: '#654321' },
+  }, adminToken)))
+  check(concurrentStyleCreates.map(item => item.data.version).sort((a, b) => a - b).join(',') === '2,3'
+    && (await ok('admin/report-styles', {}, adminToken)).data.some(item => item.id === savedBrandStyle.data.id && item.version === 1),
+  'concurrent report-style saves allocate distinct immutable versions without modifying the selected version')
   const savedDetails = await pool.query(
     `SELECT audit_report_fields->>'reportDate' AS report_date,
             signing_details->>'approvalDate' AS approval_date,
@@ -934,6 +1022,7 @@ try {
   await fails('finalise', { engagementId, place: 'Test City', date: '2026-03-31' }, adminToken, /assigned engagement partner/i)
   await fails('finalise', { engagementId, place: 'Test City', date: '2026-03-31' }, ownerToken, /assigned engagement partner/i)
   await ok('finalise', { engagementId, place: 'Test City', date: '2026-03-31' }, substituteToken)
+  await fails('reporting/style/select', { engagementId, styleId: savedBrandStyle.data.id }, ownerToken, /locked or finalised|edit access/i)
   await fails('trial-balance/import', {
     ...originalUpload, fileName: 'finalised.xlsx', fileContentBase64: syntheticTBFile(-86).toString('base64'),
   }, ownerToken, /locked or finalised/i)
@@ -1019,6 +1108,12 @@ try {
   serviceCa = service.clientOptions.ca
   await fails('list', { scope: 'all' }, oldToken, /sign in/i)
   const loggedBackIn = await login('admin@example.test', 'Synthetic-Admin-Password!')
+  const appearanceAfterRestart = await ok('admin/appearance', {}, loggedBackIn.sessionToken)
+  const stylesAfterRestart = await ok('admin/report-styles', {}, loggedBackIn.sessionToken)
+  check(appearanceAfterRestart.data.settings.primaryColor === '#0f766e'
+    && appearanceAfterRestart.data.settings.displayName === 'Synthetic Tenant One'
+    && stylesAfterRestart.data.some(item => item.id === savedBrandStyle.data.id && item.version === 1),
+  'firm appearance and immutable report-style versions survive service restart')
   const persistent = await ok('list', { scope: 'all' }, loggedBackIn.sessionToken)
   check(persistent.data.some(item => Number(item.id) === engagementId), 'saved engagement survives service restart and schema migration is repeatable')
   const persistedOutputs = await ok('reporting/outputs', { engagementId }, loggedBackIn.sessionToken)
@@ -1029,6 +1124,8 @@ try {
     && JSON.stringify(persistedVersionOne.approval_signatory_ids) === JSON.stringify(orderedSignatoryIds)
     && persistedOutputs.data.some(output => Number(output.id) === Number(revisedOutput.data.id) && output.version === 2),
   'saved PDF versions and selections survive service restart')
+  check(persistedVersionOne?.report_style_snapshot?.version === 1,
+    'saved output retains its original report style version after restart')
   const persistedPdf = await ok('reporting/output/read', { outputId: revisedOutput.data.id }, loggedBackIn.sessionToken)
   check(persistedPdf.data.pdfContentBase64 === revisedPdfBase64,
     'saved PDF bytes are unchanged after service restart')

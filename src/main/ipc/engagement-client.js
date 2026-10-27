@@ -1,8 +1,9 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import { request } from 'node:https'
 import { dialog } from 'electron'
-import { readFile, stat } from 'node:fs/promises'
-import { basename } from 'node:path'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { basename, join } from 'node:path'
+import { sanitizePublicSvg } from '../services/branding-domain.mjs'
 
 const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
 const sessions = new Map()
@@ -23,6 +24,11 @@ const OPERATIONS = {
   'engagementAdmin:listUsers': { path: 'admin/users', args: () => [] },
   'engagementAdmin:createUser': { path: 'admin/users/create', args: input => [input] },
   'engagementAdmin:firmSettings': { path: 'admin/firm-settings', args: () => [] },
+  'engagementAdmin:fetchPublicProfile': { path: 'admin/firm/source-preview', args: input => [input] },
+  'engagementAdmin:getAppearance': { path: 'admin/appearance', args: () => [] },
+  'engagementAdmin:saveAppearance': { path: 'admin/appearance/save', args: input => [input] },
+  'engagementAdmin:listReportStyles': { path: 'admin/report-styles', args: () => [] },
+  'engagementAdmin:saveReportStyle': { path: 'admin/report-styles/save', args: input => [input] },
   'engagementAdmin:saveProfessionalFirm': { path: 'admin/firm/save', args: input => [input] },
   'engagementAdmin:saveFirmOffice': { path: 'admin/office/save', args: input => [input] },
   'engagementAdmin:savePartnerProfile': { path: 'admin/partner/save', args: input => [input] },
@@ -59,6 +65,7 @@ const OPERATIONS = {
   'engagement:uaeDemoMappingsSave': { path: 'reporting/uae-demo-mappings/save', args: input => [input] },
   'engagement:reportingSettingsSave': { path: 'reporting/settings/save', args: input => [input] },
   'engagement:reportingSelectionsSave': { path: 'reporting/selections/save', args: input => [input] },
+  'engagement:reportStyleSelect': { path: 'reporting/style/select', args: input => [input] },
   'engagement:reportingSignatoryCreate': { path: 'reporting/signatory/create', args: input => [input] },
   'engagement:noteDisclosureSave': { path: 'reporting/note-disclosure/save', args: input => [input] },
   'engagement:reportOutputs': { path: 'reporting/outputs', args: id => [{ engagementId: id }] },
@@ -121,6 +128,19 @@ function post(url, payload, bearer, setupToken, ca) {
 }
 
 export function registerEngagementClientHandlers(handlerRegistry = ipcMain, options = {}) {
+  handlerRegistry.handle('engagementAdmin:getCachedLogo', async (event, profileId) => {
+    const session = sessions.get(event.sender.id)
+    const id = Number(profileId)
+    if (!session?.firmId || !Number.isSafeInteger(id) || id < 0) return null
+    const directory = join(app.getPath('userData'), 'approved-brand-logos', String(session.firmId))
+    for (const [mimeType, extension] of [['image/svg+xml', 'svg'], ['image/png', 'png'], ['image/jpeg', 'jpg']]) {
+      try {
+        const content = await readFile(join(directory, `${id}.${extension}`))
+        return { mimeType, contentBase64: content.toString('base64') }
+      } catch {}
+    }
+    return null
+  })
   for (const [channel, operation] of Object.entries(OPERATIONS)) {
     handlerRegistry.handle(channel, async (event, input, ...additionalArgs) => {
       if (options.startupError) throw new Error(options.startupError)
@@ -163,18 +183,43 @@ export function registerEngagementClientHandlers(handlerRegistry = ipcMain, opti
 
       if (channel === 'engagementAuth:login' || channel === 'engagementAuth:setup') {
         if (!response.sessionToken || !response.user) throw new Error('Engagement service did not establish a valid session.')
-        sessions.set(event.sender.id, { token: response.sessionToken, expiresAt: Date.now() + SESSION_MAX_AGE })
+        sessions.set(event.sender.id, { token: response.sessionToken, firmId: Number(response.user.firmId), expiresAt: Date.now() + SESSION_MAX_AGE })
         return response.user
       }
       if (channel === 'engagementAuth:logout') sessions.delete(event.sender.id)
       if (channel === 'engagementAuth:status' && !response.data?.user) sessions.delete(event.sender.id)
       if (session) session.expiresAt = Date.now() + SESSION_MAX_AGE
       if (channel === 'engagementAuth:status' && response.data) {
+        const user = response.data.user
+        if (user && session) session.firmId = Number(user.firmId)
         return {
           ...response.data,
           ...(options.localDevelopment ? { localDevelopment: true } : {}),
           ...(options.serviceOnlyMode ? { serviceOnlyMode: true } : {}),
         }
+      }
+      const currentSession = sessions.get(event.sender.id)
+      const logoEntries = [
+        ...(channel === 'engagementAdmin:firmSettings' ? response.data?.professionalFirms || [] : []),
+        ...(channel === 'engagement:reportingData' && response.data?.firmSettings?.branding
+          ? [response.data.firmSettings.branding] : []),
+      ]
+      for (const item of logoEntries) {
+        const profileId = Number(item.id)
+        const mimeType = item.logoMimeType || item.logo_mime_type
+        const encoded = item.logoBase64 || item.logo_base64
+        if (!currentSession?.firmId || !Number.isSafeInteger(profileId) || profileId <= 0
+          || !encoded || encoded.length > 1024 * 1024 || !['image/png', 'image/jpeg', 'image/svg+xml'].includes(mimeType)) continue
+        try {
+          const bytes = Buffer.from(encoded, 'base64')
+          if (bytes.toString('base64') !== encoded || bytes.length > 750 * 1024) continue
+          if (mimeType === 'image/svg+xml') sanitizePublicSvg(bytes.toString('utf8'))
+          else if (mimeType === 'image/png' && !bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) continue
+          else if (mimeType === 'image/jpeg' && !(bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)) continue
+          const directory = join(app.getPath('userData'), 'approved-brand-logos', String(currentSession.firmId))
+          await mkdir(directory, { recursive: true })
+          await writeFile(join(directory, `${profileId}.${mimeType === 'image/svg+xml' ? 'svg' : mimeType === 'image/png' ? 'png' : 'jpg'}`), bytes)
+        } catch {}
       }
       return response.data
     })

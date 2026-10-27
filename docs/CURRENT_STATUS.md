@@ -1,6 +1,6 @@
 # Current status
 
-Last updated: **2026-10-28**
+Last updated: **2026-10-27**
 
 ## Repository state
 
@@ -18,7 +18,18 @@ Last updated: **2026-10-28**
 - Responsive Reports and Exports layout checkpoint: `19ccc3b` — `ui: compact reporting exports at common viewports`. The combined PDF action, saved source revision and PDF/Excel/Word controls now sit side-by-side at both requested viewport widths; no push or merge has been performed.
 - No push or merge has been performed.
 
-## Current task and next action
+## Authorized firm branding checkpoint (2026-10-27)
+
+The branding foundation is implemented in code and covered by synthetic domain/service tests. It adds reusable professional firm/office fields, authenticated tenant-scoped application display name/logo and appearance, immutable firm-owned report-style versions, engagement style selection, and an immutable output style snapshot. Report styling is applied to the protected India/UAE combined PDF HTML, UAE Word export, and UAE Excel export. The Kreston Menon profile flow fetches only fixed allow-listed official pages, shows sources/retrieval time, returns an editable demo/draft, and requires explicit separate-profile creation and save. No registration/credentials or signing authority are inferred. Financial calculation inputs and values were not changed.
+
+- Verification passed: `npm run engagement:test` (110 assertions against disposable PostgreSQL, including tenant isolation, invalid appearance/logo inputs, authorization, report-style selection/output snapshots, and service restart persistence); `npm run branding:test`; `npm run build`; `npm run uae:test` (241 assertions); `npm run uae:word:test`; `npm run uae:workbook:test`; `node tools/selftest-fs-snapshot.mjs`; `node tools/selftest-final-signing.mjs`.
+- The first workbook-style regression rerun caught an incorrectly nested synthetic fixture property; the test fixture was corrected to pass the saved style snapshot through the same top-level contract as the desktop exporter, and the workbook suite then passed with the expected custom palette and print setup.
+- **Electron rendering is not verified.** An isolated Electron main-process probe loaded its module but did not reach `app.whenReady()` in this Windows shell; the render attempt was stopped without producing a PDF. The passing service/output tests and UAE Word/Excel builder tests are not evidence of actual Electron HTML-to-PDF rendering. No physical UI, login, print-layout, or client UAT is claimed.
+- **Viewport UAT is pending.** The 1366 × 768 and 1920 × 1080 screenshots documented in the previous navigation checkpoint predate this branding UI; no screenshots or authenticated visual verification were produced for the branding controls.
+- No persistent demo database, profile, engagement setting, financial data, reconciliation state, or saved output was read or modified. Repository handoff does not establish a separate Kreston demo service firm. Do not initialize/reset the existing cluster. Safe follow-up: provision a separate disposable demo DB and Electron `userData` profile, then run authenticated profile review/save and viewport/render UAT there.
+- The final local commit identifier is reported in the completion response; no push or merge is permitted.
+
+## Prior checkpoint: shared engagement navigation
 
 The shared engagement navigation redesign is implemented and verified through the normal isolated desktop. It provides left-side major sections, subsection tabs, a persistent engagement header, section-level save state, unsaved-edit discard confirmation, and a combined Reports and Exports view. Protected panels remain in the mounted workspace while navigating. A service-listing defect found during verification was fixed: the Trial Balance prior-year tab now receives the preceding-period import list through the desktop client and trusted service instead of falling back to the current-year import.
 

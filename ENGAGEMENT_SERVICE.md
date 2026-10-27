@@ -12,6 +12,20 @@ The engagement client keeps the service session after an authentication-status r
 
 The startup screen is an application-entry gate, not complete authorization for legacy data. Legacy financial IPC still has direct PostgreSQL access and does not enforce per-user engagement permissions. Do not treat the login gate as securing those operations or as production-ready multi-user isolation.
 
+## Firm branding and report style
+
+The authenticated **Firm Settings** workspace keeps the following records separate:
+
+- The authenticated service firm (`firms`) owns application appearance and immutable report-style versions.
+- Reusable professional firm and office masters (`auditor_firms`, `auditor_firm_offices`) hold public identity/contact/logo data. They are not entities, engagements, team memberships, professional signatory records, or evidence of signing authority.
+- Each engagement reporting set selects a report-style version. A generated saved PDF retains its exact bytes and a separate report-style snapshot; changing later style versions does not rewrite it.
+
+Administrators can edit application display name/logo, palette, Tahoma/fallback, base and heading sizes/weight, and compact/comfortable density. Settings are validated and saved by the trusted service using the authenticated session's firm ID; the renderer never supplies the tenant identity. A best-effort local cosmetic cache keeps the last approved app appearance available for the login screen and offline display; it does not authorize service operations. Application appearance is separate from report styles. Report style versions configure fonts, sizes/weight, logo placement/size, header/footer, table colours and page size/orientation/margins. The selected style is applied to protected combined PDFs and the UAE Word/Excel export builders. The style preview is synthetic and contains no client financial figures. The Electron render API uses a hidden `BrowserWindow`; however, the isolated Electron probe in this environment did not reach `app.whenReady()`, so no actual Electron-rendered PDF or branding print-layout UAT is claimed. Word's print rendering has not been physically reviewed. Approved SVG logos are sanitized and cached locally; current Word/Excel image embedding is limited to PNG/JPEG.
+
+The public-profile preview action only fetches the Kreston Menon website (HTTPS, allow-listed host, fixed home and Dubai contact pages, bounded responses and checked redirects). It shows source URLs and retrieval time and returns editable draft fields and the official vector logo. It does not save automatically. Applying the preview explicitly starts a separate `demo` auditor-firm record instead of matching/updating an existing firm; saving remains a separate action. The prefill records the published website, general email/phone and Dubai office contact/address only. It leaves FRN, PAN, credentials and partner/signatory selection blank and shows “Draft/demo”; it does not represent verification or signing authority. Approved logo bytes are cached below the isolated Electron `userData` directory by authenticated firm/profile ID for local preview when available.
+
+No persistent demo database, profile, engagement setting, or saved output was read or modified for this code change. The repository's current handoff does not establish a separate Kreston demo service firm. Do not re-run `init`, reset, or alter the existing persistent demo cluster to populate it. Safe follow-up: after explicit approval, provision a separate isolated demo database and Electron profile (not the existing FSG Isolated Demo Firm profile), use its normal first-administrator setup, sign in, fetch/review the public profile under **Firm Settings**, create the new demo firm and office, then create a report-style version and select it only for a new/suitable demo engagement. Keep existing settings and output revisions untouched.
+
 ## Disposable test mode
 
 Use the explicit disposable test mode for local desktop/service development. It is intentionally separate from ordinary development mode; an unset or incomplete test configuration fails before opening any database connection.

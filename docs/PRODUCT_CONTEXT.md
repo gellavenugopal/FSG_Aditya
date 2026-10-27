@@ -21,6 +21,8 @@ Reporting uses versioned template selections and application-generated paper boo
 
 The existing protected India basis remains legacy Schedule III in INR, without currency translation. A separate, limited **UAE Sample 01** synthetic AED demonstration path now exists; it does not constitute general UAE IFRS support or a validated production reporting pack. Preserve India calculations and disclosure behavior while maintaining both workflows.
 
+Firm application appearance, professional firm/office masters, report styles, engagements and signatory records are distinct. Appearance and immutable report-style versions are owned by the authenticated service firm. An engagement selects a report-style version, and each saved reporting output preserves the branding snapshot used at generation. Public-source firm prefill is editable, source-attributed and explicitly demo/draft; it does not imply registration, credential verification or signing authority. Do not populate an existing persistent demo firm or modify its outputs when a separate isolated demo profile has not been provisioned.
+
 ## Jurisdiction sequence and deployment scope
 
 The intended sequence is:

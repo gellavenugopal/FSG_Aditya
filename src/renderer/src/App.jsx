@@ -38,6 +38,21 @@ import AdjustmentNotice from './components/shared/AdjustmentNotice'
 import { undo as undoCategorisation, redo as redoCategorisation, canUndo as canUndoCat, canRedo as canRedoCat, subscribeUndo, peekUndoLabel, peekRedoLabel } from './utils/undoManager'
 
 const THEME_KEY = 'vera-theme'
+const DEFAULT_APP_APPEARANCE = {
+  displayName: 'FSG Bharat', logoMimeType: '', logoBase64: '',
+  primaryColor: '#1e40af', fontFamily: 'Tahoma', fontFallback: 'Arial, sans-serif',
+  baseFontSize: 14, headingFontSize: 20, headingWeight: 700, density: 'comfortable',
+}
+const APPEARANCE_LAST_FIRM_KEY = 'fsg-last-appearance-firm'
+
+function readCachedAppearance() {
+  try {
+    const firmId = localStorage.getItem(APPEARANCE_LAST_FIRM_KEY)
+    if (!firmId) return DEFAULT_APP_APPEARANCE
+    const cached = JSON.parse(localStorage.getItem(`fsg-firm-appearance:${firmId}`) || 'null')
+    return cached && typeof cached === 'object' ? { ...DEFAULT_APP_APPEARANCE, ...cached } : DEFAULT_APP_APPEARANCE
+  } catch { return DEFAULT_APP_APPEARANCE }
+}
 
 // trial_balances.uploaded_at is a TIMESTAMPTZ column — pg parses it into a
 // native JS Date on the main-process side, and Electron's IPC structured
@@ -95,7 +110,7 @@ const POPOUT = (() => {
   } catch { return null }
 })()
 
-function ApplicationWorkspace({ user, onSignOut, signingOut }) {
+function ApplicationWorkspace({ user, onSignOut, signingOut, appearance }) {
   const [activeTab, setActiveTab]     = useState((POPOUT && POPOUT.tab) || 'Auditee Details')
   const [entity, setEntity]           = useState(null)
   const [activeTB, setActiveTB]       = useState(null)
@@ -966,6 +981,10 @@ function ApplicationWorkspace({ user, onSignOut, signingOut }) {
       />
 
       <div className="flex shrink-0 items-center justify-end gap-3 border-b border-gray-100 bg-white px-4 py-1.5 text-xs text-gray-500">
+        <span className="mr-auto flex min-w-0 items-center gap-2 font-semibold text-gray-700">
+          {appearance.logoBase64 && <img alt="" src={`data:${appearance.logoMimeType};base64,${appearance.logoBase64}`} className="h-6 max-w-24 object-contain" />}
+          <span className="truncate">{appearance.displayName}</span>
+        </span>
         <span>{user.displayName} <span className="capitalize">({user.jobTitle || user.role})</span></span>
         <button disabled={signingOut} onClick={onSignOut} className="font-medium text-gray-600 hover:text-red-700 disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out'}</button>
       </div>
@@ -1058,6 +1077,7 @@ export default function App() {
   const [auth, setAuth] = useState({ loading: true, setupRequired: false, localDevelopment: false, serviceOnlyMode: false, localSetupAvailable: false, user: null, error: '' })
   const [signingOut, setSigningOut] = useState(false)
   const [showDatabaseSetup, setShowDatabaseSetup] = useState(false)
+  const [firmAppearance, setFirmAppearance] = useState(readCachedAppearance)
 
   const refreshAuth = useCallback(async () => {
     let localSetupAvailable = false
@@ -1079,6 +1099,51 @@ export default function App() {
   }, [])
 
   useEffect(() => { refreshAuth() }, [refreshAuth])
+
+  useEffect(() => {
+    if (!auth.user) {
+      setFirmAppearance(readCachedAppearance())
+      return undefined
+    }
+    let active = true
+    const applyAppearance = settings => {
+      if (!active || !settings) return
+      const normalized = { ...DEFAULT_APP_APPEARANCE, ...settings }
+      setFirmAppearance(normalized)
+      try {
+        localStorage.setItem(`fsg-firm-appearance:${auth.user.firmId}`, JSON.stringify(normalized))
+        localStorage.setItem(APPEARANCE_LAST_FIRM_KEY, String(auth.user.firmId))
+      } catch { /* Cosmetic cache is best-effort; authorization remains service-owned. */ }
+    }
+    const refreshAppearance = () => window.api.getFirmAppearance()
+      .then(result => applyAppearance(result?.settings))
+      .catch(() => {})
+    refreshAppearance()
+    const handleAppearanceUpdate = event => applyAppearance(event.detail)
+    window.addEventListener('fsg:appearance-updated', handleAppearanceUpdate)
+    const unsubscribe = window.api.onDataChanged(info => {
+      if (info?.channel === 'engagementAdmin:saveAppearance') refreshAppearance()
+    })
+    return () => {
+      active = false
+      window.removeEventListener('fsg:appearance-updated', handleAppearanceUpdate)
+      unsubscribe?.()
+    }
+  }, [auth.user?.firmId])
+
+  useEffect(() => {
+    const root = document.documentElement
+    const settings = firmAppearance
+    root.style.setProperty('--color-primary', settings.primaryColor)
+    root.style.setProperty('--color-primary-dark', `color-mix(in srgb, ${settings.primaryColor} 78%, #000)`)
+    root.style.setProperty('--color-primary-mid', `color-mix(in srgb, ${settings.primaryColor} 72%, #fff)`)
+    root.style.setProperty('--color-primary-light', `color-mix(in srgb, ${settings.primaryColor} 20%, #fff)`)
+    root.style.setProperty('--app-font-family', `${settings.fontFamily}, ${settings.fontFallback}`)
+    root.style.setProperty('--app-base-font-size', `${settings.baseFontSize}px`)
+    root.style.setProperty('--app-heading-font-size', `${settings.headingFontSize}px`)
+    root.style.setProperty('--app-heading-weight', String(settings.headingWeight))
+    document.body.setAttribute('data-app-density', settings.density)
+  }, [firmAppearance])
 
   const signOut = async () => {
     setSigningOut(true)
@@ -1125,6 +1190,10 @@ export default function App() {
   if (!auth.user) {
     return (
       <div className="flex h-screen flex-col overflow-y-auto bg-gray-50">
+        <header className="flex shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-5 py-3">
+          {firmAppearance.logoBase64 && <img alt="" src={`data:${firmAppearance.logoMimeType};base64,${firmAppearance.logoBase64}`} className="h-9 max-w-36 object-contain" />}
+          <span className="font-bold text-gray-900">{firmAppearance.displayName}</span>
+        </header>
         <AuthGate
           setupRequired={auth.setupRequired}
           localDevelopment={auth.localDevelopment}
@@ -1146,7 +1215,10 @@ export default function App() {
       <div className="flex h-screen min-h-0 flex-col bg-gray-50">
         <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-5 py-3">
           <div>
-            <p className="text-sm font-bold text-gray-900">FSG Bharat · Firm service</p>
+            <p className="flex items-center gap-2 text-sm font-bold text-gray-900">
+              {firmAppearance.logoBase64 && <img alt="" src={`data:${firmAppearance.logoMimeType};base64,${firmAppearance.logoBase64}`} className="h-7 max-w-28 object-contain" />}
+              {firmAppearance.displayName} · Firm service
+            </p>
             <p className="text-xs text-gray-500">
               Signed in as {auth.user.displayName} · {auth.user.firmName || 'Firm not identified'} · Protected engagement mode
             </p>
@@ -1162,5 +1234,5 @@ export default function App() {
       </div>
     )
   }
-  return <ApplicationWorkspace key={auth.user.id} user={auth.user} onSignOut={signOut} signingOut={signingOut} />
+  return <ApplicationWorkspace key={auth.user.id} user={auth.user} onSignOut={signOut} signingOut={signingOut} appearance={firmAppearance} />
 }

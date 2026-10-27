@@ -59,6 +59,10 @@ export async function ensureEngagementSchema(query) {
   await query(`ALTER TABLE auditor_firms ADD COLUMN IF NOT EXISTS phone TEXT`)
   await query(`ALTER TABLE auditor_firms ADD COLUMN IF NOT EXISTS logo_mime_type TEXT`)
   await query(`ALTER TABLE auditor_firms ADD COLUMN IF NOT EXISTS logo_data BYTEA`)
+  await query(`ALTER TABLE auditor_firms ADD COLUMN IF NOT EXISTS website_url TEXT`)
+  await query(`ALTER TABLE auditor_firms ADD COLUMN IF NOT EXISTS profile_status TEXT NOT NULL DEFAULT 'standard'`)
+  await query(`ALTER TABLE auditor_firms ADD COLUMN IF NOT EXISTS source_urls JSONB NOT NULL DEFAULT '[]'`)
+  await query(`ALTER TABLE auditor_firms ADD COLUMN IF NOT EXISTS source_retrieved_at TIMESTAMPTZ`)
   await query(`CREATE INDEX IF NOT EXISTS idx_auditor_firms_service_firm ON auditor_firms(service_firm_id)`)
 
   await query(`
@@ -75,6 +79,8 @@ export async function ensureEngagementSchema(query) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `)
+  await query(`ALTER TABLE auditor_firm_offices ADD COLUMN IF NOT EXISTS source_url TEXT`)
+  await query(`ALTER TABLE auditor_firm_offices ADD COLUMN IF NOT EXISTS source_retrieved_at TIMESTAMPTZ`)
   await query(`CREATE INDEX IF NOT EXISTS idx_auditor_firm_offices_firm ON auditor_firm_offices(service_firm_id,auditor_firm_id,is_active)`)
 
   await query(`
@@ -162,6 +168,28 @@ export async function ensureEngagementSchema(query) {
   await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS responsible_office_id INTEGER REFERENCES auditor_firm_offices(id) ON DELETE RESTRICT`)
   await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS branding_auditor_firm_id INTEGER REFERENCES auditor_firms(id) ON DELETE RESTRICT`)
   await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS management_signatory_ids JSONB NOT NULL DEFAULT '[]'`)
+  await query(`
+    CREATE TABLE IF NOT EXISTS firm_appearance_settings (
+      firm_id INTEGER PRIMARY KEY REFERENCES firms(id) ON DELETE CASCADE,
+      settings JSONB NOT NULL,
+      updated_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `)
+  await query(`
+    CREATE TABLE IF NOT EXISTS firm_report_styles (
+      id BIGSERIAL PRIMARY KEY,
+      firm_id INTEGER NOT NULL REFERENCES firms(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL CHECK (version > 0),
+      name TEXT NOT NULL,
+      settings JSONB NOT NULL,
+      created_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (firm_id,version)
+    )
+  `)
+  await query(`CREATE INDEX IF NOT EXISTS idx_firm_report_styles_firm ON firm_report_styles(firm_id,version DESC)`)
+  await query(`ALTER TABLE engagement_reporting_sets ADD COLUMN IF NOT EXISTS report_style_id BIGINT REFERENCES firm_report_styles(id) ON DELETE RESTRICT`)
 
   await query(`
     CREATE TABLE IF NOT EXISTS engagement_memberships (
@@ -339,6 +367,7 @@ export async function ensureEngagementSchema(query) {
       UNIQUE (engagement_id, version)
     )
   `)
+  await query(`ALTER TABLE engagement_report_outputs ADD COLUMN IF NOT EXISTS report_style_snapshot JSONB NOT NULL DEFAULT '{}'`)
   await query(`CREATE INDEX IF NOT EXISTS idx_engagement_report_outputs_context ON engagement_report_outputs(engagement_id, created_at DESC)`)
 
   await query(`

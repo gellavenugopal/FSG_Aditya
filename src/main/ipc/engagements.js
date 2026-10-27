@@ -5,6 +5,10 @@ import { runMappingEngine, persistMappingResults } from '../services/mapping-eng
 import { createEngagementPasswordRecord, verifyEngagementPassword } from '../services/engagement-password.js'
 import { financialPeriodLabel } from '../../shared/financial-periods.mjs'
 import {
+  DEFAULT_APPEARANCE, DEFAULT_REPORT_STYLE, extractKrestonPublicProfile, sanitizePublicSvg,
+  validateAppearance, validatePublicProfileUrl, validateReportStyle,
+} from '../services/branding-domain.mjs'
+import {
   canEditEngagement, canFinaliseEngagement, canViewEngagement,
   isValidDateOnly, validateActivation, validateEngagementDraft,
 } from '../services/engagement-domain.js'
@@ -17,6 +21,40 @@ const BOOTSTRAP_LOCK = 517203841
 
 function cleanEmail(value) {
   return String(value || '').trim().toLowerCase()
+}
+
+async function fetchKrestonPublicResource(initialUrl, expectedType) {
+  let url = new URL(initialUrl)
+  for (let redirects = 0; redirects <= 3; redirects += 1) {
+    if (url.protocol !== 'https:' || !['www.krestonmenon.com', 'krestonmenon.com'].includes(url.hostname.toLowerCase())
+      || url.username || url.password) throw new Error('Public profile fetch was redirected outside the official website.')
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 9000)
+    let response
+    let bytes
+    try {
+      response = await fetch(url, { method: 'GET', redirect: 'manual', signal: controller.signal, headers: { accept: expectedType } })
+      if (![301, 302, 303, 307, 308].includes(response.status)) {
+        const contentType = String(response.headers.get('content-type') || '').toLowerCase()
+        if (!response.ok) throw new Error(`The official website returned HTTP ${response.status}.`)
+        if (!contentType.includes(expectedType.split('/')[0])) throw new Error('The official website returned an unexpected content type.')
+        const declaredLength = Number(response.headers.get('content-length') || 0)
+        if (declaredLength > 1024 * 1024) throw new Error('The public profile source exceeds the 1 MB limit.')
+        bytes = Buffer.from(await response.arrayBuffer())
+        if (bytes.length > 1024 * 1024) throw new Error('The public profile source exceeds the 1 MB limit.')
+      }
+    } finally {
+      clearTimeout(timer)
+    }
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get('location')
+      if (!location || redirects === 3) throw new Error('The official website redirected too many times.')
+      url = new URL(location, url)
+      continue
+    }
+    return { url: url.toString(), contentType: String(response.headers.get('content-type') || '').toLowerCase(), bytes }
+  }
+  throw new Error('Unable to fetch the official website.')
 }
 
 function dateOnly(value) {
@@ -74,7 +112,7 @@ async function fetchEngagement(firmId, engagementId) {
             rs.id AS reporting_set_id, rs.jurisdiction, rs.accounting_framework,
             rs.reporting_pack_id, rs.reporting_pack_version, rs.trial_balance_currency,
             rs.presentation_currency, rs.display_scale, rs.decimal_places,
-            rs.template_selections, rs.entity_period_id, rs.compatibility_confirmed,
+            rs.template_selections, rs.entity_period_id, rs.compatibility_confirmed,rs.report_style_id,
             fp.year_label AS period_label, fp.date_from, fp.date_till, ep.locked, ep.is_final
      FROM engagements e
      JOIN entities en ON en.id = e.entity_id
@@ -573,12 +611,13 @@ export function registerEngagementHandlers(ipcMain, database) {
     const actor = await authenticated(event)
     const { rows: professionalFirms } = await query(
       `SELECT id,firm_name,frn,pan,address,email,phone,is_active,logo_mime_type,
+              website_url,profile_status,source_urls,source_retrieved_at,
               replace(encode(logo_data,'base64'),E'\\n','') AS logo_base64
        FROM auditor_firms WHERE service_firm_id=$1 ORDER BY firm_name,id`,
       [actor.firmId]
     )
     const { rows: offices } = await query(
-      `SELECT id,auditor_firm_id,office_name,address,phone,email,is_active
+      `SELECT id,auditor_firm_id,office_name,address,phone,email,is_active,source_url,source_retrieved_at
        FROM auditor_firm_offices WHERE service_firm_id=$1 ORDER BY auditor_firm_id,office_name,id`,
       [actor.firmId]
     )
@@ -604,6 +643,81 @@ export function registerEngagementHandlers(ipcMain, database) {
     }
   })
 
+  ipcMain.handle('engagementAdmin:fetchPublicProfile', async (event, input = {}) => {
+    const actor = await authenticated(event)
+    if (actor.role !== 'administrator') throw new Error('Administrator access is required.')
+    const requestedUrl = validatePublicProfileUrl(input.websiteUrl || 'https://www.krestonmenon.com/')
+    const home = await fetchKrestonPublicResource('https://www.krestonmenon.com/', 'text/html')
+    const contact = await fetchKrestonPublicResource('https://www.krestonmenon.com/contact-us/dubai/', 'text/html')
+    const retrievedAt = new Date().toISOString()
+    const preview = extractKrestonPublicProfile(home.bytes.toString('utf8'), contact.bytes.toString('utf8'), retrievedAt)
+    const logo = await fetchKrestonPublicResource(preview.logoUrl, 'image/svg+xml')
+    const sanitizedLogo = sanitizePublicSvg(logo.bytes.toString('utf8'))
+    return {
+      preview,
+      logoMimeType: 'image/svg+xml',
+      logoBase64: Buffer.from(sanitizedLogo, 'utf8').toString('base64'),
+      requestedUrl: requestedUrl.toString(),
+    }
+  })
+
+  ipcMain.handle('engagementAdmin:getAppearance', async event => {
+    const actor = await authenticated(event)
+    const { rows: [row] } = await query(
+      `SELECT settings FROM firm_appearance_settings WHERE firm_id=$1`,
+      [actor.firmId]
+    )
+    return { settings: validateAppearance(row?.settings || DEFAULT_APPEARANCE), canManage: actor.role === 'administrator' }
+  })
+
+  ipcMain.handle('engagementAdmin:saveAppearance', async (event, input = {}) => {
+    const actor = await authenticated(event)
+    if (actor.role !== 'administrator') throw new Error('Administrator access is required.')
+    const settings = validateAppearance(input.settings)
+    await runInTransaction(async () => {
+      await query(
+        `INSERT INTO firm_appearance_settings (firm_id,settings,updated_by)
+         VALUES ($1,$2::jsonb,$3)
+         ON CONFLICT (firm_id) DO UPDATE SET settings=EXCLUDED.settings,updated_by=EXCLUDED.updated_by,updated_at=now()`,
+        [actor.firmId, JSON.stringify(settings), actor.id]
+      )
+      await logAudit(actor, 'firm.appearance_updated', null, { density: settings.density, fontFamily: settings.fontFamily })
+    })
+    return { settings, saved: true }
+  })
+
+  ipcMain.handle('engagementAdmin:listReportStyles', async event => {
+    const actor = await authenticated(event)
+    const { rows } = await query(
+      `SELECT id,version,name,settings,created_at FROM firm_report_styles
+       WHERE firm_id=$1 ORDER BY version DESC`,
+      [actor.firmId]
+    )
+    return rows.map(row => ({ ...row, id: Number(row.id), version: Number(row.version), settings: validateReportStyle(row.settings) }))
+  })
+
+  ipcMain.handle('engagementAdmin:saveReportStyle', async (event, input = {}) => {
+    const actor = await authenticated(event)
+    if (actor.role !== 'administrator') throw new Error('Administrator access is required.')
+    const name = String(input.name || '').trim()
+    if (!name || name.length > 100) throw new Error('Report style name is required and limited to 100 characters.')
+    const settings = validateReportStyle(input.settings)
+    return runInTransaction(async () => {
+      await query(`SELECT id FROM firms WHERE id=$1 FOR UPDATE`, [actor.firmId])
+      const { rows: [version] } = await query(
+        `SELECT COALESCE(MAX(version),0)::integer+1 AS next_version FROM firm_report_styles WHERE firm_id=$1`,
+        [actor.firmId]
+      )
+      const { rows: [style] } = await query(
+        `INSERT INTO firm_report_styles (firm_id,version,name,settings,created_by)
+         VALUES ($1,$2,$3,$4::jsonb,$5) RETURNING id,version,name,settings,created_at`,
+        [actor.firmId, version.next_version, name, JSON.stringify(settings), actor.id]
+      )
+      await logAudit(actor, 'firm.report_style_version_created', null, { styleId: Number(style.id), version: Number(style.version) })
+      return { ...style, id: Number(style.id), version: Number(style.version), settings }
+    })
+  })
+
   ipcMain.handle('engagementAdmin:saveProfessionalFirm', async (event, input = {}) => {
     const actor = await authenticated(event)
     if (actor.role !== 'administrator') throw new Error('Administrator access is required.')
@@ -614,8 +728,18 @@ export function registerEngagementHandlers(ipcMain, database) {
     const email = String(input.email || '').trim()
     const phone = String(input.phone || '').trim()
     const clearLogo = input.clearLogo === true
+    const createSeparateProfile = input.createSeparateProfile === true
+    const websiteUrl = String(input.websiteUrl || '').trim()
+    const profileStatus = String(input.profileStatus || 'standard')
+    const sourceUrls = Array.isArray(input.sourceUrls) ? input.sourceUrls.map(item => String(item || '').trim()).filter(Boolean) : null
+    const sourceRetrievedAt = String(input.sourceRetrievedAt || '').trim()
     if (!firmName || firmName.length > 255 || frn.length > 100 || pan.length > 50
-      || address.length > 2000 || email.length > 255 || phone.length > 100) {
+      || address.length > 2000 || email.length > 255 || phone.length > 100
+      || websiteUrl.length > 512 || (websiteUrl && (!/^https:\/\//i.test(websiteUrl) || !URL.canParse(websiteUrl)))
+      || !['standard', 'demo'].includes(profileStatus)
+      || (createSeparateProfile && (input.id || profileStatus !== 'demo'))
+      || (sourceRetrievedAt && !Number.isFinite(Date.parse(sourceRetrievedAt)))
+      || (sourceUrls && (sourceUrls.length > 10 || sourceUrls.some(value => value.length > 512 || !/^https:\/\//i.test(value) || !URL.canParse(value))))) {
       throw new Error('Enter valid firm details within the allowed lengths.')
     }
     const active = input.isActive !== false
@@ -624,7 +748,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     if (input.logoBase64) {
       const encoded = String(input.logoBase64)
       if (encoded.length > 1024 * 1024 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
-        throw new Error('Choose a PNG or JPEG logo no larger than 750 KB.')
+        throw new Error('Choose a PNG, JPEG or approved SVG logo no larger than 750 KB.')
       }
       logo = Buffer.from(encoded, 'base64')
       if (logo.length > 750 * 1024 || logo.toString('base64') !== encoded) throw new Error('Choose a PNG or JPEG logo no larger than 750 KB.')
@@ -632,8 +756,12 @@ export function registerEngagementHandlers(ipcMain, database) {
         logoMime = 'image/png'
       } else if (input.logoMimeType === 'image/jpeg' && logo[0] === 0xff && logo[1] === 0xd8 && logo[2] === 0xff) {
         logoMime = 'image/jpeg'
+      } else if (input.logoMimeType === 'image/svg+xml') {
+        const sanitized = sanitizePublicSvg(logo.toString('utf8'))
+        logo = Buffer.from(sanitized, 'utf8')
+        logoMime = 'image/svg+xml'
       } else {
-        throw new Error('The selected logo content does not match its PNG or JPEG file type.')
+        throw new Error('The selected logo content does not match its PNG, JPEG or approved SVG file type.')
       }
     } else if (input.logoMimeType) {
       throw new Error('Logo data is required when specifying a logo file type.')
@@ -653,15 +781,22 @@ export function registerEngagementHandlers(ipcMain, database) {
         const { rows: [updated] } = await query(
           `UPDATE auditor_firms SET service_firm_id=$1,firm_name=$2,frn=$3,pan=$4,address=$5,email=$6,phone=$7,
              is_active=$8,logo_mime_type=CASE WHEN $9 THEN $10 WHEN $12 THEN NULL ELSE logo_mime_type END,
-             logo_data=CASE WHEN $9 THEN $11::bytea WHEN $12 THEN NULL ELSE logo_data END
+             logo_data=CASE WHEN $9 THEN $11::bytea WHEN $12 THEN NULL ELSE logo_data END,
+             website_url=CASE WHEN $14 THEN NULLIF($15,'') ELSE website_url END,
+             profile_status=$16,
+             source_urls=CASE WHEN $17 THEN $18::jsonb ELSE source_urls END,
+             source_retrieved_at=CASE WHEN $19 THEN NULLIF($20,'')::timestamptz ELSE source_retrieved_at END
            WHERE id=$13 RETURNING id,firm_name,frn,is_active`,
           [actor.firmId, firmName, frn || null, pan || null, address || null, email || null, phone || null,
-            active, !!logo, logoMime, logo, clearLogo && !logo, id]
+            active, !!logo, logoMime, logo, clearLogo && !logo, id, Object.hasOwn(input, 'websiteUrl'), websiteUrl,
+            profileStatus, !!sourceUrls, JSON.stringify(sourceUrls || []), !!sourceRetrievedAt, sourceRetrievedAt]
         )
         row = updated
       } else {
         if (id) throw new Error('Choose a valid professional firm.')
-        const { rows: [existing] } = await query(
+        const { rows: [existing] } = createSeparateProfile
+          ? { rows: [] }
+          : await query(
           `SELECT id,service_firm_id FROM auditor_firms
            WHERE lower(btrim(firm_name))=lower(btrim($1))
              AND COALESCE(btrim(frn),'')=COALESCE(btrim($2),'')
@@ -675,20 +810,26 @@ export function registerEngagementHandlers(ipcMain, database) {
           const { rows: [updated] } = await query(
             `UPDATE auditor_firms SET service_firm_id=$1,firm_name=$2,frn=$3,pan=$4,address=$5,email=$6,phone=$7,
                is_active=$8,logo_mime_type=CASE WHEN $9 THEN $10 WHEN $12 THEN NULL ELSE logo_mime_type END,
-               logo_data=CASE WHEN $9 THEN $11::bytea WHEN $12 THEN NULL ELSE logo_data END
+               logo_data=CASE WHEN $9 THEN $11::bytea WHEN $12 THEN NULL ELSE logo_data END,
+               website_url=CASE WHEN $14 THEN NULLIF($15,'') ELSE website_url END,
+               profile_status=$16,
+               source_urls=CASE WHEN $17 THEN $18::jsonb ELSE source_urls END,
+               source_retrieved_at=CASE WHEN $19 THEN NULLIF($20,'')::timestamptz ELSE source_retrieved_at END
              WHERE id=$13 RETURNING id,firm_name,frn,is_active`,
             [actor.firmId, firmName, frn || null, pan || null, address || null, email || null, phone || null,
-              active, !!logo, logoMime, logo, clearLogo && !logo, existing.id]
+              active, !!logo, logoMime, logo, clearLogo && !logo, existing.id, Object.hasOwn(input, 'websiteUrl'), websiteUrl,
+              profileStatus, !!sourceUrls, JSON.stringify(sourceUrls || []), !!sourceRetrievedAt, sourceRetrievedAt]
           )
           row = updated
         } else {
           const { rows: [created] } = await query(
             `INSERT INTO auditor_firms
-               (service_firm_id,firm_name,frn,pan,address,email,phone,is_active,logo_mime_type,logo_data)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+               (service_firm_id,firm_name,frn,pan,address,email,phone,is_active,logo_mime_type,logo_data,
+                website_url,profile_status,source_urls,source_retrieved_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,NULLIF($14,'')::timestamptz)
              RETURNING id,firm_name,frn,is_active`,
             [actor.firmId, firmName, frn || null, pan || null, address || null, email || null,
-              phone || null, active, logoMime, logo]
+              phone || null, active, logoMime, logo, websiteUrl || null, profileStatus, JSON.stringify(sourceUrls || []), sourceRetrievedAt]
           )
           row = created
         }
@@ -706,8 +847,12 @@ export function registerEngagementHandlers(ipcMain, database) {
     const address = String(input.address || '').trim()
     const phone = String(input.phone || '').trim()
     const email = String(input.email || '').trim()
+    const sourceUrl = String(input.sourceUrl || '').trim()
+    const sourceRetrievedAt = String(input.sourceRetrievedAt || '').trim()
     if (!Number.isSafeInteger(auditorFirmId) || auditorFirmId <= 0 || !officeName || officeName.length > 255
-      || !address || address.length > 2000 || phone.length > 100 || email.length > 255) {
+      || !address || address.length > 2000 || phone.length > 100 || email.length > 255
+      || sourceUrl.length > 512 || (sourceUrl && (!/^https:\/\//i.test(sourceUrl) || !URL.canParse(sourceUrl)))
+      || (sourceRetrievedAt && !Number.isFinite(Date.parse(sourceRetrievedAt)))) {
       throw new Error('Enter a valid office name, address and contact details.')
     }
     const { rows: [professionalFirm] } = await query(
@@ -720,15 +865,18 @@ export function registerEngagementHandlers(ipcMain, database) {
     const { rows: [office] } = officeId
       ? await query(
         `UPDATE auditor_firm_offices SET auditor_firm_id=$1,office_name=$2,address=$3,phone=$4,email=$5,
-           is_active=$6,updated_at=now()
+           is_active=$6,source_url=CASE WHEN $9 THEN NULLIF($10,'') ELSE source_url END,
+           source_retrieved_at=CASE WHEN $11 THEN NULLIF($12,'')::timestamptz ELSE source_retrieved_at END,
+           updated_at=now()
          WHERE id=$7 AND service_firm_id=$8 RETURNING id,auditor_firm_id,office_name,is_active`,
-        [auditorFirmId, officeName, address, phone || null, email || null, input.isActive !== false, officeId, actor.firmId]
+        [auditorFirmId, officeName, address, phone || null, email || null, input.isActive !== false, officeId, actor.firmId,
+          Object.hasOwn(input, 'sourceUrl'), sourceUrl, !!sourceRetrievedAt, sourceRetrievedAt]
       )
       : await query(
         `INSERT INTO auditor_firm_offices
-           (service_firm_id,auditor_firm_id,office_name,address,phone,email,is_active)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,auditor_firm_id,office_name,is_active`,
-        [actor.firmId, auditorFirmId, officeName, address, phone || null, email || null, input.isActive !== false]
+           (service_firm_id,auditor_firm_id,office_name,address,phone,email,is_active,source_url,source_retrieved_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,'')::timestamptz) RETURNING id,auditor_firm_id,office_name,is_active`,
+        [actor.firmId, auditorFirmId, officeName, address, phone || null, email || null, input.isActive !== false, sourceUrl || null, sourceRetrievedAt]
       )
     if (!office) throw new Error('This office is not available to your firm.')
     await logAudit(actor, 'firm.office_updated', null, { officeId: Number(office.id), auditorFirmId })
@@ -2001,6 +2149,17 @@ export function registerEngagementHandlers(ipcMain, database) {
     const user = await authenticated(event)
     const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
     const { engagement, trialBalance } = context
+    const { rows: reportStyles } = await query(
+      `SELECT id,version,name,settings FROM firm_report_styles WHERE firm_id=$1 ORDER BY version DESC`,
+      [user.firmId]
+    )
+    const selectedReportStyle = reportStyles.find(style => Number(style.id) === Number(engagement.report_style_id)) || null
+    const reportStyle = selectedReportStyle
+      ? {
+        id: Number(selectedReportStyle.id), version: Number(selectedReportStyle.version),
+        name: selectedReportStyle.name, settings: validateReportStyle(selectedReportStyle.settings),
+      }
+      : { id: null, version: 0, name: 'Default report style', settings: DEFAULT_REPORT_STYLE }
     if (engagement.reporting_pack_id === 'AE_UAE_DEMO') {
       await assertUaeDemoPack(engagement)
       const { rows: [snapshot] } = await query(
@@ -2116,6 +2275,8 @@ export function registerEngagementHandlers(ipcMain, database) {
         },
         reportingSelections: identity.selection,
         reportIdentitySnapshot: identity.identitySnapshot,
+        reportStyle,
+        reportStyles: reportStyles.map(style => ({ id: Number(style.id), version: Number(style.version), name: style.name })),
         auditReport: {
           ...(reportSettings || { template_id: 'uae-demo-v1', revision: 0, fields: {} }),
           fields: { ...validateAuditReportFields(reportSettings?.fields || {}), ...identity.fields },
@@ -2278,6 +2439,8 @@ export function registerEngagementHandlers(ipcMain, database) {
       },
       reportingSelections: identity.selection,
       reportIdentitySnapshot: identity.identitySnapshot,
+      reportStyle,
+      reportStyles: reportStyles.map(style => ({ id: Number(style.id), version: Number(style.version), name: style.name })),
       auditReport: {
         ...(reportSettings || { template_id: 'india-basic-v1', revision: 0, fields: {} }),
         fields: { ...validateAuditReportFields(reportSettings?.fields || {}), ...identity.fields },
@@ -2432,6 +2595,31 @@ export function registerEngagementHandlers(ipcMain, database) {
       await logAudit(user, 'audit_report.template_updated', engagement.id, { revision: settings.revision })
       return settings
     })
+  })
+
+  ipcMain.handle('engagement:reportStyleSelect', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertEngagementTBContext(user, input.engagementId)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    const styleId = input.styleId == null || input.styleId === '' ? null : Number(input.styleId)
+    if (styleId !== null && (!Number.isSafeInteger(styleId) || styleId <= 0)) throw new Error('Choose a valid report style.')
+    if (styleId !== null) {
+      const { rows: [style] } = await query(
+        `SELECT id FROM firm_report_styles WHERE id=$1 AND firm_id=$2`,
+        [styleId, user.firmId]
+      )
+      if (!style) throw new Error('The selected report style is not available to this firm.')
+    }
+    await runInTransaction(async () => {
+      await query(
+        `UPDATE engagement_reporting_sets SET report_style_id=$1,updated_at=now()
+         WHERE id=$2 AND engagement_id=$3`,
+        [styleId, context.engagement.reporting_set_id, context.engagement.id]
+      )
+      await logAudit(user, 'report.style_selected', context.engagement.id, { styleId })
+    })
+    return { ok: true, styleId }
   })
 
   ipcMain.handle('engagement:reportingSignatoryCreate', async (event, input = {}) => {
@@ -2608,9 +2796,27 @@ export function registerEngagementHandlers(ipcMain, database) {
       fields: {},
     }
     const identity = await reportingIdentity(context.engagement)
+    let reportStyleSnapshot = {
+      id: null, version: 0, name: 'Default report style', settings: DEFAULT_REPORT_STYLE,
+    }
+    if (context.engagement.report_style_id != null) {
+      const { rows: [selectedStyle] } = await query(
+        `SELECT id,version,name,settings FROM firm_report_styles WHERE id=$1 AND firm_id=$2`,
+        [context.engagement.report_style_id, user.firmId]
+      )
+      if (!selectedStyle) throw new Error('The engagement report style is unavailable to this firm.')
+      reportStyleSnapshot = {
+        id: Number(selectedStyle.id), version: Number(selectedStyle.version), name: selectedStyle.name,
+        settings: validateReportStyle(selectedStyle.settings),
+      }
+    }
     const fields = { ...validateAuditReportFields(settings.fields), ...identity.fields }
     if (!fields.opinion || !fields.reportDate || !fields.reportPlace) {
       throw new Error('Complete the auditor-entered opinion, audit report date and place before generating the final PDF.')
+    }
+    if (reportStyleSnapshot.id !== null
+      && JSON.stringify(input.reportStyleSnapshot) !== JSON.stringify(reportStyleSnapshot)) {
+      throw new Error('The selected report style changed while the PDF was being generated. Refresh and generate again.')
     }
     if (!input.reportIdentitySnapshot || JSON.stringify(input.reportIdentitySnapshot) !== JSON.stringify(identity.identitySnapshot)) {
       throw new Error('Firm, office, partner or branding details changed while the PDF was being generated. Refresh the engagement and generate again.')
@@ -2653,11 +2859,15 @@ export function registerEngagementHandlers(ipcMain, database) {
          JOIN engagement_reporting_sets rs ON rs.engagement_id=e.id
          JOIN entity_periods ep ON ep.id=rs.entity_period_id
          WHERE e.id=$1 AND e.firm_id=$2 AND rs.id=$3
-         FOR UPDATE OF e,ep`,
+         FOR UPDATE OF e,ep,rs`,
         [context.engagement.id, user.firmId, context.engagement.reporting_set_id]
       )
       if (!locked) throw new Error('Engagement reporting context is unavailable.')
       assertEngagementEditable({ ...context.engagement, status: locked.status }, { locked: locked.locked, is_final: locked.is_final })
+      if (Number((await fetchEngagement(user.firmId, context.engagement.id)).report_style_id || 0)
+        !== Number(context.engagement.report_style_id || 0)) {
+        throw new Error('The engagement report style changed while the PDF was being generated. Refresh and generate again.')
+      }
       const currentEngagement = await fetchEngagement(user.firmId, context.engagement.id)
       await assertCanEdit(user, currentEngagement)
       const { rows: [versionRow] } = await query(
@@ -2668,8 +2878,8 @@ export function registerEngagementHandlers(ipcMain, database) {
       const { rows: [output] } = await query(
         `INSERT INTO engagement_report_outputs
            (engagement_id,final_tb_snapshot_id,version,template_id,template_revision,
-            audit_report_fields,signing_details,financial_data_sha256,pdf_content,created_by)
-         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10)
+            audit_report_fields,signing_details,financial_data_sha256,pdf_content,created_by,report_style_snapshot)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11::jsonb)
          RETURNING id,version,template_id,template_revision,financial_data_sha256,created_at`,
         [
           context.engagement.id, snapshot.id, versionRow.next_version,
@@ -2684,7 +2894,7 @@ export function registerEngagementHandlers(ipcMain, database) {
             responsibleOfficeId: identity.selection.responsibleOfficeId,
             brandingAuditorFirmId: identity.selection.brandingAuditorFirmId,
             identitySnapshot: identity.identitySnapshot,
-          }), dataHash, pdf, user.id,
+          }), dataHash, pdf, user.id, JSON.stringify(reportStyleSnapshot),
         ]
       )
       await logAudit(user, 'report.output_created', context.engagement.id, {
@@ -2700,7 +2910,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     const { engagement } = await assertEngagementTBContext(user, engagementId)
     const { rows } = await query(
       `SELECT o.id,o.version,o.template_id,o.template_revision,o.financial_data_sha256,
-              o.audit_report_fields,o.signing_details,
+              o.audit_report_fields,o.signing_details,o.report_style_snapshot,
               o.final_tb_snapshot_id,
               o.created_by,u.display_name AS created_by_name,o.created_at,o.finalised_by,
               o.finalised_at,f.display_name AS finalised_by_name,
@@ -2735,7 +2945,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     const id = Number(outputId)
     if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Report output not found.')
     const { rows: [output] } = await query(
-      `SELECT o.id,o.engagement_id,o.version,o.pdf_content,o.created_at,o.finalised_at
+      `SELECT o.id,o.engagement_id,o.version,o.pdf_content,o.created_at,o.finalised_at,o.report_style_snapshot
        FROM engagement_report_outputs o
        JOIN engagements e ON e.id=o.engagement_id AND e.firm_id=$2
        WHERE o.id=$1`,
@@ -2748,6 +2958,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     return {
       id: Number(output.id), version: Number(output.version), createdAt: output.created_at,
       finalisedAt: output.finalised_at, pdfContentBase64: Buffer.from(output.pdf_content).toString('base64'),
+      report_style_snapshot: output.report_style_snapshot,
       engagement: { id: Number(engagement.id), reference: engagement.reference, name: engagement.name },
     }
   })

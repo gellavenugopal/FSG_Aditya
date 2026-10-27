@@ -88,6 +88,14 @@ const source = {
     presentationCurrency: 'AED',
   },
   snapshot,
+  reportStyleSnapshot: {
+    settings: {
+      fontFamily: 'Tahoma', fontFallback: 'Arial, sans-serif', bodyFontSize: 10, headingFontSize: 14,
+      headingWeight: 700, logoPlacement: 'top-center', logoWidthMm: 45, headerText: 'Synthetic header',
+      footerText: 'Synthetic footer', tableHeaderColor: '#123456', tableHeaderTextColor: '#ffffff',
+      tableStripeColor: '#eeeeee', pageSize: 'Letter', pageOrientation: 'portrait', pageMarginMm: 12,
+    },
+  },
   reportOutput: {
     id: 91,
     version: 7,
@@ -148,6 +156,10 @@ const buffer = await buildUaeEngagementWorkbook(source)
 assert.ok(buffer.byteLength > 5000, 'workbook has substantive content')
 const workbook = new ExcelJS.Workbook()
 await workbook.xlsx.load(buffer)
+assert.equal(workbook.getWorksheet('Revision & Guide').getCell('A1').fill.fgColor.argb, 'FF123456',
+  'report style palette is applied to exported Excel headings')
+assert.equal(workbook.getWorksheet('Final TB').pageSetup.paperSize, 1,
+  'report style page-size preference reaches the Excel print setup')
 
 const expectedSheets = [
   'Revision & Guide', 'Report & Signatures', 'Original Current TB', 'Original Prior TB',

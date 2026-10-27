@@ -42,6 +42,8 @@ The additive definitions and upgrades live in `src/main/db/engagement-schema.js`
 - `engagement_audit_log` records protected workflow actions. Legacy links are explicit (`engagement_legacy_links`, `engagement_legacy_tb_links`); shared entity/period membership does not create access by itself.
 - Professional firm/office/partner selections extend existing firm masters and snapshot selected identity in saved outputs so later master edits do not rewrite finalized output.
 - Saved report-output listing returns the approval date, approval place and ordered signatory IDs from each output's signing snapshot. The renderer restores these values for the selected final-TB version after restart; it does not infer them from current master settings.
+- `firm_appearance_settings` stores tenant-scoped application display name/logo, palette, Tahoma/fallback, font sizes/weight and density. `firm_report_styles` stores immutable style versions separately; `engagement_reporting_sets` selects a style and `engagement_report_outputs` snapshots it with saved bytes. These settings are service-owned and do not conflate an application firm with an `auditor_firms` professional master or an engagement/entity.
+- The Kreston Menon public-profile preview is restricted to fixed official HTTPS pages, has editable sourced draft values, and requires a separate explicit demo-profile save. It does not infer credentials or select a signatory. Approved SVGs are sanitized and cached within the desktop profile.
 
 Schema changes are additive. Do not replace the legacy accounting tables or infer historical ownership/period relationships.
 

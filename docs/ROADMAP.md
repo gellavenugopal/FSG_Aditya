@@ -2,6 +2,14 @@
 
 Order reflects the current user-approved delivery priority. Acceptance requires observable application behavior, not just API tests or an architecture document.
 
+## Authorized firm branding (implementation delivered; isolated profile/UI acceptance pending, 2026-10-27)
+
+- Added service-owned, authenticated firm application appearance (display name/logo, palette, Tahoma/fallback, font sizes/weight, compact/comfortable density), live preview and save/cancel/reset-draft controls. The cosmetic appearance cache is local-only; the trusted service remains authoritative for writes and tenant identity.
+- Kept application appearance distinct from versioned report styles. Engagements select an immutable firm-owned style version; saved PDFs preserve their bytes and style snapshot. PDF, UAE Word and UAE Excel builders consume report-style settings without modifying financial calculations.
+- Added reusable professional firm/office masters and the official Kreston Menon public-source fetch/review flow. Save is explicit and creates a separate demo profile; registration/credential/signing authority stays blank and no partner is selected.
+- **Not accepted for deployment/population yet:** no persistent demo database or profile was inspected or modified. Repository handoff does not establish a separate Kreston service firm. Do not initialize/reset the existing demo cluster. Next safe step is approved provisioning of a separate database plus Electron `userData` profile, followed by authenticated preview/review/save and visual UAT at 1366 × 768 and 1920 × 1080. Existing client/reconciliation state and saved outputs must remain untouched.
+- The test suite verifies synthetic tenant isolation, validation, style selection, immutable output style snapshots, and service restart persistence. The Electron render harness and visual viewport checks are tracked separately in [CURRENT_STATUS.md](./CURRENT_STATUS.md); API success is not physical client UAT.
+
 ## Reporting exports and engagement navigation (approved priority, 2026-10-27)
 
 1. **Excel reporting workbook — complete for UAE Sample 01 v7.** The visible desktop export now creates a self-contained `.xlsx` from the saved reporting revision. Microsoft Excel recalculated the delivered workbook; baseline totals, formulas, review-adjustment propagation, reconciliation checks, all 32 printed note rows, and restart/reopen behavior were verified. Exact path/hash and test evidence are in [CURRENT_STATUS.md](./CURRENT_STATUS.md).

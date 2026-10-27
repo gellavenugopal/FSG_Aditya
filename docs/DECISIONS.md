@@ -65,6 +65,12 @@ This log separates user-approved product/scope decisions from engineering propos
 - **Rationale:** Keep the service-owned engagement and saved outputs auditable while allowing reviewers to work in familiar document formats.
 - **Status:** Implemented for the UAE demonstration exports. Excel review inputs recalculate within the self-contained workbook; Word remains an editable document. Re-importing external edits is not implemented.
 
+### 2026-10-27 — Keep authorized firm branding isolated and additive
+
+- **Decision:** Implement reusable firm/office masters, tenant-scoped application appearance and immutable report-style versions through the trusted service. Preserve existing India/UAE calculations, client TB reconciliation state and saved outputs. Prefill only published Kreston Menon details through an editable, sourced, explicit demo/draft workflow; do not infer registration, credentials or signing authority.
+- **Rationale:** Provide an authorized firm-specific brand foundation without altering existing accounting data or implying professional verification.
+- **Status:** Code, synthetic service/domain tests and documentation are implemented. The persistent demo DB/profile was intentionally not inspected, initialized or changed. The repository does not establish a separate Kreston demo tenant; provision a new isolated DB and Electron profile before any persistent profile save or client UI UAT. See [CURRENT_STATUS.md](./CURRENT_STATUS.md) and [ENGAGEMENT_SERVICE.md](../ENGAGEMENT_SERVICE.md).
+
 ## Engineering proposals and operational choices
 
 ### 2026-10-26 — Enforce engagement authorization at the trusted service

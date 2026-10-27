@@ -6,6 +6,7 @@ const {
   Document,
   Footer,
   HeadingLevel,
+  Header,
   ImageRun,
   PageBreak,
   PageNumber,
@@ -19,6 +20,7 @@ const {
   TextRun,
   WidthType,
 } = createRequire(import.meta.url)('docx')
+import { DEFAULT_REPORT_STYLE, validateReportStyle } from './branding-domain.mjs'
 
 const TABLE_WIDTH = 9000
 const TABLE_COLUMNS = [5400, 1800, 1800]
@@ -54,38 +56,43 @@ function heading(text, level = HeadingLevel.HEADING_1) {
   return new Paragraph({ heading: level, children: [new TextRun(safeText(text))], keepNext: true })
 }
 
-function cell(text, { header = false, right = false, bold = false } = {}) {
+function cell(text, { header = false, right = false, bold = false, style = DEFAULT_REPORT_STYLE, stripe = false } = {}) {
+  const headerFill = style.tableHeaderColor.slice(1).toUpperCase()
+  const headerText = style.tableHeaderTextColor.slice(1).toUpperCase()
+  const stripeFill = style.tableStripeColor.slice(1).toUpperCase()
   return new TableCell({
-    shading: header ? { type: ShadingType.CLEAR, fill: '17365D' } : undefined,
+    shading: header ? { type: ShadingType.CLEAR, fill: headerFill }
+      : stripe ? { type: ShadingType.CLEAR, fill: stripeFill } : undefined,
     children: [new Paragraph({
       alignment: right ? AlignmentType.RIGHT : AlignmentType.LEFT,
       children: [new TextRun({
         text: safeText(text),
         bold: header || bold,
-        color: header ? 'FFFFFF' : '17202A',
-        size: 18,
+        color: header ? headerText : '17202A',
+        size: Math.round(style.bodyFontSize * 2),
+        font: style.fontFamily,
       })],
     })],
   })
 }
 
-function reportTable(rows, currentLabel, comparativeLabel) {
+function reportTable(rows, currentLabel, comparativeLabel, style = DEFAULT_REPORT_STYLE) {
   const tableRows = [
     new TableRow({
       tableHeader: true,
       cantSplit: true,
       children: [
-        cell('Description', { header: true }),
-        cell(currentLabel, { header: true, right: true }),
-        cell(comparativeLabel, { header: true, right: true }),
+        cell('Description', { header: true, style }),
+        cell(currentLabel, { header: true, right: true, style }),
+        cell(comparativeLabel, { header: true, right: true, style }),
       ],
     }),
-    ...rows.map(item => new TableRow({
+    ...rows.map((item, index) => new TableRow({
       cantSplit: true,
       children: [
-        cell(item.label, { bold: !!item.total }),
-        cell(amount(item.current), { right: true, bold: !!item.total }),
-        cell(amount(item.comparative), { right: true, bold: !!item.total }),
+        cell(item.label, { bold: !!item.total, style, stripe: index % 2 === 1 }),
+        cell(amount(item.current), { right: true, bold: !!item.total, style, stripe: index % 2 === 1 }),
+        cell(amount(item.comparative), { right: true, bold: !!item.total, style, stripe: index % 2 === 1 }),
       ],
     })),
   ]
@@ -267,6 +274,7 @@ export async function buildUaeEngagementWordDocument(source = {}) {
   const signing = output.signing_details || {}
   const identity = signing.identitySnapshot || {}
   const branding = identity.branding || {}
+  const reportStyle = validateReportStyle(output.report_style_snapshot?.settings || DEFAULT_REPORT_STYLE)
   const logo = imageBuffer(branding)
   const periodEnd = safeText(engagement.periodEnd || financials.periods?.current)
   const currentYear = String(financials.periods?.current || periodEnd).slice(0, 4)
@@ -277,10 +285,14 @@ export async function buildUaeEngagementWordDocument(source = {}) {
   content.push(new Paragraph({ heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER, children: [new TextRun('Financial Reporting Pack')] }))
   if (logo) {
     content.push(new Paragraph({
-      alignment: AlignmentType.CENTER,
+      alignment: reportStyle.logoPlacement === 'top-left' ? AlignmentType.LEFT
+        : reportStyle.logoPlacement === 'top-right' ? AlignmentType.RIGHT : AlignmentType.CENTER,
       children: [new ImageRun({
         data: logo.buffer,
-        transformation: { width: logo.width, height: logo.height },
+        transformation: {
+          width: Math.min(680, Math.round(reportStyle.logoWidthMm * 3.78)),
+          height: Math.min(140, Math.round(reportStyle.logoWidthMm * 3.78 * logo.height / Math.max(logo.width, 1))),
+        },
         altText: {
           name: safeText(branding.name, 250) || 'Firm logo',
           title: safeText(branding.name, 250) || 'Firm logo',
@@ -343,7 +355,7 @@ export async function buildUaeEngagementWordDocument(source = {}) {
       : `Year ended 31 December ${currentYear}`}`, {
       spacing: { after: 160 },
     }))
-    content.push(reportTable(statement.rows, currentLabel, comparativeLabel))
+    content.push(reportTable(statement.rows, currentLabel, comparativeLabel, reportStyle))
   }
 
   content.push(new Paragraph({ children: [new PageBreak()] }), heading('Notes to the financial statements'))
@@ -363,7 +375,7 @@ export async function buildUaeEngagementWordDocument(source = {}) {
       comparative: note.comparativeTotal,
       total: true,
     })
-    content.push(reportTable(rows, currentLabel, comparativeLabel))
+    content.push(reportTable(rows, currentLabel, comparativeLabel, reportStyle))
   }
 
   content.push(new Paragraph({ children: [new PageBreak()] }), heading('Financial statement approval'))
@@ -383,13 +395,23 @@ export async function buildUaeEngagementWordDocument(source = {}) {
     children: [new Paragraph({
       alignment: AlignmentType.CENTER,
       children: [
-        new TextRun({ text: 'Draft for demonstration  |  Page ' }),
+        new TextRun({ text: `${reportStyle.footerText ? `${reportStyle.footerText}  |  ` : ''}Draft for demonstration  |  Page ` }),
         new TextRun({ children: [PageNumber.CURRENT] }),
         new TextRun({ text: ' of ' }),
         new TextRun({ children: [PageNumber.TOTAL_PAGES] }),
       ],
     })],
   })
+  const header = new Header({
+    children: reportStyle.headerText
+      ? [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: safeText(reportStyle.headerText, 300), font: reportStyle.fontFamily, size: Math.round(reportStyle.bodyFontSize * 2) })] })]
+      : [new Paragraph({ children: [] })],
+  })
+  const pageSize = reportStyle.pageSize === 'Letter'
+    ? { width: 12240, height: 15840 } : { width: 11906, height: 16838 }
+  const landscape = reportStyle.pageOrientation === 'landscape'
+  if (landscape) [pageSize.width, pageSize.height] = [pageSize.height, pageSize.width]
+  const margin = Math.round(reportStyle.pageMarginMm * 56.7)
   const document = new Document({
     title: `${safeText(engagement.clientName || engagement.name)} - UAE demonstration reporting pack`,
     subject: `Saved PDF v${output.version}; final Trial Balance v${output.final_tb_version}`,
@@ -398,19 +420,20 @@ export async function buildUaeEngagementWordDocument(source = {}) {
     features: { updateFields: true },
     styles: {
       default: {
-        document: { run: { font: 'Arial', size: 20, color: '17202A' } },
-        heading1: { run: { font: 'Arial', size: 30, bold: true, color: '17365D' }, paragraph: { spacing: { before: 300, after: 150 } } },
-        heading2: { run: { font: 'Arial', size: 24, bold: true, color: '365F91' }, paragraph: { spacing: { before: 240, after: 100 } } },
-        title: { run: { font: 'Arial', size: 40, bold: true, color: '17365D' }, paragraph: { spacing: { after: 300 } } },
+        document: { run: { font: reportStyle.fontFamily, size: Math.round(reportStyle.bodyFontSize * 2), color: '17202A' } },
+        heading1: { run: { font: reportStyle.fontFamily, size: Math.round(reportStyle.headingFontSize * 2), bold: reportStyle.headingWeight >= 600, color: reportStyle.tableHeaderColor.slice(1).toUpperCase() }, paragraph: { spacing: { before: 300, after: 150 } } },
+        heading2: { run: { font: reportStyle.fontFamily, size: Math.round(reportStyle.headingFontSize * 1.7), bold: reportStyle.headingWeight >= 600, color: reportStyle.tableHeaderColor.slice(1).toUpperCase() }, paragraph: { spacing: { before: 240, after: 100 } } },
+        title: { run: { font: reportStyle.fontFamily, size: Math.round(reportStyle.headingFontSize * 2), bold: reportStyle.headingWeight >= 600, color: reportStyle.tableHeaderColor.slice(1).toUpperCase() }, paragraph: { spacing: { after: 300 } } },
       },
     },
     sections: [{
       properties: {
         page: {
-          size: { width: 11906, height: 16838 },
-          margin: { top: 1200, right: 1450, bottom: 1200, left: 1450 },
+          size: pageSize,
+          margin: { top: margin, right: margin, bottom: margin, left: margin },
         },
       },
+      headers: { default: header },
       footers: { default: footer },
       children: content,
     }],

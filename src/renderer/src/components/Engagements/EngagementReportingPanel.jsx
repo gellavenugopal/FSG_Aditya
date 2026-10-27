@@ -379,6 +379,15 @@ export default function EngagementReportingPanel({
     } finally {
       setBusy(false)
     }
+
+    const selectReportStyle = async styleId => run(async () => {
+      await window.api.selectEngagementReportStyle({ engagementId: engagement.id, styleId: styleId || null })
+      const updated = await window.api.getEngagementReportingData({
+        engagementId: engagement.id, trialBalanceId: Number(finalId),
+      })
+      setBundle(updated)
+      setMessage(styleId ? `Report style ${updated.reportStyle.name} v${updated.reportStyle.version} selected for this engagement.` : 'Default report style selected for this engagement.')
+    })
   }
 
   const postJournal = () => run(async () => {
@@ -614,7 +623,8 @@ export default function EngagementReportingPanel({
           approvalSignatories: signatories,
         },
       })
-      const pdfBytes = new Uint8Array(await window.api.renderEngagementPDF(html))
+      const styledHtml = prependAuditReport(html, '', mappedBundle.reportStyle)
+      const pdfBytes = new Uint8Array(await window.api.renderEngagementPDF(styledHtml))
       const saved = await window.api.saveEngagementReportOutput({
         engagementId: engagement.id,
         trialBalanceId: Number(finalId),
@@ -622,6 +632,7 @@ export default function EngagementReportingPanel({
         signingDetails: approval,
         auditReportFields: currentFields,
         reportIdentitySnapshot: mappedBundle.reportIdentitySnapshot,
+        reportStyleSnapshot: mappedBundle.reportStyle,
       })
       await load()
       markSaved('report')
@@ -658,8 +669,8 @@ export default function EngagementReportingPanel({
       signDate: approval.approvalDate,
     })
     const html = prependAuditReport(financialsHtml, makeAuditReportPage(
-      currentFields, bundle.entity, bundle.engagement, reportBundle.firmSettings?.branding
-    ))
+      currentFields, bundle.entity, bundle.engagement, reportBundle.firmSettings?.branding, reportBundle.reportStyle
+    ), reportBundle.reportStyle)
     const pdfBytes = new Uint8Array(await window.api.renderEngagementPDF(html))
     const saved = await window.api.saveEngagementReportOutput({
       engagementId: engagement.id,
@@ -668,6 +679,7 @@ export default function EngagementReportingPanel({
       signingDetails: approval,
       auditReportFields: currentFields,
       reportIdentitySnapshot: reportBundle.reportIdentitySnapshot,
+      reportStyleSnapshot: reportBundle.reportStyle,
     })
     await load()
     setMessage(`Combined PDF v${saved.version} saved as an immutable engagement output. Download it below for review.`)
@@ -755,6 +767,7 @@ export default function EngagementReportingPanel({
       },
       snapshot: reportingData.snapshot,
       reportOutput: output,
+      reportStyleSnapshot: output.report_style_snapshot || null,
       currentTrialBalance,
       comparativeTrialBalance: priorTrialBalance,
       originalCurrentRows,
@@ -1092,6 +1105,15 @@ export default function EngagementReportingPanel({
                   {(bundle.firmSettings?.professionalFirms || []).filter(item => item.is_active).map(item =>
                     <option key={item.id} value={item.id}>{item.firm_name} · {item.frn || 'No FRN'}</option>)}
                 </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-gray-700">Versioned report style</span>
+                <select disabled={!editable || busy} value={bundle.reportStyle?.id || ''} onChange={event => selectReportStyle(event.target.value)}
+                  className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm">
+                  <option value="">Default report style</option>
+                  {(bundle.reportStyles || []).map(item => <option key={item.id} value={item.id}>{item.name} · v{item.version}</option>)}
+                </select>
+                <span className="mt-1 block text-xs text-gray-500">Saved output versions retain the exact PDF bytes and selected style snapshot.</span>
               </label>
             </div>
             {bundle.firmSettings?.branding?.logoBase64 && <div className="mt-3 flex items-center gap-3 text-xs text-gray-600">

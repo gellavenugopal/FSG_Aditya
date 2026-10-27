@@ -44,6 +44,14 @@ function sourceFor(fixture, outputId) {
       version: 7,
       final_tb_snapshot_id: snapshot.id,
       final_tb_version: 3,
+      report_style_snapshot: {
+        settings: {
+          fontFamily: 'Tahoma', fontFallback: 'Arial, sans-serif', bodyFontSize: 10, headingFontSize: 16,
+          headingWeight: 700, logoPlacement: 'top-right', logoWidthMm: 40, headerText: 'Synthetic header',
+          footerText: 'Synthetic footer', tableHeaderColor: '#123456', tableHeaderTextColor: '#ffffff',
+          tableStripeColor: '#eeeeee', pageSize: 'Letter', pageOrientation: 'landscape', pageMarginMm: 12,
+        },
+      },
       template_id: 'uae-demo-v1',
       template_revision: 4,
       financial_data_sha256: '',

@@ -8,6 +8,7 @@
     "build": "electron-vite build",
     "engagement:server": "node src/server/engagement-server.js",
     "engagement:test": "node tools/selftest-engagement-service.mjs",
+    "branding:test": "node tools/selftest-branding.mjs",
     "uae:test": "node tools/selftest-uae-ifrs-testbed.mjs",
     "uae:workbook:test": "node tools/selftest-uae-engagement-workbook.mjs",
     "uae:word:test": "node tools/selftest-uae-engagement-word.mjs",

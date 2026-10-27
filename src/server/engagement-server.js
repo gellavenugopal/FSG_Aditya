@@ -23,6 +23,15 @@ const ROUTES = {
   'admin/users': { channel: 'engagementAdmin:listUsers', args: () => [] },
   'admin/users/create': { channel: 'engagementAdmin:createUser', args: body => [body] },
   'admin/firm-settings': { channel: 'engagementAdmin:firmSettings', args: () => [] },
+  'admin/firm/source-preview': { channel: 'engagementAdmin:fetchPublicProfile', args: body => [body] },
+  'admin/appearance': { channel: 'engagementAdmin:getAppearance', args: () => [] },
+  'admin/appearance/save': {
+    channel: 'engagementAdmin:saveAppearance',
+    args: body => [body],
+    maxBodyBytes: FIRM_LOGO_MAX_BODY_BYTES,
+  },
+  'admin/report-styles': { channel: 'engagementAdmin:listReportStyles', args: () => [] },
+  'admin/report-styles/save': { channel: 'engagementAdmin:saveReportStyle', args: body => [body] },
   'admin/firm/save': {
     channel: 'engagementAdmin:saveProfessionalFirm',
     args: body => [body],
@@ -59,6 +68,7 @@ const ROUTES = {
   'reporting/uae-demo-mappings/save': { channel: 'engagement:uaeDemoMappingsSave', args: body => [body] },
   'reporting/settings/save': { channel: 'engagement:reportingSettingsSave', args: body => [body] },
   'reporting/selections/save': { channel: 'engagement:reportingSelectionsSave', args: body => [body] },
+  'reporting/style/select': { channel: 'engagement:reportStyleSelect', args: body => [body] },
   'reporting/signatory/create': { channel: 'engagement:reportingSignatoryCreate', args: body => [body] },
   'reporting/note-disclosure/save': { channel: 'engagement:noteDisclosureSave', args: body => [body] },
   'reporting/outputs': { channel: 'engagement:reportOutputs', args: body => [body.engagementId] },

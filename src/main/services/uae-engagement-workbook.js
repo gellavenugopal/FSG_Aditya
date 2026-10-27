@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import { calculateUaeReportDataHash } from './uae-report-data-hash.mjs'
+import { DEFAULT_REPORT_STYLE, validateReportStyle } from './branding-domain.mjs'
 
 const DEBIT_NATURED = new Set([
   'cash', 'trade_receivables', 'inventory', 'property_plant_equipment',
@@ -647,5 +648,53 @@ export async function buildUaeEngagementWorkbook(source) {
   buildMovementSchedules(workbook, source, finalTBLast, priorLast)
   const { noteTotalRows } = buildNotes(workbook, source, finalTBLast, priorLast)
   buildChecks(workbook, source, finalTBLast, noteTotalRows)
+  const style = validateReportStyle(source.reportStyleSnapshot?.settings || DEFAULT_REPORT_STYLE)
+  const argb = value => `FF${value.slice(1).toUpperCase()}`
+  for (const sheet of workbook.worksheets) {
+    sheet.eachRow((row, rowNumber) => {
+      row.eachCell({ includeEmpty: false }, cell => {
+        cell.font = { ...cell.font, name: style.fontFamily, size: style.bodyFontSize }
+      })
+      if (rowNumber === 1 || rowNumber === 2) {
+        row.eachCell({ includeEmpty: false }, cell => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(style.tableHeaderColor) } }
+          cell.font = {
+            ...cell.font, name: style.fontFamily,
+            size: rowNumber === 1 ? style.headingFontSize : style.bodyFontSize,
+            bold: rowNumber === 1 || style.headingWeight >= 600,
+            color: { argb: argb(style.tableHeaderTextColor) },
+          }
+        })
+      } else if (rowNumber > 2 && rowNumber % 2 === 0) {
+        row.eachCell({ includeEmpty: false }, cell => {
+          if (!cell.fill || cell.fill.type !== 'pattern' || cell.fill.pattern !== 'solid'
+            || !cell.fill.fgColor?.argb || cell.fill.fgColor.argb === 'FFFFFFFF') {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(style.tableStripeColor) } }
+          }
+        })
+      }
+    })
+    sheet.pageSetup.paperSize = style.pageSize === 'Letter' ? 1 : 9
+    sheet.pageSetup.orientation = style.pageOrientation
+    const marginInches = style.pageMarginMm / 25.4
+    sheet.pageSetup.margins = {
+      left: marginInches, right: marginInches, top: marginInches,
+      bottom: marginInches, header: 0.2, footer: 0.2,
+    }
+    sheet.headerFooter.oddHeader = style.headerText ? `&C${style.headerText.slice(0, 100)}` : ''
+    sheet.headerFooter.oddFooter = style.footerText
+      ? `&L${style.footerText.slice(0, 100)}&RPage &P of &N`
+      : '&L&D&CPage &P of &N&RConfidential'
+  }
+  const identity = source.reportOutput.signing_details?.identitySnapshot?.branding
+  if (identity?.logoBase64 && ['image/png', 'image/jpeg'].includes(identity.logoMimeType)) {
+    const logoBuffer = Buffer.from(identity.logoBase64, 'base64')
+    if (logoBuffer.length > 750 * 1024) throw new Error('The saved report logo exceeds the workbook cache limit.')
+    const imageId = workbook.addImage({ buffer: logoBuffer, extension: identity.logoMimeType === 'image/png' ? 'png' : 'jpeg' })
+    workbook.worksheets[0].addImage(imageId, {
+      tl: { col: style.logoPlacement === 'top-left' ? 2 : style.logoPlacement === 'top-right' ? 3 : 2, row: 0 },
+      ext: { width: Math.min(340, style.logoWidthMm * 3.78), height: 110 },
+    })
+  }
   return workbook.xlsx.writeBuffer()
 }
