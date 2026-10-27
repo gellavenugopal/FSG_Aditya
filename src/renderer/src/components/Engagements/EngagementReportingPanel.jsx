@@ -1040,7 +1040,8 @@ export default function EngagementReportingPanel({
         </div>
       </div>
 
-      <div className={`mt-4 rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 ${isReportView ? '' : 'hidden'}`}>
+      <div className={`mt-4 grid gap-3 ${isReportView && activeTab === 'exports' ? 'lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-start' : ''}`}>
+      <div className={`rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 ${isReportView ? '' : 'hidden'}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h4 className="font-semibold text-gray-900">3. Audit report, financial statements &amp; notes</h4>
@@ -1219,7 +1220,7 @@ export default function EngagementReportingPanel({
         </>}
       </div>
 
-      {!!outputs.length && <div className={`mt-4 rounded-lg border border-gray-200 bg-white p-4 ${isReportView && activeTab === 'exports' || activeSection === 'review' && ['versions', 'finalisation'].includes(activeTab) ? '' : 'hidden'}`}>
+      {!!outputs.length && <div className={`rounded-lg border border-gray-200 bg-white p-4 ${isReportView && activeTab === 'exports' || activeSection === 'review' && ['versions', 'finalisation'].includes(activeTab) ? '' : 'hidden'}`}>
         <h4 className="font-semibold text-gray-900">Saved output versions · PDF, Excel and Word source revision</h4>
         <p className="mt-1 text-xs text-gray-600">Exports use the saved PDF revision and its final Trial Balance snapshot. External workbook/document edits stay in those files and do not write back to the engagement.</p>
         <div className="mt-2 divide-y">
@@ -1240,6 +1241,7 @@ export default function EngagementReportingPanel({
           </div>)}
         </div>
       </div>}
+      </div>
     </section>
   )
 }
