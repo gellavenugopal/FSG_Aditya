@@ -45,7 +45,10 @@ const ROUTES = {
   activate: { channel: 'engagement:activate', args: body => [body] },
   finalise: { channel: 'engagement:finalise', args: body => [body] },
   reopen: { channel: 'engagement:reopen', args: body => [body.engagementId] },
-  'trial-balances': { channel: 'engagement:trialBalances', args: body => [body.engagementId] },
+  'trial-balances': {
+    channel: 'engagement:trialBalances',
+    args: body => [body.engagementId, { comparative: body.comparative === true }],
+  },
   'trial-balance/rows': { channel: 'engagement:trialBalanceRows', args: body => [body] },
   journals: { channel: 'engagement:journalList', args: body => [body.engagementId] },
   'journal/post': { channel: 'engagement:journalPost', args: body => [body] },

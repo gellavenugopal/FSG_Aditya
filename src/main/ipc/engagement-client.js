@@ -41,7 +41,10 @@ const OPERATIONS = {
   'engagement:activate': { path: 'activate', args: input => [input] },
   'engagement:finalise': { path: 'finalise', args: input => [input] },
   'engagement:reopen': { path: 'reopen', args: id => [{ engagementId: id }] },
-  'engagement:trialBalances': { path: 'trial-balances', args: id => [{ engagementId: id }] },
+  'engagement:trialBalances': {
+    path: 'trial-balances',
+    args: (id, options = {}) => [{ engagementId: id, comparative: options?.comparative === true }],
+  },
   'engagement:trialBalanceRows': { path: 'trial-balance/rows', args: input => [input] },
   'engagement:importTrialBalance': { path: 'trial-balance/import', args: input => [input], selectFile: true },
   'engagement:comparativeTrialBalanceSelect': { path: 'trial-balance/comparative/select', args: input => [input] },
@@ -119,7 +122,7 @@ function post(url, payload, bearer, setupToken, ca) {
 
 export function registerEngagementClientHandlers(handlerRegistry = ipcMain, options = {}) {
   for (const [channel, operation] of Object.entries(OPERATIONS)) {
-    handlerRegistry.handle(channel, async (event, input) => {
+    handlerRegistry.handle(channel, async (event, input, ...additionalArgs) => {
       if (options.startupError) throw new Error(options.startupError)
       if (!attachedSenders.has(event.sender.id)) {
         attachedSenders.add(event.sender.id)
@@ -148,7 +151,7 @@ export function registerEngagementClientHandlers(handlerRegistry = ipcMain, opti
           fileContentBase64: content.toString('base64'),
         }
       }
-      const [payload, setupToken] = operation.args(input)
+      const [payload, setupToken] = operation.args(input, ...additionalArgs)
       const session = sessions.get(event.sender.id)
       const response = await post(
         serviceUrl(operation.path, options.serviceUrl),

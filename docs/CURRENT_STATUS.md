@@ -1,6 +1,6 @@
 # Current status
 
-Last updated: **2026-10-27**
+Last updated: **2026-10-28**
 
 ## Repository state
 
@@ -18,6 +18,17 @@ Last updated: **2026-10-27**
 
 ## Current task and next action
 
+The shared engagement navigation redesign is implemented and verified through the normal isolated desktop. It provides left-side major sections, subsection tabs, a persistent engagement header, section-level save state, unsaved-edit discard confirmation, and a combined Reports and Exports view. Protected panels remain in the mounted workspace while navigating. A service-listing defect found during verification was fixed: the Trial Balance prior-year tab now receives the preceding-period import list through the desktop client and trusted service instead of falling back to the current-year import.
+
+- The authenticated UI check used the existing `UAE-SAMPLE-01-2025` in **FSG Isolated Demo Firm** with owner/edit access; no engagement or report data was changed.
+- Verified current and 2024 comparative TB selection, corrected journal line display, 16 saved mappings / 0 unmapped accounts, all main navigation sections, export/source-version controls, and unsaved-edit preservation plus explicit discard.
+- Refreshed 12 authenticated-renderer screenshots at 1366×768 and 1920×1080. All reported document widths matched their viewport; the main overview, TB imports, journals, mapping, notes, and reports views were visually inspected. These are locally rendered snapshots of the authenticated renderer DOM, not native screenshots of the locked Electron window.
+- Screenshot directory: `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\engagement-navigation-review\`.
+- The prior-year list bug was caused by the desktop service client and HTTP route forwarding only the engagement ID, dropping the comparative-list option. Both forwarding layers now preserve that option; the protected query returns imports for the immediately preceding reporting period and the same engagement/entity.
+- Verification passed: `npm run engagement:test` (99 assertions), `npm run isolation:test` (23 assertions and build), `node tools/selftest-fs-snapshot.mjs`, `node tools/selftest-final-signing.mjs`, `node --check tools/selftest-engagement-demo-navigation-ui.mjs`, `git diff --check`, and the visible `navigation-ui` harness. The first chained final-signing run hit Windows `EPERM` while cleaning its stopped disposable cluster after its assertions; that exact temporary directory was removed and the standalone test passed on retry.
+- The Word print-layout review remains pending. Per the bounded Word checkpoint, no stalled Word rendering automation was repeated and no machine-level software was installed.
+- Next action: continue separate synthetic IFRS test-bed scenario work. Word printed-layout QA remains an explicit open item; do not call the DOCX print-verified.
+
 The first Excel reporting workbook for UAE Sample 01 v7 is complete. It was exported through the visible desktop action from saved PDF version 7 / final Trial Balance v3, recalculated and saved in Microsoft Excel, then reopened after a full desktop restart. The correct UAE PDF v7 remains byte-identical.
 
 - Workbook: `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v7-final-complete.xlsx`
@@ -31,17 +42,17 @@ The first Excel reporting workbook for UAE Sample 01 v7 is complete. It was expo
 
 The editable Word reporting pack is implemented and has been exported through the visible desktop from UAE Sample 01 saved PDF v7 / final Trial Balance v3. Word opened the earlier export normally; content, totals, TOC, page count, repeating table headings, logo, saved narrative and signatories were checked. A follow-up change now applies the same saved final-TB/mapping hash validation used by Excel before Word export. A fresh export through the visible action passed that guard:
 
-- Latest visible export: `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v7-final-verified.docx`
+- Latest visible export, renamed to avoid implying print verification: `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v7-print-review-pending.docx`
 - SHA-256: `8aea1383feba61ac4558746e6e32c05d483ad575b87b8a6b5a22f9e81f2d5c46`
 - Source PDF: UAE v7; final TB v3. Financial totals match the PDF/Excel baseline: current assets AED 239,250 and profit AED 36,250.
 - Word builder uses editable text and tables from the shared UAE financials; external edits remain in Word and do not update the engagement. It validates the saved final-TB snapshot/version and shared financial-data hash against rows and mappings before opening the Save dialog.
 - The exported file was reopened through the normal isolated desktop route after a full app restart; the saved engagement and PDF v7 hash were confirmed. The exact latest file also opened in a separate Microsoft Word process and reported 10 pages and 14 tables. The previous export's updateable contents field, two dynamic page fields and repeating table headers were checked in Word.
 
-**Remaining Word acceptance gap:** Word's `ExportAsFixedFormat` previously stalled even on a one-paragraph test document. A separate Word process opened the latest output and paginated it, but its `SaveAs2` PDF conversion stalled as well; no PDF was created. No alternate Office/PDF renderer is installed. The unresponsive process was an isolated instance spawned for this test and was stopped by its verified PID; the unrelated pre-existing Word window was left untouched. No rendered/printed pages have been visually inspected. Do not mark Word complete or begin the requested navigation redesign until this gap is resolved or the user explicitly accepts it. The saved engagement's historical-output limitation remains: the output record does not snapshot comparative selection or narrative disclosures, so the document discloses that these are read from the currently saved reporting set.
+**Remaining Word acceptance gap:** Word's `ExportAsFixedFormat` previously stalled even on a one-paragraph test document. A separate Word process opened the latest output and paginated it, but its `SaveAs2` PDF conversion stalled as well; no PDF was created. No alternate Office/PDF renderer is installed. The unresponsive process was an isolated instance spawned for this test and was stopped by its verified PID; the unrelated pre-existing Word window was left untouched. No rendered/printed pages have been visually inspected. Do not describe the document as print-verified. The saved engagement's historical-output limitation remains: the output record does not snapshot comparative selection or narrative disclosures, so the document discloses that these are read from the currently saved reporting set.
 
 Checks passed on the current implementation: `npm run uae:word:test` (baseline, non-zero OCI and stale-mapping hash rejection), `npm run uae:workbook:test` (formula workbook and shared hash guard), and `npm run build`. The visible isolated desktop export and post-restart reopen check passed; the output hash above is from that file. The build retains the existing `tallyParsers.js` mixed-import warning. A previous export's Microsoft Word structural/page checks do not substitute for visually inspecting the latest file's printed rendering.
 
-Next action: resolve the Word print-rendering limitation or obtain explicit acceptance of it. Only then proceed to the engagement-navigation redesign; resume separate IFRS scenario expansion after the ordered export/navigation milestones.
+The engagement-navigation redesign is now complete despite the deferred Word print-layout QA, as explicitly requested. Resume separate IFRS scenario expansion; do not repeat the stalled Word automation or install machine-level rendering software without new authorization.
 
 Historical reproducibility limitation: the saved PDF output record does not snapshot the selected comparative TB or narrative disclosures. For v7, the current selected comparative/disclosure data match the known PDF revision and its financial-data hash is checked for Excel and Word; exact reconstruction of arbitrary older output revisions after later edits is not guaranteed. Workbook and Word corrections remain external and do not update the engagement, its saved financial data, or PDF.
 

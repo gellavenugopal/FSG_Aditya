@@ -1259,9 +1259,29 @@ export function registerEngagementHandlers(ipcMain, database) {
     }
   })
 
-  ipcMain.handle('engagement:trialBalances', async (event, engagementId) => {
+  ipcMain.handle('engagement:trialBalances', async (event, engagementId, options = {}) => {
     const user = await authenticated(event)
     const { engagement, period } = await assertEngagementTBContext(user, engagementId)
+    if (options?.comparative === true) {
+      const { rows } = await query(
+        `SELECT tb.id,tb.period,tb.filename,tb.row_count,tb.uploaded_at,tb.branch_name,
+                i.source_filename,i.source_sha256,i.source_size_bytes,i.imported_at,i.imported_by,
+                uploader.display_name AS imported_by_name,'service_import' AS source_type
+         FROM engagement_trial_balance_imports i
+         JOIN trial_balances tb ON tb.id=i.trial_balance_id
+         JOIN entity_periods priorEp ON priorEp.id=tb.entity_period_id AND priorEp.entity_id=tb.entity_id
+         JOIN financial_periods priorFp ON priorFp.id=priorEp.financial_period_id
+         JOIN entity_periods currentEp ON currentEp.id=$3 AND currentEp.entity_id=$2
+         JOIN financial_periods currentFp ON currentFp.id=currentEp.financial_period_id
+         JOIN firm_users uploader ON uploader.id=i.imported_by
+         WHERE i.engagement_id=$1 AND tb.entity_id=$2
+           AND priorFp.date_from=(currentFp.date_from - interval '1 year')::date
+           AND priorFp.date_till=(currentFp.date_till - interval '1 year')::date
+         ORDER BY tb.uploaded_at DESC,tb.id DESC`,
+        [engagement.id, engagement.entity_id, period.id]
+      )
+      return rows.map(row => ({ ...row, id: Number(row.id), row_count: Number(row.row_count) }))
+    }
     const { rows } = await query(
       `SELECT tb.id,tb.period,tb.filename,tb.row_count,tb.uploaded_at,tb.branch_name,
               i.source_filename,i.source_sha256,i.source_size_bytes,i.imported_at,i.imported_by,

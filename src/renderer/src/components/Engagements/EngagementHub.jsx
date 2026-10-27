@@ -11,6 +11,15 @@ const SCOPE_OPTIONS = [
 ]
 const LEGAL_FORMS = ['Company', 'LLC', 'LLP', 'Partnership', 'Proprietorship', 'Individual', 'Other']
 const COMMON_CURRENCIES = ['INR', 'AED', 'USD', 'EUR', 'GBP', 'SAR', 'AUD', 'CAD', 'CHF', 'CNY', 'JPY', 'NZD', 'SGD', 'ZAR']
+const ENGAGEMENT_SECTIONS = [
+  { id: 'overview', label: 'Overview', tabs: [['summary', 'Summary'], ['team', 'Team & access'], ['activity', 'Activity']] },
+  { id: 'trial-balance', label: 'Trial Balance', tabs: [['imports', 'Imports'], ['current', 'Current year'], ['prior', 'Prior year'], ['final', 'Final TB']] },
+  { id: 'journals', label: 'Journals', tabs: [['posted', 'Posted journals'], ['new', 'New journal'], ['history', 'History']] },
+  { id: 'mapping', label: 'Mapping', tabs: [['unmapped', 'Unmapped'], ['mapped', 'Mapped'], ['rules', 'Rules']] },
+  { id: 'statements', label: 'Statements and Notes', tabs: [['position', 'Financial position'], ['profit', 'Profit or loss / OCI'], ['equity', 'Changes in equity'], ['cash-flow', 'Cash flows'], ['notes', 'Notes']] },
+  { id: 'reports', label: 'Reports and Exports', tabs: [['audit', 'Audit report'], ['branding', 'Branding & signatures'], ['exports', 'Preview & exports']] },
+  { id: 'review', label: 'Review', tabs: [['checks', 'Checks'], ['finalisation', 'Finalisation'], ['versions', 'Saved versions']] },
+]
 
 function Field({ label, children, hint }) {
   return (
@@ -677,6 +686,9 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
   const [legacyNote, setLegacyNote] = useState('')
   const [legacyTbNote, setLegacyTbNote] = useState('')
   const [selectedLegacyTbIds, setSelectedLegacyTbIds] = useState([])
+  const [activeSection, setActiveSection] = useState('overview')
+  const [activeTab, setActiveTab] = useState('summary')
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -703,14 +715,82 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
     ? [...new Set([...current, Number(tbId)])]
     : current.filter(idValue => idValue !== Number(tbId)))
   const periodLabel = engagement?.period_start && engagement?.period_end ? formatPeriodRange(engagement.period_start, engagement.period_end) : 'Not set'
+  const activeSectionDefinition = ENGAGEMENT_SECTIONS.find(item => item.id === activeSection) || ENGAGEMENT_SECTIONS[0]
+  const selectSection = sectionId => {
+    const section = ENGAGEMENT_SECTIONS.find(item => item.id === sectionId)
+    if (!section) return
+    setActiveSection(section.id)
+    setActiveTab(section.tabs[0][0])
+  }
+  const selectTab = tabId => setActiveTab(tabId)
+  const leaveEngagement = () => {
+    if (hasUnsavedChanges && !window.confirm('There are unsaved section edits. Leave this engagement and discard them?')) return
+    onBack()
+  }
+  const onReportingDirtyChange = useCallback(value => setHasUnsavedChanges(value), [])
 
   return (
-    <div className="mx-auto max-w-6xl p-5 sm:p-7">
-      <button onClick={onBack} className="mb-4 text-sm font-medium text-blue-700 hover:text-blue-900">← Engagements</button>
-      {error && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+    <div className="min-h-full bg-gray-50">
       {!engagement ? <p className="p-8 text-center text-sm text-gray-500">Loading engagement…</p> : (
-        <>
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 sm:p-7">
+        <div className="mx-auto max-w-[1680px] px-4 pb-6 sm:px-6">
+          <header className="sticky top-0 z-20 -mx-4 border-b border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur sm:-mx-6 sm:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+              <div className="flex min-w-0 items-center gap-3">
+                <button onClick={leaveEngagement} className="shrink-0 rounded-md px-2 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100" aria-label="Back to engagements">← Engagements</button>
+                <div className="min-w-0 border-l border-gray-200 pl-3">
+                  <p className="truncate text-sm font-semibold text-gray-900">{engagement.client_name} <span className="font-normal text-gray-500">· {engagement.reference}</span></p>
+                  <p className="truncate text-xs text-gray-500">{engagement.name}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
+                <span>{periodLabel}</span>
+                <span>{engagement.presentation_currency || engagement.trial_balance_currency || 'Currency not set'}</span>
+                <span className={`rounded-full px-2.5 py-1 font-semibold ${engagement.status === 'finalised' ? 'bg-emerald-50 text-emerald-800' : 'bg-blue-50 text-blue-800'}`}>{engagement.status}</span>
+                <span className="font-medium">{engagement.accessLevel}{engagement.canEdit ? ' · edit' : ' · view-only'}</span>
+              </div>
+            </div>
+            <p role="status" className={`mt-1 text-[11px] ${hasUnsavedChanges ? 'font-medium text-amber-800' : 'text-gray-500'}`}>
+              {hasUnsavedChanges
+                ? 'Unsaved edits are preserved while navigating. Save them here or confirm before leaving.'
+                : 'All tracked section edits are saved. Navigation keeps this engagement and reporting period selected.'}
+            </p>
+          </header>
+          {error && <p role="alert" className="my-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+          <div className="mt-4 grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <nav aria-label="Engagement sections" className="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-2 lg:sticky lg:top-[104px] lg:h-fit lg:flex-col lg:overflow-visible">
+              {ENGAGEMENT_SECTIONS.map(section => (
+                <button key={section.id} type="button" aria-current={activeSection === section.id ? 'page' : undefined}
+                  onClick={() => selectSection(section.id)}
+                  className={`shrink-0 rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition-colors ${activeSection === section.id
+                    ? 'bg-[var(--color-primary)] text-white shadow-sm'
+                    : 'text-gray-700 hover:bg-gray-100'}`}>
+                  {section.label}
+                </button>
+              ))}
+            </nav>
+            <main className="min-w-0">
+              <div className="sticky top-[72px] z-10 -mx-1 mb-4 border-b border-gray-200 bg-gray-50/95 px-1 pt-1 backdrop-blur lg:top-[104px]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold text-gray-900">{activeSectionDefinition.label}</h2>
+                    <p className="text-xs text-gray-500">Selected engagement period: {periodLabel}</p>
+                  </div>
+                  <span className="hidden text-xs text-gray-500 sm:inline">Changes are saved within each section</span>
+                </div>
+                <div role="tablist" aria-label={`${activeSectionDefinition.label} subsections`} className="mt-2 flex gap-1 overflow-x-auto">
+                  {activeSectionDefinition.tabs.map(([tabId, label]) => (
+                    <button key={tabId} type="button" role="tab" aria-selected={activeTab === tabId}
+                      onClick={() => selectTab(tabId)}
+                      className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium ${activeTab === tabId
+                        ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+                        : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className={activeSection === 'overview' && activeTab === 'summary' ? '' : 'hidden'}>
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">{engagement.reference} · {engagement.status}</p><h2 className="mt-1 text-2xl font-bold text-gray-900">{engagement.client_name}</h2><p className="mt-1 text-sm text-gray-500">{engagement.name}</p></div>
               <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800">{engagement.accessLevel}{engagement.canEdit ? ' · edit' : ' · view-only'}</span>
@@ -763,7 +843,7 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
             )}
           </div>
 
-          <div className="mt-5 grid gap-5 lg:grid-cols-2">
+          <div className="mt-5 hidden">
             <section className="rounded-xl border border-gray-200 bg-white p-5">
               <div className="flex items-center justify-between"><h3 className="font-semibold text-gray-900">Participants & access</h3>{data.canManageAccess && <span className="text-xs text-gray-500">Owner/admin controls</span>}</div>
               <div className="mt-3 divide-y divide-gray-100">
@@ -772,7 +852,7 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
               {data.canManageAccess && <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-4"><Select className="min-w-[180px] flex-1" aria-label="Firm user to add" value={grant.userId} onChange={e => setGrant({ ...grant, userId: e.target.value })}><option value="">Select firm user…</option>{candidates.map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.displayName} · {candidate.email}</option>)}</Select><Select className="w-28" value={grant.accessLevel} onChange={e => setGrant({ ...grant, accessLevel: e.target.value })}><option value="read">Read</option><option value="edit">Edit</option></Select><button disabled={!grant.userId || busy} onClick={() => action(() => window.api.updateEngagementAccess({ engagementId: id, userId: Number(grant.userId), accessLevel: grant.accessLevel }))} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 disabled:opacity-40">Grant access</button></div>}
               {data.canManageAccess && data.requests.length > 0 && <div className="mt-5 border-t border-gray-100 pt-4"><h4 className="text-sm font-semibold text-gray-800">Pending requests</h4>{data.requests.map(request => <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"><span>{request.display_name} · {request.email}</span><span className="flex gap-2"><button disabled={busy} onClick={() => action(() => window.api.resolveEngagementAccessRequest({ engagementId: id, requestId: request.id, decision: 'approved', accessLevel: 'read' }))} className="text-blue-700 hover:underline">Approve read</button><button disabled={busy} onClick={() => action(() => window.api.resolveEngagementAccessRequest({ engagementId: id, requestId: request.id, decision: 'declined' }))} className="text-gray-500 hover:underline">Decline</button></span></div>)}</div>}
             </section>
-            <section className="rounded-xl border border-gray-200 bg-white p-5">
+            <section className="mt-4 rounded-xl border border-gray-200 bg-white p-5">
               <div className="flex items-center justify-between gap-3"><h3 className="font-semibold text-gray-900">Status & workflow</h3>{engagement.status === 'draft' && engagement.canEdit && <button onClick={() => onEdit(data)} className="text-sm font-semibold text-blue-700 hover:text-blue-900">Edit draft</button>}</div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {engagement.status === 'draft' && engagement.canEdit && <button disabled={busy} onClick={() => action(() => window.api.activateEngagement({ engagementId: id }))} className="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">Activate engagement</button>}
@@ -782,11 +862,26 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
               <ShieldNotice>India legacy workflow entry is disabled here. Existing financial IPC operations are not yet permission-enforced; using them from an engagement view would bypass this access model.</ShieldNotice>
             </section>
           </div>
-
-          {serviceOnlyMode && <>
-            <ProtectedTrialBalancePanel engagement={engagement} onImported={() => setTrialBalanceRefresh(value => value + 1)} />
-            <EngagementReportingPanel engagement={engagement} user={user} trialBalanceRefresh={trialBalanceRefresh} />
-          </>}
+          </div>
+          <div className={activeSection === 'overview' && activeTab === 'team' ? '' : 'hidden'}>
+            <section className="rounded-xl border border-gray-200 bg-white p-5">
+              <h3 className="font-semibold text-gray-900">Participants &amp; access</h3>
+              <div className="mt-3 divide-y divide-gray-100">
+                {data.members.map(member => <div key={member.user_id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+                  <div><p className="text-sm font-medium text-gray-800">{member.display_name} <span className="text-xs font-normal text-gray-400">· {member.role}</span></p><p className="text-xs text-gray-500">{member.email}</p></div>
+                  <div className="flex items-center gap-2"><span className="text-xs capitalize text-gray-600">{member.access_level}</span>
+                    {data.canManageAccess && ![engagement.owner_user_id, engagement.partner_user_id, engagement.substitute_user_id].includes(Number(member.user_id)) && <>
+                      <select aria-label={`Access for ${member.display_name}`} disabled={busy} value={member.access_level} onChange={e => action(() => window.api.updateEngagementAccess({ engagementId: id, userId: member.user_id, accessLevel: e.target.value }))} className="rounded border border-gray-300 px-2 py-1 text-xs"><option value="read">Read</option><option value="edit">Edit</option></select>
+                      <button aria-label={`Remove access for ${member.display_name}`} title="Remove access" disabled={busy} onClick={() => action(() => window.api.updateEngagementAccess({ engagementId: id, userId: member.user_id, remove: true }))} className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-40">Remove</button>
+                    </>}
+                  </div>
+                </div>)}
+              </div>
+              {data.canManageAccess && <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-4"><Select className="min-w-[180px] flex-1" aria-label="Firm user to add" value={grant.userId} onChange={e => setGrant({ ...grant, userId: e.target.value })}><option value="">Select firm user…</option>{candidates.map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.displayName} · {candidate.email}</option>)}</Select><Select className="w-28" value={grant.accessLevel} onChange={e => setGrant({ ...grant, accessLevel: e.target.value })}><option value="read">Read</option><option value="edit">Edit</option></Select><button disabled={!grant.userId || busy} onClick={() => action(() => window.api.updateEngagementAccess({ engagementId: id, userId: Number(grant.userId), accessLevel: grant.accessLevel }))} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 disabled:opacity-40">Grant access</button></div>}
+              {data.canManageAccess && data.requests.length > 0 && <div className="mt-5 border-t border-gray-100 pt-4"><h4 className="text-sm font-semibold text-gray-800">Pending requests</h4>{data.requests.map(request => <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"><span>{request.display_name} · {request.email}</span><span className="flex gap-2"><button disabled={busy} onClick={() => action(() => window.api.resolveEngagementAccessRequest({ engagementId: id, requestId: request.id, decision: 'approved', accessLevel: 'read' }))} className="text-blue-700 hover:underline">Approve read</button><button disabled={busy} onClick={() => action(() => window.api.resolveEngagementAccessRequest({ engagementId: id, requestId: request.id, decision: 'declined' }))} className="text-gray-500 hover:underline">Decline</button></span></div>)}</div>}
+            </section>
+          </div>
+          <div className={activeSection === 'overview' && activeTab === 'activity' ? '' : 'hidden'}>
 
           <section className="mt-5 rounded-xl border border-gray-200 bg-white p-5">
             <h3 className="font-semibold text-gray-900">Engagement history</h3>
@@ -796,14 +891,31 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
               return <li key={`${entry.created_at}-${index}`} className="flex flex-wrap justify-between gap-2 py-2 text-sm"><span className="text-gray-800">{entry.action.replaceAll('.', ' ')} <span className="text-gray-500">by {entry.actor_name || 'former user'}</span>{detailText && <span className="ml-2 text-xs text-gray-500">{detailText}</span>}</span><time className="text-xs text-gray-400">{`${formatPeriodDate(createdAt.toISOString().slice(0, 10))} ${createdAt.toLocaleTimeString()}`}</time></li>
             })}</ol> : <p className="mt-2 text-sm text-gray-500">No history recorded yet.</p>}
           </section>
-        </>
+          </div>
+          {serviceOnlyMode && <>
+            <div className={activeSection === 'trial-balance' && activeTab !== 'final' ? '' : 'hidden'}>
+              <ProtectedTrialBalancePanel engagement={engagement} activeTab={activeTab} onImported={() => setTrialBalanceRefresh(value => value + 1)} />
+            </div>
+            <EngagementReportingPanel
+              engagement={engagement}
+              user={user}
+              trialBalanceRefresh={trialBalanceRefresh}
+              activeSection={activeSection}
+              activeTab={activeTab}
+              onUnsavedChange={onReportingDirtyChange}
+            />
+          </>}
+            </main>
+          </div>
+        </div>
       )}
     </div>
   )
 }
 
-function ProtectedTrialBalancePanel({ engagement, onImported }) {
+function ProtectedTrialBalancePanel({ engagement, activeTab = 'imports', onImported }) {
   const [trialBalances, setTrialBalances] = useState([])
+  const [comparativeTrialBalances, setComparativeTrialBalances] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [page, setPage] = useState(0)
   const [result, setResult] = useState(null)
@@ -817,8 +929,12 @@ function ProtectedTrialBalancePanel({ engagement, onImported }) {
   const loadTrialBalances = useCallback(async () => {
     setLoading(true)
     try {
-      const rows = await window.api.listEngagementTrialBalances(engagement.id)
+      const [rows, comparativeRows] = await Promise.all([
+        window.api.listEngagementTrialBalances(engagement.id),
+        window.api.listEngagementTrialBalances(engagement.id, { comparative: true }),
+      ])
       setTrialBalances(rows)
+      setComparativeTrialBalances(comparativeRows)
       setSelectedId(current => rows.some(row => String(row.id) === current) ? current : String(rows[0]?.id || ''))
       setError('')
     } catch (loadError) {
@@ -870,35 +986,51 @@ function ProtectedTrialBalancePanel({ engagement, onImported }) {
   }
 
   const number = value => value == null ? '' : Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  const activeTB = trialBalances.find(row => String(row.id) === selectedId)
+  const currentYear = String(engagement.period_end || '').slice(0, 4)
+  const matchingPeriodTrialBalances = activeTab === 'current'
+    ? trialBalances.filter(row => String(row.period || '').includes(currentYear))
+    : trialBalances
+  const visibleTrialBalances = activeTab === 'prior'
+    ? comparativeTrialBalances
+    : matchingPeriodTrialBalances.length ? matchingPeriodTrialBalances : trialBalances
+  const visibleActiveTB = visibleTrialBalances.find(row => String(row.id) === selectedId) || visibleTrialBalances[0]
+  useEffect(() => {
+    if (visibleTrialBalances.length && !visibleTrialBalances.some(row => String(row.id) === selectedId)) {
+      setSelectedId(String(visibleTrialBalances[0].id))
+      setPage(0)
+    }
+  }, [activeTab, trialBalances, comparativeTrialBalances, selectedId, visibleTrialBalances])
 
   return (
     <section className="mt-5 rounded-xl border border-blue-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="font-semibold text-gray-900">Trial Balance</h3>
-          <p className="mt-1 text-sm text-gray-500">Protected imports, journals, final Trial Balances, mapping, disclosures and saved reporting are service-backed. Legacy standalone financial operations remain unavailable in service-only mode.</p>
+          <h3 className="font-semibold text-gray-900">{activeTab === 'prior' ? 'Prior-year Trial Balance' : activeTab === 'current' ? 'Current-year Trial Balance' : 'Trial Balance imports'}</h3>
+          <p className="mt-1 text-sm text-gray-500">Protected import records and ledger rows are read through the authorized engagement service. Imported source balances remain unchanged.</p>
         </div>
-        {canImport && <button disabled={busy} onClick={importFile} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{busy ? 'Importing…' : '+ Import Excel'}</button>}
+        {canImport && activeTab === 'imports' && <button disabled={busy} onClick={importFile} className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--color-primary-dark)] disabled:opacity-50">{busy ? 'Importing…' : '+ Import Excel'}</button>}
       </div>
       {error && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <label className="text-sm font-medium text-gray-700" htmlFor="engagement-tb-select">Imported trial balances</label>
-        <select id="engagement-tb-select" value={selectedId} onChange={event => { setSelectedId(event.target.value); setPage(0) }} disabled={loading || trialBalances.length === 0} className="min-w-[260px] rounded-lg border border-gray-300 px-3 py-2 text-sm">
-          {!trialBalances.length && <option value="">No trial balance imported or linked</option>}
-          {trialBalances.map(tb => <option key={tb.id} value={tb.id}>{tb.source_filename || tb.filename} · {tb.row_count} rows</option>)}
+        <label className="text-sm font-medium text-gray-700" htmlFor="engagement-tb-select">{activeTab === 'prior' ? 'Imported comparative trial balances' : 'Imported trial balances'}</label>
+        <select id="engagement-tb-select" value={visibleActiveTB?.id || ''} onChange={event => { setSelectedId(event.target.value); setPage(0) }} disabled={loading || visibleTrialBalances.length === 0} className="min-w-[260px] rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          {!visibleTrialBalances.length && <option value="">{activeTab === 'prior' ? 'No comparative Trial Balance imported' : 'No trial balance imported or linked'}</option>}
+          {visibleTrialBalances.map(tb => <option key={tb.id} value={tb.id}>{tb.source_filename || tb.filename} · {tb.period} · {tb.row_count} rows</option>)}
         </select>
-        {activeTB && <span className="text-xs text-gray-500">{activeTB.source_type === 'service_import' ? 'Service import' : 'Explicit legacy link'} · {activeTB.imported_at ? new Date(activeTB.imported_at).toLocaleString() : ''}</span>}
+        {visibleActiveTB && <span className="text-xs text-gray-500">{visibleActiveTB.source_type === 'service_import' ? 'Service import' : 'Explicit legacy link'} · {visibleActiveTB.imported_at ? new Date(visibleActiveTB.imported_at).toLocaleString() : ''}</span>}
       </div>
-      {activeTB?.source_sha256 && <p className="mt-2 break-all text-xs text-gray-500">Source SHA-256: {activeTB.source_sha256}</p>}
-      {activeTB && <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-        <span>{result?.totalRows ?? activeTB.row_count} ledger rows{result?.totalRows > 0 ? ` · ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, result.totalRows)}` : ''}</span>
+      {activeTab === 'current' && trialBalances.length > 0 && !matchingPeriodTrialBalances.length && <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">No imported Trial Balance period matched {currentYear}; showing all available imports so you can select the correct source.</p>}
+      {activeTab === 'prior' && !loading && comparativeTrialBalances.length === 0 && <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">No Trial Balance is linked to this engagement for the immediately preceding reporting period.</p>}
+      {visibleActiveTB?.source_sha256 && <p className="mt-2 break-all text-xs text-gray-500">Source SHA-256: {visibleActiveTB.source_sha256}</p>}
+      {visibleActiveTB && <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+        <span>{result?.totalRows ?? visibleActiveTB.row_count} ledger rows{result?.totalRows > 0 ? ` · ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, result.totalRows)}` : ''}</span>
         <div className="flex gap-2">
           <button disabled={page === 0 || loading} onClick={() => setPage(value => Math.max(0, value - 1))} className="rounded border px-2 py-1 disabled:opacity-40">Previous</button>
           <button disabled={loading || !result || (page + 1) * pageSize >= result.totalRows} onClick={() => setPage(value => value + 1)} className="rounded border px-2 py-1 disabled:opacity-40">Next</button>
         </div>
       </div>}
-      {activeTB && <div className="mt-2 max-h-[420px] overflow-auto rounded-lg border border-gray-200">
+      {visibleActiveTB && String(visibleActiveTB.id) !== selectedId && <p className="mt-3 text-sm text-gray-500">Select this period’s Trial Balance above to inspect its imported rows.</p>}
+      {visibleActiveTB && String(visibleActiveTB.id) === selectedId && <div className="mt-2 max-h-[min(56vh,480px)] overflow-auto rounded-lg border border-gray-200">
         <table className="min-w-full border-collapse text-left text-xs">
           <thead className="sticky top-0 bg-gray-50 text-gray-600"><tr>
             <th className="px-3 py-2">Period</th><th className="px-3 py-2">Ledger code</th><th className="px-3 py-2">Ledger</th>

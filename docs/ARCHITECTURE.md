@@ -9,6 +9,7 @@ This document describes current repository behavior. “Implemented” does not 
 - Electron main process: `src/main/`; React renderer: `src/renderer/src/`; preload bridge: `src/preload/index.js`.
 - `src/server/engagement-server.js` exposes authenticated HTTPS service routes. It registers the protected handlers in `src/main/ipc/engagements.js` and uses `src/server/engagement-db.js` for its PostgreSQL connection.
 - Desktop engagement calls are exposed through the preload allowlist and proxied by `src/main/ipc/engagement-client.js`. In service-only mode, legacy DB startup and legacy financial IPC registration are skipped.
+- `EngagementHub.jsx` supplies a shared engagement shell: persistent client/period/currency/status header, left navigation for major sections, and top subsection tabs. The existing protected panels stay mounted across section changes so unsaved local edits survive navigation; explicit section/leave handling exposes save or discard decisions.
 - The supported local demo uses the same machine for Electron and the embedded service but still binds the service to the isolated test configuration. Do not confuse normal development mode with service-only isolation.
 - Disposable test startup validates all required settings against the harness manifest before connection, sets Electron's effective `userData` path before reading application configuration, checks database identity before schema setup, and disables legacy initialization and IPC.
 
@@ -49,6 +50,8 @@ Schema changes are additive. Do not replace the legacy accounting tables or infe
 ### Implemented
 
 The protected path imports current/prior TBs, posts balanced journals without an approval queue for editors, creates final-TB snapshots, runs the existing India mapping engine, permits manual mapping correction, supports supported structured and narrative disclosures, selects prior-year closing TB comparatives, and collects auditor-entered report text and separate report/financial-statement approval dates.
+
+The protected Trial Balance list route supports an explicit comparative-list request. The desktop IPC client and HTTP route preserve the option, and the trusted handler scopes those rows to service imports for the immediately preceding financial period, current engagement, and entity. It does not expose unrelated entity TBs or substitute current-year data when no prior import exists.
 
 The desktop reuses the India financial statement/notes builders and Electron PDF renderer. It persists combined PDF versions through the service. The existing protected pack is India legacy Schedule III with INR/INR only and performs no currency translation. Generated PDFs are drafts until the assigned partner or authorised substitute explicitly finalises them; the UI marks draft and finalised outputs distinctly. Finalised engagement state is not reopened automatically.
 

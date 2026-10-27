@@ -99,7 +99,7 @@ $env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
 .\tools\engagement-demo.ps1 launch
 ```
 
-The click-by-click route is **Sign in → Settings → Engagements → All Engagements → UAE-SAMPLE-01-2025 → Saved combined PDF versions → Version 7 → Download PDF**. Sign in as `Demo Administrator` in **FSG Isolated Demo Firm**. Version 7 is the current corrected draft, generated from final Trial Balance v3; downloading it does not finalise or reopen the engagement. Versions 5 and 6 remain preserved. The v7 local copy is:
+The click-by-click route is **Sign in → Engagements → All Engagements → UAE-SAMPLE-01-2025 → Reports and Exports → Saved output versions → Version 7 → Download PDF**. Sign in as `Demo Administrator` in **FSG Isolated Demo Firm**. Version 7 is the current corrected draft, generated from final Trial Balance v3; downloading it does not finalise or reopen the engagement. Versions 5 and 6 remain preserved. The v7 local copy is:
 
 ```powershell
 $v7 = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v7-corrected.pdf'
@@ -160,7 +160,7 @@ The reopen-only check signs in normally, opens the existing engagement and saved
 
 Through the normal desktop UI, open **UAE-SAMPLE-01-2025**, locate saved PDF v7 / final TB v3, and select **Export Word**. Use a new filename; the harness refuses to overwrite an existing document. The latest UI-verified Word export is:
 
-- `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v7-final-verified.docx`
+- `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v7-print-review-pending.docx`
 - SHA-256: `8aea1383feba61ac4558746e6e32c05d483ad575b87b8a6b5a22f9e81f2d5c46`
 
 After starting the isolated desktop, reopen the saved Word export through the normal sign-in and engagement route with this separate PowerShell command:
@@ -168,7 +168,7 @@ After starting the isolated desktop, reopen the saved Word export through the no
 ```powershell
 Set-Location 'D:\Programs\FinancialStatements\AdityaTool\FSG_Bharat_Source'
 $env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
-$env:FSG_UAE_WORD_OUTPUT_PATH = Join-Path (Join-Path $env:FSG_DEMO_HOME 'outputs') 'UAE-Sample-01-reporting-pack-v7-final-verified.docx'
+$env:FSG_UAE_WORD_OUTPUT_PATH = Join-Path (Join-Path $env:FSG_DEMO_HOME 'outputs') 'UAE-Sample-01-reporting-pack-v7-print-review-pending.docx'
 $env:FSG_UAE_WORD_REOPEN_ONLY = 'true'
 .\tools\engagement-demo.ps1 uae-word-export-ui
 ```
@@ -176,6 +176,18 @@ $env:FSG_UAE_WORD_REOPEN_ONLY = 'true'
 The reopen check does not create a new output. It verifies the existing engagement and saved UAE PDF v7 through the desktop, then confirms the Word file is an OOXML document and reports its hash. To export another Word copy, clear `FSG_UAE_WORD_REOPEN_ONLY`, choose a different path in `FSG_UAE_WORD_OUTPUT_PATH`, and run the same action. External Word edits remain in that document and do not update the engagement.
 
 The latest export opened in a separate Microsoft Word process and paginated to 10 pages / 14 tables. Both Word `ExportAsFixedFormat` (previously even for a minimal document) and `SaveAs2` on this output stalled; no local alternate Office/PDF renderer is installed, so printed pages remain unverified. Do not treat successful DOCX opening, OOXML structure or page counts as visual print inspection. `npm run uae:word:test` tests baseline and non-zero OCI fixture documents without opening the desktop or connecting to a database.
+
+## Verify engagement navigation screenshots
+
+Start the existing isolated desktop with the commands at the top of this file, then run this action in a second PowerShell window while the desktop remains open:
+
+```powershell
+Set-Location 'D:\Programs\FinancialStatements\AdityaTool\FSG_Bharat_Source'
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 navigation-ui
+```
+
+The harness signs in through the normal isolated UI as the provisioned demo administrator, opens the existing UAE Sample 01 engagement, and checks current/prior TB selection, journals, saved mappings, notes, exports and unsaved-edit discard at both 1366×768 and 1920×1080. It does not initialize the database or create engagements/outputs. It refreshes 12 screenshots under `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\engagement-navigation-review\`. These are local screenshots of the authenticated renderer DOM/styles rendered at the requested sizes, not native captures of the Electron window.
 
 ## EPIPE test
 
