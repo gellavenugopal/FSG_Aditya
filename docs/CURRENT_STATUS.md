@@ -5,13 +5,14 @@ Last updated: **2026-10-27**
 ## Repository state
 
 - Branch: `feature/engagement-foundation`
+- Excel workbook implementation and documentation checkpoint: `07ddc24` — `feat: export UAE reporting workbook`.
 - Base HEAD before the Excel workbook checkpoint: `bc6c448` — `docs: record UAE v7 restart reopening check`.
 - UAE note-reference/corrected-output implementation checkpoint: `f3378c5` — `fix: remove dangling UAE note references`.
 - Current test-bed implementation checkpoint: `cc5d18e` — `test: verify UAE IFRS B/C desktop cases`.
 - Base before that checkpoint: `4cb550d` — `Record UAE access and PDF checkpoint`.
 - Earlier milestones remain in history: `6dea749` reporting workflow, `a683914` firm settings, `666b110` EPIPE guard, `a5785c8` synthetic UAE test bed, and `5ccdf38` UAE access/list and PDF review.
 - The test-bed source and coverage/roadmap documentation are committed locally. The UAE access/download evidence, corrected-output UI verification, note-reference fix and refreshed context documents are committed locally.
-- Excel workbook implementation and this checkpoint's documentation are being committed locally; no push or merge is permitted.
+- The Excel workbook checkpoint is committed locally; no push or merge has been performed.
 - No push or merge has been performed.
 
 ## Current task and next action
