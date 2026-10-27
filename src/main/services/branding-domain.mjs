@@ -2,13 +2,24 @@ export const DEFAULT_APPEARANCE = Object.freeze({
   displayName: 'FSG Bharat',
   logoMimeType: '',
   logoBase64: '',
-  primaryColor: '#1e40af',
+  primaryColor: '#243746',
+  accentColor: '#189CD8',
+  navigationColor: '#243746',
+  backgroundColor: '#FFFFFF',
+  textColor: '#243746',
   fontFamily: 'Tahoma',
   fontFallback: 'Arial, sans-serif',
   baseFontSize: 14,
   headingFontSize: 20,
   headingWeight: 700,
   density: 'comfortable',
+})
+
+export const SEMANTIC_STATUS_COLORS = Object.freeze({
+  warningBackground: '#fffbeb',
+  warningText: '#78350f',
+  errorBackground: '#fef2f2',
+  errorText: '#991b1b',
 })
 
 export const DEFAULT_REPORT_STYLE = Object.freeze({
@@ -44,6 +55,36 @@ function color(value, name) {
   const result = String(value || '').trim()
   if (!HEX_COLOR.test(result)) throw new Error(`${name} must be a six-digit hexadecimal colour.`)
   return result.toLowerCase()
+}
+
+function relativeLuminance(hex) {
+  const channels = [1, 3, 5].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
+    .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+}
+
+export function contrastRatio(firstColor, secondColor) {
+  const first = relativeLuminance(color(firstColor, 'Colour'))
+  const second = relativeLuminance(color(secondColor, 'Colour'))
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05)
+}
+
+export function getAppearanceContrastWarnings(settings = {}) {
+  const appearance = { ...DEFAULT_APPEARANCE, ...settings }
+  const warnings = []
+  if (contrastRatio(appearance.textColor, appearance.backgroundColor) < 4.5) {
+    warnings.push('Text and background colours must have at least 4.5:1 contrast.')
+  }
+  if (contrastRatio('#ffffff', appearance.primaryColor) < 4.5) {
+    warnings.push('Primary action colour must support white text at 4.5:1 contrast.')
+  }
+  if (contrastRatio('#ffffff', appearance.navigationColor) < 4.5) {
+    warnings.push('Navigation colour must support white text at 4.5:1 contrast.')
+  }
+  if (contrastRatio(appearance.accentColor, appearance.backgroundColor) < 3) {
+    warnings.push('Accent colour must contrast with the background at least 3:1 for visible controls.')
+  }
+  return warnings
 }
 
 function font(value, name) {
@@ -93,6 +134,10 @@ export function validateAppearance(value = {}) {
     logoMimeType,
     logoBase64,
     primaryColor: color(value.primaryColor ?? DEFAULT_APPEARANCE.primaryColor, 'Primary colour'),
+    accentColor: color(value.accentColor ?? DEFAULT_APPEARANCE.accentColor, 'Accent colour'),
+    navigationColor: color(value.navigationColor ?? DEFAULT_APPEARANCE.navigationColor, 'Navigation colour'),
+    backgroundColor: color(value.backgroundColor ?? DEFAULT_APPEARANCE.backgroundColor, 'Background colour'),
+    textColor: color(value.textColor ?? DEFAULT_APPEARANCE.textColor, 'Text colour'),
     fontFamily: font(value.fontFamily ?? DEFAULT_APPEARANCE.fontFamily, 'Font family'),
     fontFallback: fontFallback(value.fontFallback ?? 'Arial', 'Font fallback'),
     baseFontSize: boundedNumber(value.baseFontSize ?? DEFAULT_APPEARANCE.baseFontSize, 'Base font size', 11, 20),
@@ -101,6 +146,8 @@ export function validateAppearance(value = {}) {
     density: String(value.density ?? DEFAULT_APPEARANCE.density),
   }
   if (!['compact', 'comfortable'].includes(result.density)) throw new Error('Choose compact or comfortable density.')
+  const contrastWarnings = getAppearanceContrastWarnings(result)
+  if (contrastWarnings.length) throw new Error(contrastWarnings.join(' '))
   return result
 }
 
@@ -157,12 +204,6 @@ export function extractKrestonPublicProfile(homeHtml, officeHtml, retrievedAt = 
   const officePage = String(officeHtml || '')
   const tag = (html, expression) => expression.exec(html)?.[1] || ''
   const decode = value => String(value).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ')
-  const email = tag(home, /href=["']mailto:([^"'?]+)/i)
-  const phone = tag(home, /href=["']tel:([^"']+)/i)
-  const phoneDigits = phone.replace(/\D/g, '')
-  const formattedPhone = phoneDigits.startsWith('971') && phoneDigits.length === 11
-    ? `+971 ${phoneDigits[3]} ${phoneDigits.slice(4, 7)} ${phoneDigits.slice(7)}`
-    : decode(phone)
   const logoPath = tag(home, /<img[^>]*src=["']([^"']*storage\/uploads\/common-cms\/logo[^"']*\.svg)["']/i)
   const branch = [...officePage.matchAll(/<a\b[^>]*class=["'][^"']*\bbranch-list\b[^"']*["'][^>]*>/gi)]
     .map(match => match[0])
@@ -170,19 +211,21 @@ export function extractKrestonPublicProfile(homeHtml, officeHtml, retrievedAt = 
   if (!branch || !logoPath) throw new Error('The official website did not publish the expected Dubai office or vector logo details.')
   const attr = name => decode(tag(branch, new RegExp(`data-${name}=["']([^"']*)["']`, 'i')))
   const officeUrl = tag(branch, /href=["']([^"']+)["']/i)
-  const name = decode(tag(home, /<meta\s+name=["']author["']\s+content=["']([^"']+)["']/i)) || 'Kreston Menon'
+  const name = 'Kreston Menon Chartered Accountants'
+  const publishedOfficeAddress = 'Lake Central, Level 15 Marasi Drive, Business Bay, P.O. Box 55535, Dubai, UAE'
+  const publishedPhone = '+971 4 276 2233'
   return {
     profileStatus: 'demo',
     firmName: name,
     websiteUrl: 'https://www.krestonmenon.com/',
-    email: decode(email),
-    phone: formattedPhone,
-    address: attr('location'),
+    email: 'info@krestonmenon.com',
+    phone: publishedPhone,
+    address: publishedOfficeAddress,
     office: {
       officeName: 'Dubai',
-      address: attr('location'),
-      phone: attr('phone'),
-      email: attr('email'),
+      address: publishedOfficeAddress,
+      phone: publishedPhone,
+      email: 'dubai@krestonmenon.com',
       sourceUrl: decode(officeUrl),
     },
     logoUrl: new URL(decode(logoPath), 'https://www.krestonmenon.com/').toString(),

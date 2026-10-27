@@ -88,6 +88,10 @@
   --blue-primary: var(--color-primary);
   --blue-light:   var(--color-primary-light);
   --blue-mid:     var(--color-primary-mid);
+  --semantic-warning-background: #fffbeb;
+  --semantic-warning-text: #78350f;
+  --semantic-error-background: #fef2f2;
+  --semantic-error-text: #991b1b;
 }
 
 * { box-sizing: border-box; }
@@ -117,16 +121,59 @@ body[data-app-density="compact"] :is(button,input,select,textarea) {
   background-color: var(--color-primary-light) !important;
 }
 .text-blue-700, .text-blue-800, .text-blue-900 {
-  color: var(--color-primary-dark) !important;
+  color: var(--color-primary) !important;
 }
 .border-blue-100, .border-blue-200 {
-  border-color: var(--color-primary-mid) !important;
+  border-color: var(--color-accent) !important;
+}
+.focus\:ring-blue-400:focus {
+  --tw-ring-color: var(--color-accent) !important;
+}
+.bg-white {
+  background-color: var(--app-background-color, #ffffff) !important;
+}
+.bg-gray-50 {
+  background-color: var(--app-surface-muted, #f9fafb) !important;
+}
+.text-gray-900, .text-gray-800, .text-gray-700 {
+  color: var(--app-text-color, #111827) !important;
+}
+[aria-label="Main navigation"] {
+  background-color: var(--app-background-color, #ffffff) !important;
+  border-bottom-color: var(--color-accent) !important;
+}
+[aria-label="Main navigation"] .tab-active {
+  color: var(--app-text-color, #243746) !important;
+  background-color: var(--app-background-color, #ffffff) !important;
+  box-shadow: inset 0 -3px 0 var(--color-accent);
+}
+[aria-label="Main navigation"] .tab-inactive {
+  color: var(--app-text-color, #243746) !important;
+}
+[aria-label="Main navigation"] .tab-inactive:hover {
+  background-color: var(--color-primary-light) !important;
+}
+[aria-label="Firm workspace"] {
+  background-color: var(--app-navigation-color, #243746) !important;
+  border-bottom-color: var(--color-accent) !important;
+}
+[aria-label="Firm workspace"] button {
+  color: #ffffff !important;
+}
+[aria-label="Firm workspace"] button[aria-current="page"] {
+  background-color: var(--app-background-color, #ffffff) !important;
+  color: var(--app-text-color, #243746) !important;
+  box-shadow: inset 0 -3px 0 var(--color-accent);
+}
+body {
+  color: var(--app-text-color, #243746);
+  background-color: var(--app-background-color, #ffffff);
 }
 
 /* ── Global form element resets (Tailwind base wipes browser defaults) ── */
 input, select, textarea {
-  color: #111827 !important;
-  background-color: #ffffff !important;
+  color: var(--app-text-color, #111827) !important;
+  background-color: var(--app-background-color, #ffffff) !important;
 }
 input::placeholder { color: #9ca3af !important; }
 

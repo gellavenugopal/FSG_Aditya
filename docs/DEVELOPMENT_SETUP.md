@@ -142,7 +142,7 @@ Then sign in as the harness-provisioned `Demo Administrator` in **FSG Isolated D
 Through the normal desktop UI, open **UAE-SAMPLE-01-2025**, go to its saved combined PDF versions, select version 7 / final Trial Balance v3, and choose **Export Excel**. Select a local destination in the desktop Save dialog. The workbook is self-contained; external edits do not update the engagement, its saved financial data, or PDF. The delivered workbook is:
 
 - `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v7-final-complete.xlsx`
-- SHA-256: `5c0f2b858d7b5ae8071781d9613a4b92c93e0c49affb6aa702ddc1b653512fa`
+- SHA-256: `5c0f2b858d7b5ae8071781d9613a4b92c93e0c49affb6aa7025ddc1b653512fa`
 
 To re-open that workbook and the saved v7 PDF through the desktop harness after a normal application restart, first start the isolated demo using the commands above. In a second PowerShell window:
 

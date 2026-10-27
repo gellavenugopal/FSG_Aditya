@@ -71,6 +71,12 @@ This log separates user-approved product/scope decisions from engineering propos
 - **Rationale:** Provide an authorized firm-specific brand foundation without altering existing accounting data or implying professional verification.
 - **Status:** Code, synthetic service/domain tests and documentation are implemented. The persistent demo DB/profile was intentionally not inspected, initialized or changed. The repository does not establish a separate Kreston demo tenant; provision a new isolated DB and Electron profile before any persistent profile save or client UI UAT. See [CURRENT_STATUS.md](./CURRENT_STATUS.md) and [ENGAGEMENT_SERVICE.md](../ENGAGEMENT_SERVICE.md).
 
+### 2026-10-27 — Complete the published branding palette and Kreston prefill
+
+- **Decision:** Expose editable primary, accent, navigation, background and text palette tokens with contrast enforcement and independent warning/error semantics. Use only the known published Kreston Menon firm and Dubai office values in the editable, sourced demo draft; do not broaden the public fetch allowlist or infer professional authority.
+- **Rationale:** Close the direct-inspection gap while preserving tenant isolation, provenance, existing financial/report data and the explicit demo boundary.
+- **Status:** Implemented in code and focused tests. Visual viewport UAT and persistent separate-profile save remain pending; do not populate the existing isolated demo.
+
 ## Engineering proposals and operational choices
 
 ### 2026-10-26 — Enforce engagement authorization at the trusted service

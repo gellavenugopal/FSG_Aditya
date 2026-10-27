@@ -21,8 +21,25 @@ const EMPTY_FIRM = {
 const EMPTY_OFFICE = { id: '', auditorFirmId: '', officeName: '', address: '', phone: '', email: '', sourceUrl: '', sourceRetrievedAt: '', isActive: true }
 const DEFAULT_APPEARANCE = {
   displayName: 'FSG Bharat', logoMimeType: '', logoBase64: '',
-  primaryColor: '#1e40af', fontFamily: 'Tahoma', fontFallback: 'Arial, sans-serif',
+  primaryColor: '#243746', accentColor: '#189CD8', navigationColor: '#243746',
+  backgroundColor: '#FFFFFF', textColor: '#243746',
+  fontFamily: 'Tahoma', fontFallback: 'Arial, sans-serif',
   baseFontSize: 14, headingFontSize: 20, headingWeight: 700, density: 'comfortable',
+}
+const luminance = hex => [1, 3, 5].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
+  .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+  .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0)
+const contrast = (first, second) => {
+  const [light, dark] = [luminance(first), luminance(second)].sort((a, b) => b - a)
+  return (light + 0.05) / (dark + 0.05)
+}
+function appearanceWarnings(appearance) {
+  const warnings = []
+  if (contrast(appearance.textColor, appearance.backgroundColor) < 4.5) warnings.push('Text/background contrast must be at least 4.5:1.')
+  if (contrast('#FFFFFF', appearance.primaryColor) < 4.5) warnings.push('Primary action colour must support white text at 4.5:1.')
+  if (contrast('#FFFFFF', appearance.navigationColor) < 4.5) warnings.push('Navigation colour must support white text at 4.5:1.')
+  if (contrast(appearance.accentColor, appearance.backgroundColor) < 3) warnings.push('Accent/background contrast must be at least 3:1 for visible controls.')
+  return warnings
 }
 const DEFAULT_REPORT_STYLE = {
   fontFamily: 'Tahoma', fontFallback: 'Arial, sans-serif', bodyFontSize: 10, headingFontSize: 14,
@@ -296,6 +313,7 @@ export default function FirmSettingsPanel({ user }) {
   const selectedOfficeFirm = data.professionalFirms.find(item => String(item.id) === selectedFirmId)
   const offices = data.offices.filter(item => String(item.auditor_firm_id) === selectedFirmId)
   const partnerLabel = item => `${item.display_name} · ${item.email}${item.active ? '' : ' · inactive'}`
+  const appearanceContrastIssues = appearanceWarnings(appearance)
 
   return (
     <div className="mx-auto max-w-6xl p-5 sm:p-7">
@@ -448,7 +466,7 @@ export default function FirmSettingsPanel({ user }) {
           {data.canManage && <div className="flex gap-2">
             <button type="button" onClick={() => setAppearance(savedAppearance)} className="rounded-md border border-gray-300 px-3 py-2 text-sm">Cancel</button>
             <button type="button" onClick={() => setAppearance(DEFAULT_APPEARANCE)} className="rounded-md border border-gray-300 px-3 py-2 text-sm">Reset draft</button>
-            <button type="button" disabled={busy} onClick={saveAppearance} className="rounded-md bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">Save appearance</button>
+            <button type="button" disabled={busy || appearanceContrastIssues.length > 0} onClick={saveAppearance} className="rounded-md bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">Save appearance</button>
           </div>}
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -495,7 +513,11 @@ export default function FirmSettingsPanel({ user }) {
           </div>}
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <TextField label="Primary palette colour" type="color" value={appearance.primaryColor} onChange={value => updateAppearance('primaryColor', value)} disabled={!data.canManage} />
+          <TextField label="Primary action colour" type="color" value={appearance.primaryColor} onChange={value => updateAppearance('primaryColor', value)} disabled={!data.canManage} />
+          <TextField label="Accent / focus colour" type="color" value={appearance.accentColor} onChange={value => updateAppearance('accentColor', value)} disabled={!data.canManage} />
+          <TextField label="Navigation colour" type="color" value={appearance.navigationColor} onChange={value => updateAppearance('navigationColor', value)} disabled={!data.canManage} />
+          <TextField label="Workspace background colour" type="color" value={appearance.backgroundColor} onChange={value => updateAppearance('backgroundColor', value)} disabled={!data.canManage} />
+          <TextField label="Body text colour" type="color" value={appearance.textColor} onChange={value => updateAppearance('textColor', value)} disabled={!data.canManage} />
           <TextField label="Typeface" value={appearance.fontFamily} onChange={value => updateAppearance('fontFamily', value)} disabled={!data.canManage} />
           <TextField label="Font fallback" value={appearance.fontFallback} onChange={value => updateAppearance('fontFallback', value)} disabled={!data.canManage} />
           <TextField label="Base size (px)" type="number" min="11" max="20" value={appearance.baseFontSize} onChange={value => updateAppearance('baseFontSize', Number(value))} disabled={!data.canManage} />
@@ -503,18 +525,27 @@ export default function FirmSettingsPanel({ user }) {
           <label className="block"><span className="mb-1 block text-xs font-medium text-gray-700">Heading weight</span><select value={appearance.headingWeight} disabled={!data.canManage} onChange={event => updateAppearance('headingWeight', Number(event.target.value))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"><option value="400">Regular</option><option value="500">Medium</option><option value="600">Semibold</option><option value="700">Bold</option><option value="800">Extra bold</option><option value="900">Black</option></select></label>
           <label className="block"><span className="mb-1 block text-xs font-medium text-gray-700">Workspace density</span><select value={appearance.density} disabled={!data.canManage} onChange={event => updateAppearance('density', event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
         </div>
-        <div className="mt-4 rounded-lg border border-gray-200 p-4" style={{ fontFamily: `${appearance.fontFamily}, ${appearance.fontFallback}`, fontSize: `${appearance.baseFontSize}px` }}>
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md p-3 text-white" style={{ background: appearance.primaryColor }}>
+        {appearanceContrastIssues.length > 0 && <div role="status" aria-live="polite" className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+          Contrast warning: {appearanceContrastIssues.join(' ')} Saving is blocked until the palette meets these checks.
+        </div>}
+        <div className="mt-4 rounded-lg border border-gray-200 p-4" style={{ fontFamily: `${appearance.fontFamily}, ${appearance.fontFallback}`, fontSize: `${appearance.baseFontSize}px`, background: appearance.backgroundColor, color: appearance.textColor }}>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md p-3 text-white" style={{ background: appearance.navigationColor }}>
             <span className="flex items-center gap-3" style={{ fontSize: `${appearance.headingFontSize}px`, fontWeight: appearance.headingWeight }}>
               {appearance.logoBase64 && <img alt="" src={`data:${appearance.logoMimeType};base64,${appearance.logoBase64}`} className="h-8 max-w-32 object-contain" />}
               {appearance.displayName || 'Live workspace preview'}
             </span>
-            <button type="button" className="rounded bg-white/20 px-3 py-1.5 text-sm">Navigation · Reports · Save</button>
+            <button type="button" className="rounded px-3 py-1.5 text-sm" style={{ background: appearance.primaryColor, color: '#FFFFFF' }}>Navigation · Reports · Save</button>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <span className="rounded-md px-3 py-2 text-white" style={{ background: appearance.primaryColor }}>Primary action</span>
+            <span className="rounded-md px-3 py-2 text-white" style={{ background: appearance.primaryColor, color: '#FFFFFF' }}>Primary action</span>
+            <span className="rounded-md border-2 px-3 py-2" style={{ borderColor: appearance.accentColor, color: appearance.textColor }}>Active tab / focus accent</span>
             <span className="text-gray-700">Login, navigation, tabs and controls inherit application appearance.</span>
             <span className="rounded border border-gray-200 px-2 py-1 text-xs">{appearance.density} spacing</span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <span className="rounded px-2 py-1" style={{ background: 'var(--semantic-warning-background)', color: 'var(--semantic-warning-text)' }}>Warning: review required</span>
+            <span className="rounded px-2 py-1" style={{ background: 'var(--semantic-error-background)', color: 'var(--semantic-error-text)' }}>Error: action failed</span>
+            <span className="self-center text-gray-500">Warning/error colours remain semantic and independent of firm palette.</span>
           </div>
         </div>
       </section>

@@ -15,7 +15,7 @@ const THEMES = [
   { key: 'pink',  label: 'Soft Pink',     swatch: '#9d174d' },
 ]
 
-export default function TopBar({ onNewWindow, onQuit, entity, onOpenSettings, onManageFinancialPeriods, onSettings, dbOk, theme, onThemeChange, entityPeriods, currentEntityPeriodId, onEntityPeriodChange }) {
+export default function TopBar({ onNewWindow, onQuit, entity, onOpenSettings, onManageFinancialPeriods, onSettings, dbOk, theme, onThemeChange, entityPeriods, currentEntityPeriodId, onEntityPeriodChange, applicationName = 'FSG Bharat', applicationLogo = '' }) {
   const [showMastersModal, setShowMastersModal] = useState(false)
   const [showThemeMenu, setShowThemeMenu]     = useState(false)
   const [appVersion, setAppVersion]           = useState('')
@@ -27,10 +27,11 @@ export default function TopBar({ onNewWindow, onQuit, entity, onOpenSettings, on
   return (
     <header
       className="flex items-center justify-between text-white px-5 py-2.5 shadow-md select-none shrink-0"
-      style={{ background: 'var(--color-primary)' }}
+      style={{ background: 'var(--app-navigation-color, var(--color-primary))' }}
     >
       <div className="flex items-center gap-3">
-        <div className="font-bold text-xl tracking-wide text-white">FSG Bharat</div>
+        {applicationLogo && <img alt="" src={applicationLogo} className="h-8 max-w-36 object-contain" />}
+        <div className="font-bold text-xl tracking-wide text-white">{applicationName}</div>
         {appVersion && (
           <span className="text-white/80 font-medium self-end mb-0.5 -ml-1.5" style={{ fontSize: '8pt' }} title="Version of this copy of FSG Bharat">
             v{appVersion}

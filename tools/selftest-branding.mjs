@@ -1,13 +1,29 @@
 import assert from 'node:assert/strict'
 import {
-  DEFAULT_APPEARANCE, DEFAULT_REPORT_STYLE, extractKrestonPublicProfile, sanitizePublicSvg,
+  DEFAULT_APPEARANCE, DEFAULT_REPORT_STYLE, SEMANTIC_STATUS_COLORS, contrastRatio, extractKrestonPublicProfile, getAppearanceContrastWarnings, sanitizePublicSvg,
   validateAppearance, validatePublicProfileUrl, validateReportStyle,
 } from '../src/main/services/branding-domain.mjs'
 
-assert.deepEqual(validateAppearance(DEFAULT_APPEARANCE), { ...DEFAULT_APPEARANCE })
+assert.deepEqual(validateAppearance(DEFAULT_APPEARANCE), {
+  ...DEFAULT_APPEARANCE, accentColor: '#189cd8', backgroundColor: '#ffffff',
+})
+assert.equal(DEFAULT_APPEARANCE.primaryColor, '#243746')
+assert.equal(DEFAULT_APPEARANCE.accentColor, '#189CD8')
+assert.equal(DEFAULT_APPEARANCE.navigationColor, '#243746')
+assert.equal(DEFAULT_APPEARANCE.backgroundColor, '#FFFFFF')
+assert.equal(DEFAULT_APPEARANCE.textColor, '#243746')
+assert.ok(contrastRatio(DEFAULT_APPEARANCE.textColor, DEFAULT_APPEARANCE.backgroundColor) >= 4.5)
+assert.deepEqual(getAppearanceContrastWarnings(DEFAULT_APPEARANCE), [])
+assert.ok(contrastRatio(SEMANTIC_STATUS_COLORS.warningText, SEMANTIC_STATUS_COLORS.warningBackground) >= 4.5)
+assert.ok(contrastRatio(SEMANTIC_STATUS_COLORS.errorText, SEMANTIC_STATUS_COLORS.errorBackground) >= 4.5)
 assert.equal(validateReportStyle(DEFAULT_REPORT_STYLE).fontFamily, 'Tahoma')
 assert.equal(validateAppearance({ density: 'compact' }).density, 'compact')
 assert.throws(() => validateAppearance({ primaryColor: 'blue' }), /hexadecimal/i)
+assert.throws(() => validateAppearance({ accentColor: 'blue' }), /hexadecimal/i)
+assert.throws(() => validateAppearance({ textColor: '#ffffff', backgroundColor: '#ffffff' }), /Text and background colours/i)
+assert.throws(() => validateAppearance({ primaryColor: '#ffffff' }), /Primary action colour/i)
+assert.throws(() => validateAppearance({ navigationColor: '#ffffff' }), /Navigation colour/i)
+assert.throws(() => validateAppearance({ accentColor: '#ffffff' }), /Accent colour must contrast/i)
 assert.throws(() => validateAppearance({ density: 'tight' }), /compact or comfortable/i)
 assert.equal(validateAppearance({ displayName: 'Kreston Menon', logoMimeType: 'image/svg+xml',
   logoBase64: Buffer.from('<svg viewBox="0 0 1 1"></svg>').toString('base64') }).displayName, 'Kreston Menon')
@@ -39,11 +55,13 @@ const office = `
      data-phone="+971 4 276 2233" data-email="dubai@krestonmenon.com">Dubai</a>
 `
 const details = extractKrestonPublicProfile(home, office, '2026-10-27T00:00:00.000Z')
-assert.equal(details.firmName, 'Kreston Menon')
+assert.equal(details.firmName, 'Kreston Menon Chartered Accountants')
 assert.equal(details.phone, '+971 4 276 2233')
 assert.equal(details.email, 'info@krestonmenon.com')
-assert.equal(details.office.address, 'Lake Central, Level 15 Marasi Drive, Business Bay P.O. Box 55535, Dubai, UAE')
+assert.equal(details.address, 'Lake Central, Level 15 Marasi Drive, Business Bay, P.O. Box 55535, Dubai, UAE')
+assert.equal(details.office.address, 'Lake Central, Level 15 Marasi Drive, Business Bay, P.O. Box 55535, Dubai, UAE')
 assert.equal(details.office.email, 'dubai@krestonmenon.com')
+assert.equal(details.office.phone, '+971 4 276 2233')
 assert.equal(details.profileStatus, 'demo')
 assert.equal(details.registrationNumber, '')
 assert.equal(details.signingAuthority, '')

@@ -40,7 +40,9 @@ import { undo as undoCategorisation, redo as redoCategorisation, canUndo as canU
 const THEME_KEY = 'vera-theme'
 const DEFAULT_APP_APPEARANCE = {
   displayName: 'FSG Bharat', logoMimeType: '', logoBase64: '',
-  primaryColor: '#1e40af', fontFamily: 'Tahoma', fontFallback: 'Arial, sans-serif',
+  primaryColor: '#243746', accentColor: '#189CD8', navigationColor: '#243746',
+  backgroundColor: '#FFFFFF', textColor: '#243746',
+  fontFamily: 'Tahoma', fontFallback: 'Arial, sans-serif',
   baseFontSize: 14, headingFontSize: 20, headingWeight: 700, density: 'comfortable',
 }
 const APPEARANCE_LAST_FIRM_KEY = 'fsg-last-appearance-firm'
@@ -978,6 +980,8 @@ function ApplicationWorkspace({ user, onSignOut, signingOut, appearance }) {
         entityPeriods={entityPeriods}
         currentEntityPeriodId={currentEntityPeriodId}
         onEntityPeriodChange={handleEntityPeriodChange}
+        applicationName={appearance.displayName}
+        applicationLogo={appearance.logoBase64 ? `data:${appearance.logoMimeType};base64,${appearance.logoBase64}` : ''}
       />
 
       <div className="flex shrink-0 items-center justify-end gap-3 border-b border-gray-100 bg-white px-4 py-1.5 text-xs text-gray-500">
@@ -1136,8 +1140,13 @@ export default function App() {
     const settings = firmAppearance
     root.style.setProperty('--color-primary', settings.primaryColor)
     root.style.setProperty('--color-primary-dark', `color-mix(in srgb, ${settings.primaryColor} 78%, #000)`)
-    root.style.setProperty('--color-primary-mid', `color-mix(in srgb, ${settings.primaryColor} 72%, #fff)`)
-    root.style.setProperty('--color-primary-light', `color-mix(in srgb, ${settings.primaryColor} 20%, #fff)`)
+    root.style.setProperty('--color-primary-mid', settings.accentColor)
+    root.style.setProperty('--color-primary-light', `color-mix(in srgb, ${settings.primaryColor} 10%, ${settings.backgroundColor})`)
+    root.style.setProperty('--color-accent', settings.accentColor)
+    root.style.setProperty('--app-navigation-color', settings.navigationColor)
+    root.style.setProperty('--app-background-color', settings.backgroundColor)
+    root.style.setProperty('--app-text-color', settings.textColor)
+    root.style.setProperty('--app-surface-muted', settings.backgroundColor)
     root.style.setProperty('--app-font-family', `${settings.fontFamily}, ${settings.fontFallback}`)
     root.style.setProperty('--app-base-font-size', `${settings.baseFontSize}px`)
     root.style.setProperty('--app-heading-font-size', `${settings.headingFontSize}px`)
@@ -1162,8 +1171,12 @@ export default function App() {
   }
   if (!auth.user && auth.error) {
     return (
-      <>
-        <div className="flex h-screen flex-col items-center justify-center gap-4 bg-gray-50 p-5">
+      <div className="flex h-screen flex-col bg-gray-50">
+        <header className="flex shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-5 py-3">
+          {firmAppearance.logoBase64 && <img alt="" src={`data:${firmAppearance.logoMimeType};base64,${firmAppearance.logoBase64}`} className="h-9 max-w-36 object-contain" />}
+          <span className="font-bold text-gray-900">{firmAppearance.displayName}</span>
+        </header>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-5">
           <p role="alert" className="max-w-md text-center text-sm text-red-700">{auth.error}</p>
           <div className="flex gap-3">
             {auth.localSetupAvailable && <button onClick={() => setShowDatabaseSetup(true)} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Configure database</button>}
@@ -1184,7 +1197,7 @@ export default function App() {
             }
           }}
         />}
-      </>
+      </div>
     )
   }
   if (!auth.user) {

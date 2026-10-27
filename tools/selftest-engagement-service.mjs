@@ -454,17 +454,25 @@ try {
   const appearanceSaved = await ok('admin/appearance/save', {
     settings: { displayName: 'Synthetic Tenant One', logoMimeType: 'image/svg+xml',
       logoBase64: Buffer.from('<svg viewBox="0 0 1 1"><path d="M0 0"/></svg>').toString('base64'),
-      primaryColor: '#0f766e', fontFamily: 'Tahoma', fontFallback: 'Arial, sans-serif',
+      primaryColor: '#243746', accentColor: '#189CD8', navigationColor: '#243746',
+      backgroundColor: '#FFFFFF', textColor: '#243746',
+      fontFamily: 'Tahoma', fontFallback: 'Arial, sans-serif',
       baseFontSize: 15, headingFontSize: 22, headingWeight: 700, density: 'compact' },
   }, adminToken)
   const otherAppearance = await ok('admin/appearance', {}, otherTenantToken)
-  check(appearanceSaved.data.settings.primaryColor === '#0f766e'
+  check(appearanceSaved.data.settings.primaryColor === '#243746'
+    && appearanceSaved.data.settings.accentColor === '#189cd8'
+    && appearanceSaved.data.settings.navigationColor === '#243746'
+    && appearanceSaved.data.settings.backgroundColor === '#ffffff'
+    && appearanceSaved.data.settings.textColor === '#243746'
     && appearanceSaved.data.settings.displayName === 'Synthetic Tenant One'
     && Buffer.from(appearanceSaved.data.settings.logoBase64, 'base64').toString('utf8').startsWith('<svg')
-    && otherAppearance.data.settings.primaryColor === '#1e40af'
+    && otherAppearance.data.settings.primaryColor === '#243746'
     && otherAppearance.data.settings.displayName !== 'Synthetic Tenant One',
   'application appearance persists per authenticated firm and does not cross tenant boundaries')
   await fails('admin/appearance/save', { settings: { primaryColor: 'red' } }, adminToken, /hexadecimal/i)
+  await fails('admin/appearance/save', { settings: { textColor: '#ffffff', backgroundColor: '#ffffff' } },
+    adminToken, /Text and background colours/i)
   await fails('admin/appearance/save', { settings: { logoMimeType: 'image/svg+xml',
     logoBase64: Buffer.from('<svg onload="bad"></svg>').toString('base64') } }, adminToken, /active or externally linked/i)
   await fails('admin/appearance/save', { settings: { primaryColor: '#abcdef' } }, ownerToken, /administrator/i)
@@ -1110,7 +1118,8 @@ try {
   const loggedBackIn = await login('admin@example.test', 'Synthetic-Admin-Password!')
   const appearanceAfterRestart = await ok('admin/appearance', {}, loggedBackIn.sessionToken)
   const stylesAfterRestart = await ok('admin/report-styles', {}, loggedBackIn.sessionToken)
-  check(appearanceAfterRestart.data.settings.primaryColor === '#0f766e'
+  check(appearanceAfterRestart.data.settings.primaryColor === '#243746'
+    && appearanceAfterRestart.data.settings.accentColor === '#189cd8'
     && appearanceAfterRestart.data.settings.displayName === 'Synthetic Tenant One'
     && stylesAfterRestart.data.some(item => item.id === savedBrandStyle.data.id && item.version === 1),
   'firm appearance and immutable report-style versions survive service restart')
