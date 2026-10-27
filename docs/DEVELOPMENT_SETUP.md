@@ -156,6 +156,27 @@ $env:FSG_UAE_WORKBOOK_REOPEN_ONLY = 'true'
 
 The reopen-only check signs in normally, opens the existing engagement and saved v7 PDF, verifies the PDF hash, then reads the saved workbook without exporting or overwriting it. To run a new visible-export check instead, unset `FSG_UAE_WORKBOOK_REOPEN_ONLY`, select a new output filename with `FSG_UAE_WORKBOOK_OUTPUT_PATH` (the harness refuses to overwrite an existing workbook), and run the same action. Excel formulas recalculate in a compatible spreadsheet application; `npm run uae:workbook:test` is a separate deterministic unit check and does not start the desktop or connect to a database.
 
+## Export and reopen the UAE Word document
+
+Through the normal desktop UI, open **UAE-SAMPLE-01-2025**, locate saved PDF v7 / final TB v3, and select **Export Word**. Use a new filename; the harness refuses to overwrite an existing document. The latest UI-verified Word export is:
+
+- `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v7-final-verified.docx`
+- SHA-256: `8aea1383feba61ac4558746e6e32c05d483ad575b87b8a6b5a22f9e81f2d5c46`
+
+After starting the isolated desktop, reopen the saved Word export through the normal sign-in and engagement route with this separate PowerShell command:
+
+```powershell
+Set-Location 'D:\Programs\FinancialStatements\AdityaTool\FSG_Bharat_Source'
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+$env:FSG_UAE_WORD_OUTPUT_PATH = Join-Path (Join-Path $env:FSG_DEMO_HOME 'outputs') 'UAE-Sample-01-reporting-pack-v7-final-verified.docx'
+$env:FSG_UAE_WORD_REOPEN_ONLY = 'true'
+.\tools\engagement-demo.ps1 uae-word-export-ui
+```
+
+The reopen check does not create a new output. It verifies the existing engagement and saved UAE PDF v7 through the desktop, then confirms the Word file is an OOXML document and reports its hash. To export another Word copy, clear `FSG_UAE_WORD_REOPEN_ONLY`, choose a different path in `FSG_UAE_WORD_OUTPUT_PATH`, and run the same action. External Word edits remain in that document and do not update the engagement.
+
+The prior export opened normally in Microsoft Word, but its printed rendering has not been visually verified: Word's `ExportAsFixedFormat` stalled even for a minimal document. Do not treat package structure/page text checks as a visual print check. `npm run uae:word:test` tests baseline and non-zero OCI fixture documents without opening the desktop or connecting to a database.
+
 ## EPIPE test
 
 With the isolated PostgreSQL instance running and no app/dev process from this checkout active:

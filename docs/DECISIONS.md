@@ -59,6 +59,12 @@ This log separates user-approved product/scope decisions from engineering propos
 - **Rationale:** Preserve the known, previously reviewed synthetic report while validating UI persistence and branding improvements.
 - **Status:** Implemented. v3 retains its original SHA-256; corrected v5 is the current draft walkthrough output. The intermediate v4 remains a draft but is not the recommended walkthrough version because its logo layout caused a pagination mismatch.
 
+### 2026-10-27 — Keep editable exports separate from saved engagement data
+
+- **Decision:** Excel and Word exports are editable copies of a selected saved reporting revision. Corrections made in either external file do not update the engagement, its financial data, or its saved PDF.
+- **Rationale:** Keep the service-owned engagement and saved outputs auditable while allowing reviewers to work in familiar document formats.
+- **Status:** Implemented for the UAE demonstration exports. Excel review inputs recalculate within the self-contained workbook; Word remains an editable document. Re-importing external edits is not implemented.
+
 ## Engineering proposals and operational choices
 
 ### 2026-10-26 — Enforce engagement authorization at the trusted service

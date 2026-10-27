@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs'
-import { createHash } from 'node:crypto'
+import { calculateUaeReportDataHash } from './uae-report-data-hash.mjs'
 
 const DEBIT_NATURED = new Set([
   'cash', 'trade_receivables', 'inventory', 'property_plant_equipment',
@@ -622,21 +622,7 @@ export async function buildUaeEngagementWorkbook(source) {
   if (!source || !source.engagement || !source.snapshot || !source.reportOutput || !source.financials) {
     throw new Error('A saved UAE report revision and its verified reporting data are required.')
   }
-  const mappingById = new Map((source.uaeMappings || []).map(item => [String(item.trialBalanceRowId), item.lineKey || null]))
-  const financialRows = (source.finalRows || []).map(row => ({
-    id: row.id,
-    name: row.name,
-    ledger_code: row.ledger_code,
-    opening_balance: row.opening_balance,
-    closing_balance: row.closing_balance,
-    line_key: mappingById.get(String(row.id)) || null,
-  }))
-  const computedHash = createHash('sha256').update(JSON.stringify({
-    snapshotId: Number(source.snapshot.id),
-    version: Number(source.snapshot.version),
-    journalWatermark: Number(source.snapshot.journal_watermark),
-    rows: financialRows,
-  })).digest('hex')
+  const computedHash = calculateUaeReportDataHash(source)
   if (source.reportOutput.financial_data_sha256 !== computedHash) {
     throw new Error('The saved PDF data hash does not match the selected Trial Balance and mappings. Generate a new PDF version before exporting.')
   }

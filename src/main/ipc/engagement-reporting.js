@@ -2,6 +2,7 @@ import { dialog, ipcMain } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { renderHtmlToPdf } from './pdf-rendering.js'
 import { buildUaeEngagementWorkbook } from '../services/uae-engagement-workbook.js'
+import { buildUaeEngagementWordDocument } from '../services/uae-engagement-word.js'
 
 export function registerEngagementReportingDesktopHandlers() {
   ipcMain.handle('engagement:renderPDF', async (_, html) => renderHtmlToPdf(html))
@@ -37,6 +38,22 @@ export function registerEngagementReportingDesktopHandlers() {
       title: 'Save UAE demonstration workbook',
       defaultPath: String(source.defaultName || 'UAE-Demonstration-Reporting.xlsx').replace(/[\\/:*?"<>|]/g, '_'),
       filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }],
+    })
+    if (result.canceled || !result.filePath) return { cancelled: true }
+    await writeFile(result.filePath, buffer, { flag: 'wx' }).catch(async error => {
+      if (error.code !== 'EEXIST') throw error
+      await writeFile(result.filePath, buffer)
+    })
+    return { filePath: result.filePath }
+  })
+
+  ipcMain.handle('engagement:exportUaeWord', async (_, source = {}) => {
+    const buffer = await buildUaeEngagementWordDocument(source)
+    if (buffer.byteLength > 20 * 1024 * 1024) throw new Error('The Word document exceeds the 20 MB export limit.')
+    const result = await dialog.showSaveDialog({
+      title: 'Save UAE demonstration Word reporting pack',
+      defaultPath: String(source.defaultName || 'UAE-Demonstration-Reporting.docx').replace(/[\\/:*?"<>|]/g, '_'),
+      filters: [{ name: 'Word document', extensions: ['docx'] }],
     })
     if (result.canceled || !result.filePath) return { cancelled: true }
     await writeFile(result.filePath, buffer, { flag: 'wx' }).catch(async error => {

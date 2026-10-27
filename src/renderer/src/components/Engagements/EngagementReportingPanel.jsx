@@ -627,6 +627,59 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
     if (!result.cancelled) setMessage(`Excel workbook for saved PDF v${output.version} saved to ${result.filePath}. External workbook edits do not update this engagement.`)
   })
 
+  const exportWord = output => run(async () => {
+    if (!isUaeDemo) throw new Error('Word export is currently available only for the UAE demonstration reporting pack.')
+    const snapshot = snapshots.find(item => Number(item.snapshotId) === Number(output.final_tb_snapshot_id))
+    if (!snapshot) throw new Error(`Final Trial Balance snapshot v${output.final_tb_version} is unavailable. Refresh the engagement before exporting.`)
+    const reportingData = await window.api.getEngagementReportingData({
+      engagementId: engagement.id,
+      trialBalanceId: Number(output.final_tb_id),
+    })
+    if (Number(reportingData.snapshot?.id) !== Number(output.final_tb_snapshot_id)) {
+      throw new Error('The saved report output and selected final Trial Balance snapshot do not match.')
+    }
+    if (!reportingData.comparativeTrialBalance?.id) {
+      throw new Error('Select and save the prior-year comparative Trial Balance before exporting the UAE Word document.')
+    }
+    const finalRows = await window.api.getEngagementFinalTrialBalanceRows({
+      engagementId: engagement.id,
+      trialBalanceId: Number(output.final_tb_id),
+    })
+    const outputMappings = Object.fromEntries((reportingData.uaeMappings || []).map(item => [
+      String(item.trialBalanceRowId), item.lineKey,
+    ]))
+    const reportFinancials = buildUaeDemoFinancials({
+      currentRows: reportingData.currentRows || [],
+      comparativeRows: reportingData.comparativeRows || [],
+      mappings: outputMappings,
+      periodEnd: reportingData.engagement.periodEnd,
+      comparativePeriodEnd: reportingData.comparativeTrialBalance.dateTill,
+    })
+    const result = await window.api.exportUaeEngagementWord({
+      defaultName: `${engagement.reference}-reporting-pack-v${output.version}.docx`,
+      engagement: {
+        reference: engagement.reference,
+        name: engagement.name,
+        clientName: engagement.client_name,
+        jurisdiction: engagement.client_jurisdiction || 'United Arab Emirates',
+        legalForm: engagement.client_legal_form || 'LLC',
+        reportingPackId: engagement.reporting_pack_id,
+        periodStart: reportingData.engagement.periodStart,
+        periodEnd: reportingData.engagement.periodEnd,
+        trialBalanceCurrency: engagement.trial_balance_currency,
+        presentationCurrency: engagement.presentation_currency,
+      },
+      snapshot: reportingData.snapshot,
+      reportOutput: output,
+      finalRows,
+      uaeMappings: reportingData.uaeMappings || [],
+      comparativeTrialBalance: reportingData.comparativeTrialBalance,
+      noteDisclosures: reportingData.noteDisclosures || [],
+      financials: reportFinancials,
+    })
+    if (!result.cancelled) setMessage(`Editable Word pack for saved PDF v${output.version} saved to ${result.filePath}. Edits remain in that document and do not update this engagement.`)
+  })
+
   const finaliseOutput = output => run(async () => {
     await window.api.finaliseEngagementReportOutput(output.id)
     setMessage(`Combined PDF v${output.version} finalised. Its template, data hash and signing details are retained.`)
@@ -964,6 +1017,7 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
         </div>
             <button disabled={busy} onClick={() => downloadOutput(output)} className="rounded-md border px-3 py-1.5 text-sm">Download PDF</button>
             {isUaeDemo && <button disabled={busy} onClick={() => exportWorkbook(output)} className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-900 disabled:opacity-40">Export Excel</button>}
+            {isUaeDemo && <button disabled={busy} onClick={() => exportWord(output)} title="Creates an editable copy; changes stay in this Word document." className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-900 disabled:opacity-40">Export Word</button>}
             {canFinaliseOutput && !output.finalised_at && <button disabled={busy} onClick={() => finaliseOutput(output)} className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">Finalise version</button>}
           </div>)}
         </div>
