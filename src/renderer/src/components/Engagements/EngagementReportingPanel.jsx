@@ -4,9 +4,11 @@ import { buildFinancialsHTML } from '../GenerateFinancials/buildHTML'
 import { formatPeriodDate, formatPeriodRange } from '../../utils/financialPeriodDisplay'
 import { makeAuditReportPage, prependAuditReport } from './engagementReportHtml'
 import {
+  buildUaeDemoComparativeMappings,
   buildUaeDemoFinancials,
   buildUaeDemoFinancialsHtml,
-  suggestUaeDemoAccountLine,
+  getUaeDemoAccountLine,
+  getUaeDemoReportingBalance,
   UAE_DEMO_ACCOUNT_LINES,
 } from './uaeDemoReporting'
 
@@ -51,6 +53,27 @@ function bytesToBase64(bytes) {
     binary += String.fromCharCode(...chunk)
   }
   return btoa(binary)
+}
+
+async function readAllEngagementTrialBalanceRows(engagementId, trialBalanceId) {
+  const rows = []
+  let offset = 0
+  let totalRows = Number.POSITIVE_INFINITY
+  while (offset < totalRows) {
+    const page = await window.api.getEngagementTrialBalanceRows({
+      engagementId,
+      trialBalanceId,
+      offset,
+      limit: 1000,
+    })
+    rows.push(...page.rows)
+    totalRows = Number(page.totalRows)
+    offset += page.rows.length
+    if (!page.rows.length && offset < totalRows) {
+      throw new Error('Trial Balance export stopped before all source rows were received.')
+    }
+  }
+  return rows
 }
 
 function Input({ label, value, onChange, ...props }) {
@@ -515,6 +538,95 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
     if (!result.cancelled) setMessage(`PDF v${saved.version} saved to ${result.filePath}.`)
   })
 
+  const exportWorkbook = output => run(async () => {
+    if (!isUaeDemo) throw new Error('Excel export is currently available only for the UAE demonstration reporting pack.')
+    const snapshot = snapshots.find(item => Number(item.snapshotId) === Number(output.final_tb_snapshot_id))
+    if (!snapshot) throw new Error(`Final Trial Balance snapshot v${output.final_tb_version} is unavailable. Refresh the engagement before exporting.`)
+    const [reportingData, finalRows] = await Promise.all([
+      window.api.getEngagementReportingData({ engagementId: engagement.id, trialBalanceId: Number(output.final_tb_id) }),
+      window.api.getEngagementFinalTrialBalanceRows({ engagementId: engagement.id, trialBalanceId: Number(output.final_tb_id) }),
+    ])
+    if (!reportingData.comparativeTrialBalance?.id) {
+      throw new Error('Select and save the prior-year comparative Trial Balance before exporting the UAE workbook.')
+    }
+    const currentSourceId = Number(reportingData.snapshot.source_trial_balance_id)
+    const [originalCurrentRows, originalPriorRows] = await Promise.all([
+      readAllEngagementTrialBalanceRows(engagement.id, currentSourceId),
+      readAllEngagementTrialBalanceRows(engagement.id, Number(reportingData.comparativeTrialBalance.id)),
+    ])
+    const savedJournals = (await window.api.listEngagementJournals(engagement.id))
+      .filter(item => Number(item.source_trial_balance_id) === currentSourceId
+        && Number(item.id) <= Number(reportingData.snapshot.journal_watermark))
+    const mappingSelectionsForRevision = Object.fromEntries(reportingData.uaeMappings.map(item => [
+      String(item.trialBalanceRowId), item.lineKey,
+    ]))
+    const reportFinancials = buildUaeDemoFinancials({
+      currentRows: reportingData.currentRows || [],
+      comparativeRows: reportingData.comparativeRows || [],
+      mappings: mappingSelectionsForRevision,
+      periodEnd: reportingData.engagement.periodEnd,
+      comparativePeriodEnd: reportingData.comparativeTrialBalance.dateTill,
+    })
+    const mappingById = new Map(reportingData.uaeMappings.map(item => [String(item.trialBalanceRowId), item.lineKey]))
+    const finalReportingBalances = finalRows.map(row => {
+      const lineKey = mappingById.get(String(row.id))
+      return lineKey ? getUaeDemoReportingBalance(row, lineKey) : Number(row.closing_balance || 0)
+    })
+    const finalReportingByLine = {}
+    for (const [index, row] of finalRows.entries()) {
+      const lineKey = mappingById.get(String(row.id))
+      if (lineKey) finalReportingByLine[lineKey] = (finalReportingByLine[lineKey] || 0) + finalReportingBalances[index]
+    }
+    const comparativeMappings = buildUaeDemoComparativeMappings(
+      reportingData.currentRows || [],
+      mappingSelectionsForRevision,
+    )
+    const originalPriorRowsWithMappings = originalPriorRows.map(row => {
+      const lineKey = getUaeDemoAccountLine(row, comparativeMappings)
+      return {
+        ...row,
+        lineKey,
+        reportingBalance: lineKey ? getUaeDemoReportingBalance(row, lineKey) : Number(row.closing_balance || 0),
+      }
+    })
+    const priorReportingByLine = {}
+    for (const row of originalPriorRowsWithMappings) {
+      if (row.lineKey) priorReportingByLine[row.lineKey] = (priorReportingByLine[row.lineKey] || 0) + row.reportingBalance
+    }
+    const currentTrialBalance = trialBalances.find(item => Number(item.id) === currentSourceId)
+    const priorTrialBalance = reportingData.comparativeTrialBalance
+    const result = await window.api.exportUaeEngagementWorkbook({
+      defaultName: `${engagement.reference}-reporting-pack-v${output.version}.xlsx`,
+      engagement: {
+        reference: engagement.reference,
+        name: engagement.name,
+        clientName: engagement.client_name,
+        jurisdiction: engagement.client_jurisdiction || 'United Arab Emirates',
+        legalForm: engagement.client_legal_form || 'LLC',
+        periodStart: reportingData.engagement.periodStart,
+        periodEnd: reportingData.engagement.periodEnd,
+        trialBalanceCurrency: engagement.trial_balance_currency,
+        presentationCurrency: engagement.presentation_currency,
+      },
+      snapshot: reportingData.snapshot,
+      reportOutput: output,
+      currentTrialBalance,
+      comparativeTrialBalance: priorTrialBalance,
+      originalCurrentRows,
+      originalPriorRows: originalPriorRowsWithMappings,
+      journals: savedJournals,
+      finalRows,
+      finalReportingBalances,
+      finalReportingByLine,
+      priorReportingByLine,
+      uaeMappings: reportingData.uaeMappings,
+      accountLines: UAE_DEMO_ACCOUNT_LINES,
+      noteDisclosures: reportingData.noteDisclosures || [],
+      financials: reportFinancials,
+    })
+    if (!result.cancelled) setMessage(`Excel workbook for saved PDF v${output.version} saved to ${result.filePath}. External workbook edits do not update this engagement.`)
+  })
+
   const finaliseOutput = output => run(async () => {
     await window.api.finaliseEngagementReportOutput(output.id)
     setMessage(`Combined PDF v${output.version} finalised. Its template, data hash and signing details are retained.`)
@@ -851,6 +963,7 @@ export default function EngagementReportingPanel({ engagement, user, trialBalanc
           <div className="mt-0.5 text-xs text-gray-500">Template r{output.template_revision} · {output.created_by_name} · {new Date(output.created_at).toLocaleString()}{output.finalised_at ? ` · Finalised ${new Date(output.finalised_at).toLocaleString()}` : ''}</div>
         </div>
             <button disabled={busy} onClick={() => downloadOutput(output)} className="rounded-md border px-3 py-1.5 text-sm">Download PDF</button>
+            {isUaeDemo && <button disabled={busy} onClick={() => exportWorkbook(output)} className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-900 disabled:opacity-40">Export Excel</button>}
             {canFinaliseOutput && !output.finalised_at && <button disabled={busy} onClick={() => finaliseOutput(output)} className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">Finalise version</button>}
           </div>)}
         </div>

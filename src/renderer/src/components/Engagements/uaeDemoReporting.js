@@ -78,6 +78,21 @@ function rowLine(row, mappings) {
   return explicit || suggestUaeDemoAccountLine(row.name)
 }
 
+export function getUaeDemoAccountLine(row, mappings) {
+  return rowLine(row, mappings)
+}
+
+export function buildUaeDemoComparativeMappings(currentRows, mappings) {
+  const comparativeMappings = mappings instanceof Map ? new Map(mappings) : new Map(Object.entries(mappings || {}))
+  for (const row of currentRows || []) {
+    const lineId = rowLine(row, mappings)
+    if (!lineId) continue
+    if (row.ledger_code) comparativeMappings.set(String(row.ledger_code).trim().toLowerCase(), lineId)
+    comparativeMappings.set(String(row.name || '').trim().toLowerCase(), lineId)
+  }
+  return comparativeMappings
+}
+
 function normalisedBalance(row, lineId, field = 'closing_balance') {
   const balance = Number(row[field] || 0)
   if (!Number.isFinite(balance)) throw new Error(`Trial balance row "${row.name}" has a non-numeric ${field}.`)
@@ -87,6 +102,11 @@ function normalisedBalance(row, lineId, field = 'closing_balance') {
     throw new Error(`Trial balance sign for "${row.name}" conflicts with its ${LINE_BY_ID.get(lineId)?.label || lineId} classification.`)
   }
   return roundAmount(expectedDebitNature ? -balance : balance)
+}
+
+export function getUaeDemoReportingBalance(row, lineId, field = 'closing_balance') {
+  if (!LINE_BY_ID.has(lineId)) throw new Error(`Unsupported UAE demonstration mapping "${lineId}".`)
+  return normalisedBalance(row, lineId, field)
 }
 
 function mappedRows(rows, mappings, periodName) {
@@ -293,11 +313,7 @@ export function buildUaeDemoFinancials({
     throw new Error('Import and select a prior-year comparative Trial Balance before generating UAE statements.')
   }
   const current = mappedRows(currentRows, mappings, periodEnd)
-  const comparativeMappings = mappings instanceof Map ? new Map(mappings) : new Map(Object.entries(mappings || {}))
-  for (const row of current) {
-    if (row.ledger_code) comparativeMappings.set(String(row.ledger_code).trim().toLowerCase(), row.lineId)
-    comparativeMappings.set(String(row.name || '').trim().toLowerCase(), row.lineId)
-  }
+  const comparativeMappings = buildUaeDemoComparativeMappings(currentRows, mappings)
   const comparative = mappedRows(comparativeRows, comparativeMappings, comparativePeriodEnd)
   const sourceBalance = roundAmount(current.reduce((sum, row) => sum + Number(row.closing_balance || 0), 0))
   const comparativeSourceBalance = roundAmount(comparative.reduce((sum, row) => sum + Number(row.closing_balance || 0), 0))

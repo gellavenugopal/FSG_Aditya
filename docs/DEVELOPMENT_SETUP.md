@@ -137,6 +137,25 @@ $env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
 
 Then sign in as the harness-provisioned `Demo Administrator` in **FSG Isolated Demo Firm**, open **UAE-SAMPLE-01-2025**, and download saved output v7. The prior empty list was caused by signing in as `Sample Administrator` from a different firm; “All Engagements” remains firm-scoped. The cluster is `127.0.0.1:64023/fsg_engagement_demo`; its data and Electron profile persist across these restarts. Do not launch a second app process against this profile.
 
+## Export and reopen the UAE Excel workbook
+
+Through the normal desktop UI, open **UAE-SAMPLE-01-2025**, go to its saved combined PDF versions, select version 7 / final Trial Balance v3, and choose **Export Excel**. Select a local destination in the desktop Save dialog. The workbook is self-contained; external edits do not update the engagement, its saved financial data, or PDF. The delivered workbook is:
+
+- `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v7-final-complete.xlsx`
+- SHA-256: `5c0f2b858d7b5ae8071781d9613a4b92c93e0c49affb6aa702ddc1b653512fa`
+
+To re-open that workbook and the saved v7 PDF through the desktop harness after a normal application restart, first start the isolated demo using the commands above. In a second PowerShell window:
+
+```powershell
+Set-Location 'D:\Programs\FinancialStatements\AdityaTool\FSG_Bharat_Source'
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+$env:FSG_UAE_WORKBOOK_OUTPUT_PATH = Join-Path (Join-Path $env:FSG_DEMO_HOME 'outputs') 'UAE-Sample-01-reporting-pack-v7-final-complete.xlsx'
+$env:FSG_UAE_WORKBOOK_REOPEN_ONLY = 'true'
+.\tools\engagement-demo.ps1 uae-workbook-export-ui
+```
+
+The reopen-only check signs in normally, opens the existing engagement and saved v7 PDF, verifies the PDF hash, then reads the saved workbook without exporting or overwriting it. To run a new visible-export check instead, unset `FSG_UAE_WORKBOOK_REOPEN_ONLY`, select a new output filename with `FSG_UAE_WORKBOOK_OUTPUT_PATH` (the harness refuses to overwrite an existing workbook), and run the same action. Excel formulas recalculate in a compatible spreadsheet application; `npm run uae:workbook:test` is a separate deterministic unit check and does not start the desktop or connect to a database.
+
 ## EPIPE test
 
 With the isolated PostgreSQL instance running and no app/dev process from this checkout active:
@@ -163,12 +182,14 @@ Starting or reopening the demo does not run the test suite. From the repository 
 
 ```powershell
 npm run uae:test
+npm run uae:workbook:test
 npm run engagement:test
 npm run build
 npm run uae:pdf
 ```
 
 - `uae:test` runs the deterministic synthetic A/B/C calculations and failure cases without connecting to a database.
+- `uae:workbook:test` builds and checks the formula-driven UAE reporting workbook using deterministic in-memory data; it does not connect to a database or export a file.
 - `engagement:test` creates and removes its own temporary PostgreSQL test cluster; it exercises permissions, actionable journal validation and report-output persistence across a service restart.
 - `build` compiles the desktop and is not part of `launch`.
 - `uae:pdf` renders synthetic fixture HTML through local Edge into a timestamped folder under `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-IFRS-Testbed`. It requires the existing isolated `target.json`, does not connect to the database, and does not alter saved UAE Sample 01 or India outputs. These renderer PDFs are not service-saved engagement outputs.

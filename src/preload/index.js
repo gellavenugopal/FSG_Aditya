@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('api', {
   finaliseEngagementReportOutput: (id) => inv('engagement:reportOutputFinalise', id),
   renderEngagementPDF:          (html) => inv('engagement:renderPDF', html),
   saveEngagementPdfFile:        (data) => inv('engagement:savePdfFile', data),
+  exportUaeEngagementWorkbook:  (data) => inv('engagement:exportUaeWorkbook', data),
 
   // More than one window
   openNewWindow:     (payload) => ipcRenderer.invoke('window:openNew', payload),

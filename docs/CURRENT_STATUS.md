@@ -5,25 +5,37 @@ Last updated: **2026-10-27**
 ## Repository state
 
 - Branch: `feature/engagement-foundation`
-- HEAD before the current access-verification follow-up: `3531d86` — `docs: record UAE test-bed checkpoint`.
+- Base HEAD before the Excel workbook checkpoint: `bc6c448` — `docs: record UAE v7 restart reopening check`.
 - UAE note-reference/corrected-output implementation checkpoint: `f3378c5` — `fix: remove dangling UAE note references`.
 - Current test-bed implementation checkpoint: `cc5d18e` — `test: verify UAE IFRS B/C desktop cases`.
 - Base before that checkpoint: `4cb550d` — `Record UAE access and PDF checkpoint`.
 - Earlier milestones remain in history: `6dea749` reporting workflow, `a683914` firm settings, `666b110` EPIPE guard, `a5785c8` synthetic UAE test bed, and `5ccdf38` UAE access/list and PDF review.
-- The test-bed source and coverage/roadmap documentation are committed locally. The UAE access/download evidence, corrected-output UI verification, note-reference fix and refreshed context documents are committed locally; no push or merge was performed.
+- The test-bed source and coverage/roadmap documentation are committed locally. The UAE access/download evidence, corrected-output UI verification, note-reference fix and refreshed context documents are committed locally.
+- Excel workbook implementation and this checkpoint's documentation are being committed locally; no push or merge is permitted.
 - No push or merge has been performed.
 
 ## Current task and next action
 
-The corrected UAE Sample 01 v7 draft is now saved and downloaded through the normal desktop reporting UI. The visible engagement route and the authorized service both identify engagement `UAE-SAMPLE-01-2025` (id 2) in **FSG Isolated Demo Firm**. Version 5 and version 6 remain preserved. A synthetic Note 1 narrative was saved through the visible disclosure form and is present in v7. The report-generation harness now resumes a saved version after an interrupted confirmation wait instead of creating a duplicate version.
+The first Excel reporting workbook for UAE Sample 01 v7 is complete. It was exported through the visible desktop action from saved PDF version 7 / final Trial Balance v3, recalculated and saved in Microsoft Excel, then reopened after a full desktop restart. The correct UAE PDF v7 remains byte-identical.
 
-The user-retrieved `FSG-DEMO-2025-26-reporting-pack-v7.pdf` is an India Carverse report (10 pages, year ended 31 March 2026), found inside `outputs\UAE-IFRS-Testbed\Saved-Engagements`; it is not UAE Sample 01 and must not be used for the UAE walkthrough. Its exact origin was not established. The earlier correct UAE v5 UI download is `outputs\UAE-Sample-01-reporting-pack-v5-ui-download.pdf`, 17 pages, SHA-256 `29936ef746e59428080ccc119e392678bcd0374b6ad88046523b647cf248ea7a`. The current corrected v7 UI download is `outputs\UAE-Sample-01-reporting-pack-v7-corrected.pdf`, 11 pages, SHA-256 `2d1d41e69827f5eed47f041a0b84ff13dfd80c97a4ccc9d4fd08c67e897838f6`. Extracted text confirms UAE Sample 01 Demo LLC, 31 December 2025, AED, assets 239,250 and profit 36,250.
+- Workbook: `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v7-final-complete.xlsx`
+- SHA-256 after Excel recalculation/save: `5c0f2b858d7b5ae8071781d9613a4b92c93e0c49affb6aa702ddc1b653512fa`
+- It contains 11 visible sheets: revision guide, report/signatures, original current/prior TB, posted journals, review adjustments, final TB, statements/schedules, movement schedules, notes, and reconciliation checks. Formulas feed from the adjusted Final TB and supporting schedules. Notes print area covers all 32 rows.
+- Baseline in Excel: AED 239,250 assets, AED 57,000 liabilities, AED 36,250 profit; position, equity, cash-flow, and final-TB differences are zero. No formula errors, external links, connections, or failed reconciliation checks were found.
+- A disposable workbook copy with balanced Dr operating expenses AED 1,000 / Cr trade payables AED 1,000 recalculated to AED 35,250 profit and AED 58,000 liabilities while assets remained AED 239,250 and all reconciliations remained zero.
+- Older workbook drafts in the same outputs folder, including `UAE-Sample-01-reporting-pack-v7.xlsx`, `...-formula-verified.xlsx`, `...-reconciled.xlsx`, and `...-final.xlsx`, predate the final notes print-area correction. Use `...-final-complete.xlsx` only.
+- Through the normal UI after restart, UAE Sample 01 v7 PDF SHA-256 remained `2d1d41e69827f5eed47f041a0b84ff13dfd80c97a4ccc9d4fd08c67e897838f6`. India finalised v5 was reopened again after these shared-code changes; its SHA-256 remained `059865a857f2dc5086e9a7d5765d89cc72201fce3ada3d539a776686ddf0e075`.
+- Checks passed: `npm run build`; `npm run uae:workbook:test`; `npm run engagement:test` (99 assertions); `npm run isolation:test` (23 assertions); `node tools/selftest-fs-snapshot.mjs`; `node tools/selftest-final-signing.mjs`; visible export and post-restart reopen checks for UAE v7 and the workbook. The first snapshot-test run hit a Windows `EPERM` while removing its disposable temp cluster after the assertions; its exact temp folder was removed and the complete test passed on retry.
 
-The earlier empty list was caused by signing in as `Sample Administrator` from firm 1 (`FSG Disposable Demo Firm`) while UAE Sample 01 belongs to firm 2 (`FSG Isolated Demo Firm`). Firm-scoped authorization is behaving as designed; no cross-firm access, duplicate engagement, or credential reset was used. No filtering, authorization, or navigation defect reproduced when using the UAE firm's administrator. Exact clicks and v7 download details are in [DEVELOPMENT_SETUP.md](./DEVELOPMENT_SETUP.md#reopen-uae-sample-01-and-its-saved-draft-pdfs).
+The next task in the user's requested order is an editable Word reporting pack using the shared reporting data and calculations. The engagement-navigation redesign follows Word; resume separate IFRS scenario expansion after those two deliverables. Neither Word nor navigation changes have started in this checkpoint.
 
-The broad legacy migration and extended EPIPE investigation are deferred for this window unless they block the isolated demonstration. Their unresolved status is retained below.
+Historical reproducibility limitation: the saved PDF output record does not snapshot the selected comparative TB or narrative disclosures. For v7, the current selected comparative/disclosure data match the known PDF revision and its financial-data hash is checked; exact reconstruction of arbitrary older output revisions after later edits is not guaranteed. Workbook corrections remain external and do not update the engagement, its saved financial data, or PDF.
 
-The bounded note-reference/PDF task and the separate B/C desktop reopen check are complete. After product-owner review, the next test-bed gap is to change a posted journal and a mapping after an existing B/C output, create a new persisted version, and verify that the previous PDF remains unchanged. Structured disclosure schedules remain unsupported.
+### Prior access and test-bed checkpoint
+
+The earlier empty engagement list was caused by signing in as `Sample Administrator` from firm 1 (`FSG Disposable Demo Firm`) while UAE Sample 01 belongs to firm 2 (`FSG Isolated Demo Firm`). Firm-scoped authorization was behaving as designed; no cross-firm access, duplicate engagement, or credential reset was used. Exact normal navigation and startup commands are in [DEVELOPMENT_SETUP.md](./DEVELOPMENT_SETUP.md).
+
+The user-retrieved `FSG-DEMO-2025-26-reporting-pack-v7.pdf` was an India Carverse report, not UAE Sample 01, and is not the UAE walkthrough PDF. The separate synthetic B/C test-bed reopen checks remain complete. The next B/C journal/mapping-change check is deferred until the Word and navigation milestones are complete. Structured disclosure schedules remain unsupported.
 
 ## Verified reporting outcome
 

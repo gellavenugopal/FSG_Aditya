@@ -2,6 +2,13 @@
 
 Order reflects the current user-approved delivery priority. Acceptance requires observable application behavior, not just API tests or an architecture document.
 
+## Immediate reporting exports and navigation (approved priority, 2026-10-27)
+
+1. **Excel reporting workbook — complete for UAE Sample 01 v7.** The visible desktop export now creates a self-contained `.xlsx` from the saved reporting revision. Microsoft Excel recalculated the delivered workbook; baseline totals, formulas, review-adjustment propagation, reconciliation checks, all 32 printed note rows, and restart/reopen behavior were verified. Exact path/hash and test evidence are in [CURRENT_STATUS.md](./CURRENT_STATUS.md).
+2. **Editable Word reporting pack — next.** Export editable text and Word tables from the same saved reporting data used by PDF and Excel. Include report narrative, statements, notes, branding, signatories, dates, heading styles, page breaks, repeating table headings, page numbering, and an updateable contents field. Verify the rendered/printed document and state that external Word edits do not update the engagement.
+3. **Consistent engagement navigation — after Word.** Implement the approved left navigation for major engagement sections and top tabs for subsections. Keep client, period, currency, and status visible; reduce nested scrolling and repeated clicks; preserve unsaved edits with clear save/discard behavior. Reuse protected service permissions and verify at 1366 × 768 and 1920 × 1080.
+4. **Resume IFRS scenario expansion — after the export and navigation milestones.** Keep separate synthetic engagements and the existing coverage matrix. Do not equate workbook/PDF export checks with IFRS treatment coverage or claim complete IFRS compliance.
+
 ## 1. Verify and preserve the India baseline — gate
 
 - **Status: verified 2026-10-27.** Preserve the finalised India PDFs and engagement; do not run demo initialization against the existing database.
@@ -24,7 +31,7 @@ Order reflects the current user-approved delivery priority. Acceptance requires 
 - The empty engagement list was traced to signing in as `Sample Administrator` from a different firm; the trusted service correctly keeps “All Engagements” firm-scoped. The normal UI now identifies the authenticated firm and defaults administrators/partners to the firm-scoped list. `Demo Administrator` in **FSG Isolated Demo Firm** opened the existing engagement and downloaded v5; no permission bypass or duplicate engagement was created.
 - Broader UAE reporting/IFRS validation, currency translation and production use are not claimed. Supplied `UAESample1.zip` and its listed documents were unavailable for direct inspection; the synthetic dataset remains clearly identified as synthetic.
 - **First-cut test-bed slice delivered 2026-10-27:** deterministic synthetic A/B/C fixtures and independent expected balances exercise the Sample 01 baseline-calibrated case, a trading LLC and a controlled IAS 16 revaluation-OCI case. `npm run uae:test` covers 241 assertions. Separate B/C engagements were reopened through the desktop; current v2 PDFs are 11 pages each, and case C reconciles AED 10,000 OCI separately from AED 45,000 profit. UAE Sample 01 v5/v6 and India finalised v5 remain unchanged at their recorded hashes. See [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md) for exact paths, hashes, coverage and limitations.
-- **Next acceptance gap:** exercise a journal and a mapping edit after an existing B/C output, generate a new persisted version, and verify the prior PDF remains unchanged. Structured disclosure schedules and broader UAE IFRS coverage remain unsupported.
+- **Next IFRS test-bed acceptance gap (deferred until the immediate export/navigation work is complete):** exercise a journal and a mapping edit after an existing B/C output, generate a new persisted version, and verify the prior PDF remains unchanged. Structured disclosure schedules and broader UAE IFRS coverage remain unsupported.
 
 ## 3. Resume India product corrections
 

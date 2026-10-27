@@ -1299,12 +1299,21 @@ export function registerEngagementHandlers(ipcMain, database) {
     const { engagement, period } = await assertEngagementTBContext(user, engagementId)
     const { rows: [authorizedTB] } = await query(
       `SELECT tb.id FROM trial_balances tb
-       WHERE tb.id=$1 AND tb.entity_id=$2 AND tb.entity_period_id=$3
+       WHERE tb.id=$1 AND tb.entity_id=$2
          AND (
-           EXISTS (SELECT 1 FROM engagement_trial_balance_imports i
-                   WHERE i.engagement_id=$4 AND i.trial_balance_id=tb.id)
-           OR EXISTS (SELECT 1 FROM engagement_legacy_tb_links l
-                      WHERE l.engagement_id=$4 AND l.trial_balance_id=tb.id AND l.entity_period_id=$3)
+           (tb.entity_period_id=$3 AND (
+             EXISTS (SELECT 1 FROM engagement_trial_balance_imports i
+                     WHERE i.engagement_id=$4 AND i.trial_balance_id=tb.id)
+             OR EXISTS (SELECT 1 FROM engagement_legacy_tb_links l
+                        WHERE l.engagement_id=$4 AND l.trial_balance_id=tb.id AND l.entity_period_id=$3)
+           ))
+           OR EXISTS (
+             SELECT 1
+             FROM engagement_reporting_sets rs
+             JOIN engagement_trial_balance_imports i
+               ON i.engagement_id=rs.engagement_id AND i.trial_balance_id=tb.id
+             WHERE rs.engagement_id=$4 AND rs.prior_trial_balance_id=tb.id
+           )
          )`,
       [tbId, engagement.entity_id, period.id, engagement.id]
     )
@@ -1984,6 +1993,7 @@ export function registerEngagementHandlers(ipcMain, database) {
       if (!snapshot) throw new Error('Generate a final Trial Balance before preparing the UAE demonstration.')
       const { rows: [priorSelection] } = await query(
         `SELECT rs.prior_trial_balance_id,tb.id,tb.period,tb.filename,tb.row_count,
+                i.source_filename,i.source_sha256,i.source_size_bytes,i.imported_at,
                 fp.date_from,fp.date_till
          FROM engagement_reporting_sets rs
          LEFT JOIN trial_balances tb ON tb.id=rs.prior_trial_balance_id AND tb.entity_id=$2
@@ -2016,7 +2026,9 @@ export function registerEngagementHandlers(ipcMain, database) {
         comparativeRows = rows
       }
       const { rows: comparativeTrialBalances } = await query(
-        `SELECT tb.id,tb.period,tb.filename,tb.row_count,fp.date_from,fp.date_till
+        `SELECT tb.id,tb.period,tb.filename,tb.row_count,
+                i.source_filename,i.source_sha256,i.source_size_bytes,i.imported_at,
+                fp.date_from,fp.date_till
          FROM engagement_trial_balance_imports i
          JOIN trial_balances tb ON tb.id=i.trial_balance_id
          JOIN entity_periods ep ON ep.id=tb.entity_period_id AND ep.entity_id=tb.entity_id
@@ -2058,6 +2070,10 @@ export function registerEngagementHandlers(ipcMain, database) {
         comparativeTrialBalance: priorSelection.id ? {
           id: Number(priorSelection.id), period: priorSelection.period, filename: priorSelection.filename,
           dateFrom: dateOnly(priorSelection.date_from), dateTill: dateOnly(priorSelection.date_till),
+          sourceFilename: priorSelection.source_filename || priorSelection.filename,
+          sourceSha256: priorSelection.source_sha256 || null,
+          sourceSizeBytes: priorSelection.source_size_bytes == null ? null : Number(priorSelection.source_size_bytes),
+          importedAt: priorSelection.imported_at || null,
         } : null,
         comparativeTrialBalances: comparativeTrialBalances.map(row => ({ ...row, id: Number(row.id) })),
         comparativeRows,
@@ -2664,9 +2680,12 @@ export function registerEngagementHandlers(ipcMain, database) {
     const { engagement } = await assertEngagementTBContext(user, engagementId)
     const { rows } = await query(
       `SELECT o.id,o.version,o.template_id,o.template_revision,o.financial_data_sha256,
+              o.audit_report_fields,o.signing_details,
+              o.final_tb_snapshot_id,
               o.created_by,u.display_name AS created_by_name,o.created_at,o.finalised_by,
               o.finalised_at,f.display_name AS finalised_by_name,
-              s.version AS final_tb_version,tb.filename AS final_tb_filename,
+              s.version AS final_tb_version,s.trial_balance_id AS final_tb_id,
+              tb.filename AS final_tb_filename,
               o.signing_details->>'approvalDate' AS approval_date,
               o.signing_details->>'approvalPlace' AS approval_place,
               COALESCE((
@@ -2682,7 +2701,13 @@ export function registerEngagementHandlers(ipcMain, database) {
        WHERE o.engagement_id=$1 ORDER BY o.version DESC`,
       [engagement.id]
     )
-    return rows.map(row => ({ ...row, id: Number(row.id), version: Number(row.version) }))
+    return rows.map(row => ({
+      ...row,
+      id: Number(row.id),
+      version: Number(row.version),
+      final_tb_snapshot_id: Number(row.final_tb_snapshot_id),
+      final_tb_id: Number(row.final_tb_id),
+    }))
   })
 
   ipcMain.handle('engagement:reportOutputRead', async (event, outputId) => {
