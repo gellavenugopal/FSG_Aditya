@@ -13,6 +13,7 @@ Last updated: **2026-10-27**
 - Earlier milestones remain in history: `6dea749` reporting workflow, `a683914` firm settings, `666b110` EPIPE guard, `a5785c8` synthetic UAE test bed, and `5ccdf38` UAE access/list and PDF review.
 - The test-bed source and coverage/roadmap documentation are committed locally. The UAE access/download evidence, corrected-output UI verification, note-reference fix and refreshed context documents are committed locally.
 - The Excel workbook checkpoint is committed locally; no push or merge has been performed.
+- Word export implementation checkpoint: `b7461e4` — `feat: add editable UAE Word reporting export`. The exact output and remaining print-render limitation are recorded below; no push or merge has been performed.
 - No push or merge has been performed.
 
 ## Current task and next action
