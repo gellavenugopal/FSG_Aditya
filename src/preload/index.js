@@ -82,6 +82,12 @@ contextBridge.exposeInMainWorld('api', {
   saveEngagementPdfFile:        (data) => inv('engagement:savePdfFile', data),
   exportUaeEngagementWorkbook:  (data) => inv('engagement:exportUaeWorkbook', data),
   exportUaeEngagementWord:      (data) => inv('engagement:exportUaeWord', data),
+  prepareEngagementDraftReport: (data) => inv('engagement:draftReportPrepare', data),
+  buildEngagementDraftFiles:    (model) => inv('engagement:draftReportBuildFiles', model),
+  saveEngagementDraftRevision:  (data) => inv('engagement:draftReportSave', data),
+  listEngagementDraftRevisions: (data) => inv('engagement:draftReportList', data),
+  readEngagementDraftRevision:  (data) => inv('engagement:draftReportRead', data),
+  saveEngagementDraftFile:      (data) => inv('engagement:draftReportSaveFile', data),
 
   // More than one window
   openNewWindow:     (payload) => ipcRenderer.invoke('window:openNew', payload),

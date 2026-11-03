@@ -2,12 +2,10 @@ import './dev-output-guard-bootstrap.js'
 import { app, BrowserWindow, ipcMain, Menu, dialog } from 'electron'
 import { join } from 'path'
 import { existsSync, readFileSync } from 'node:fs'
-import { initDB, loadConfig, flushDB, withStartupLock } from './db/client.js'
-import { ensureSchema } from './db/schema.js'
-import { seedDefaultMapping, ensureStockCategories } from './services/excel.js'
-import { migrateMappingV3Captions, migrateMappingV3CaptionsPass2 } from './db/mapping-v3-migration.js'
+import { initDB, loadConfig, flushDB } from './db/client.js'
+import { runLegacyStartupSetup } from './db/startup.js'
 import { registerTBHandlers } from './ipc/tb.js'
-import { registerMappingHandlers, applyMappingPatches } from './ipc/mapping.js'
+import { registerMappingHandlers } from './ipc/mapping.js'
 import { registerMappedTBHandlers } from './ipc/mapped-tb.js'
 import { registerSettingsHandlers } from './ipc/settings.js'
 import { registerFinancialHandlers } from './ipc/financials.js'
@@ -121,15 +119,8 @@ app.whenReady().then(async () => {
       // Serialize one-time/shared schema+seed setup across every Electron
       // client connected to this Postgres DB — otherwise 15 PCs launching
       // around the same time would race each other through table creation
-      // and the default-mapping reseed. See db/client.js's withStartupLock().
-      await withStartupLock(async () => {
-        await ensureSchema()
-        await seedDefaultMapping()
-        await ensureStockCategories()
-        await migrateMappingV3Captions()
-        await migrateMappingV3CaptionsPass2()
-        await applyMappingPatches()
-      })
+      // and the default-mapping reseed. See db/startup.js and db/client.js's withStartupLock().
+      await runLegacyStartupSetup()
     } catch (err) {
       console.error('DB init error:', err.message)
       // Allow app to open even if DB not configured/reachable yet — the

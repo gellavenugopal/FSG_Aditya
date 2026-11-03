@@ -893,7 +893,7 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false,
     <div className="min-h-full bg-gray-50">
       {!engagement ? <p className="p-8 text-center text-sm text-gray-500">Loading engagement…</p> : (
         <div className="mx-auto max-w-[1680px] px-4 pb-6 sm:px-6">
-          <header className="sticky top-[52px] z-20 -mx-4 border-b border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur sm:-mx-6 sm:px-6">
+          <header className="-mx-4 border-b border-gray-200 bg-white px-4 py-3 shadow-sm sm:-mx-6 sm:px-6">
             <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
               <div className="flex min-w-0 items-center gap-3">
                 <button onClick={leaveEngagement} className="shrink-0 rounded-md px-2 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100" aria-label="Back to engagements">← Engagements</button>
@@ -919,7 +919,7 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false,
           </header>
           {error && <p role="alert" className="my-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
           <div className="mt-4 grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-            <nav aria-label="Engagement sections" className="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-2 lg:sticky lg:top-[156px] lg:h-fit lg:flex-col lg:overflow-visible">
+            <nav aria-label="Engagement sections" className="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-2 lg:sticky lg:top-[64px] lg:h-fit lg:flex-col lg:overflow-visible">
               {sections.map(section => (
                 <button key={section.id} type="button" aria-current={navSection === section.id ? 'page' : undefined}
                   onClick={() => selectSection(section.id)}
@@ -931,7 +931,7 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false,
               ))}
             </nav>
             <main className="min-w-0">
-              <div className="sticky top-[124px] z-10 -mx-1 mb-4 border-b border-gray-200 bg-gray-50/95 px-1 pt-1 backdrop-blur lg:top-[156px]">
+              <div className="sticky top-[52px] z-10 -mx-1 mb-4 border-b border-gray-200 bg-gray-50 px-1 pt-1">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="text-lg font-semibold text-gray-900">{activeSectionDefinition.label}</h2>

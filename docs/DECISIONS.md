@@ -4,6 +4,10 @@ This log separates user-approved product/scope decisions from engineering propos
 
 ## User-approved decisions
 
+### 2026-11-03 — Separate normal launcher; no unreviewed startup rewrites of firm data
+
+The user directed that the current redesign run against the existing normal firm profile. `tools/engagement-normal.ps1` is the only supported normal launch: it refuses inherited UAT/service variables, a running FSG window and a missing or stale backup, and sets `FSG_STARTUP_DATA_REWRITES=off`. Startup mapping rewrites must not touch `user_override`/`user_approved` rows and run at most once. The badge is not changed to say Live; Live requires an `environment-identity.json` marker that the user has not authorised. Startup rewrites skip `user_override`/`user_approved`/hand-fixed rows, once-only migrations are atomic (`runOnceMigration`), and the disposable-database evidence is `npm run startup:test` (35 checks). This supersedes the 2026-10-26 position that no live connection may be made, only for the authorised backup, read-only identity check and launch recorded in CURRENT_STATUS.md.
+
 ### 2026-11-03 — Two destinations and one shell in every startup mode
 
 - **Decision:** Engagements and Settings are the only application destinations, rendered by one shell for normal, service-only and isolated startup. An engagement uses exactly five sidebar sections (Trial Balance, Financials, Notes, Accounting Policies, Presentation). Selecting an engagement shows details and a right-side Go action. Settings owns reusable masters; engagements own their selected values; employees, user accounts and roles are distinct concepts. Saving a final-TB version does not finalise the engagement or approve the statements.

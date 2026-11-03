@@ -62,7 +62,7 @@ function buildStatementPreview(review) {
   const plLedgerCount = plLines.reduce((sum, line) => sum + line.members.length, 0)
   const closing = plLedgerCount
     ? { treatment: 'pre-closing', plLedgerCount, note: `${plLedgerCount} classified P&L ledgers carry balances, so the TB is pre-closing and profit is added to equity once.` }
-    : { treatment: 'closed-or-no-pl', plLedgerCount, note: 'No classified P&L ledger carries a balance: either the TB is already closed (profit is in retained earnings) or P&L ledgers are still unclassified. Nothing is added to equity.' }
+    : { treatment: 'closed-or-no-pl', plLedgerCount, note: 'No classified P&L ledger carries a balance. This does not establish that the TB is closed: P&L ledgers may simply still be unclassified. Nothing is added to equity; the source-TB-net check shows whether the balances are consistent.' }
   const totalEquity = round2(totalEquityBeforeProfit + profit)
   const totalEquityAndLiabilities = round2(totalEquity + totalLiabilities)
   const unresolvedNet = round2(exceptions.reduce((sum, row) => sum + row.balance, 0))

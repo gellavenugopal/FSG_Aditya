@@ -5,6 +5,7 @@ import { formatPeriodDate, formatPeriodRange } from '../../utils/financialPeriod
 import { makeAuditReportPage, prependAuditReport } from './engagementReportHtml'
 import UaePackMappingReview from './UaePackMappingReview'
 import UaePackStatementPreview from './UaePackStatementPreview'
+import UaeDraftRevisions from './UaeDraftRevisions'
 import {
   buildUaeDemoComparativeMappings,
   buildUaeDemoFinancials,
@@ -237,6 +238,8 @@ export default function EngagementReportingPanel({
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [dirtyAreas, setDirtyAreas] = useState({})
+  const [separateFs, setSeparateFs] = useState(false)
+  const handleDraftStatus = useCallback(result => setSeparateFs(Boolean(result?.separateFs)), [])
   const hasUnsavedChanges = Object.values(dirtyAreas).some(Boolean)
   const markDirty = area => setDirtyAreas(current => ({ ...current, [area]: true }))
   const markSaved = area => setDirtyAreas(current => ({ ...current, [area]: false }))
@@ -1131,7 +1134,7 @@ export default function EngagementReportingPanel({
         </div>
 
         {isMappingView && isUaeDemo && finalId && <UaePackMappingReview engagementId={engagement.id} trialBalanceId={finalId} focus={groupingFocus} />}
-        <div className={`rounded-lg border border-gray-200 p-4 ${isFinalTbView || isMappingView ? '' : 'hidden'}`}>
+        <div className={`rounded-lg border border-gray-200 p-4 ${isFinalTbView || (isMappingView && !isUaeDemo) ? '' : 'hidden'}`}>
           <h4 className="font-semibold text-gray-900">{isMappingView ? 'Engagement statement mappings' : 'Final Trial Balance snapshot'}</h4>
           <p className="mt-1 text-xs text-gray-500">{isUaeDemo
             ? 'Source debit balances are stored negative and credits positive. Each UAE line mapping is saved separately from the imported Trial Balance.'
@@ -1375,18 +1378,20 @@ export default function EngagementReportingPanel({
           </details>}
 
           <div className={`mt-4 flex flex-wrap gap-2 ${activeTab === 'exports' ? '' : 'hidden'}`}>
-            <button disabled={!editable || busy || !financialData} onClick={generateReport} className="rounded-md bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy ? 'Generating…' : 'Generate & save combined PDF'}</button>
+            <button disabled={!editable || busy || !financialData || separateFs} title={separateFs ? 'Separate-FS engagements use draft revisions (above); the synthetic combined-PDF path is disabled.' : undefined} onClick={generateReport} className="rounded-md bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy ? 'Generating…' : 'Generate & save combined PDF'}</button>
             <button disabled={!editable || busy} onClick={() => run(saveReportSettings)} className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium disabled:opacity-40">Save audit report edits</button>
             <p className="w-full text-xs text-gray-600">Excel and Word exports are editable copies. Changes made in those files do not automatically update this engagement or its saved PDF.</p>
           </div>
         </>}
       </div>
 
-      {!outputs.length && activeSection === 'review' && activeTab === 'versions' && <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-700">
+      {isUaeDemo && finalId && ((activeSection === 'review' && ['versions', 'finalisation'].includes(activeTab)) || (isReportView && activeTab === 'exports')) &&
+        <UaeDraftRevisions engagement={engagement} trialBalanceId={finalId} editable={editable} onStatus={handleDraftStatus} />}
+      {!outputs.length && !separateFs && activeSection === 'review' && activeTab === 'versions' && <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-700">
         <h4 className="font-semibold text-gray-900">Saved versions and exports</h4>
         <p className="mt-1 text-xs text-gray-600">No combined PDF has been saved for this engagement yet. Generate one from Presentation › Preview and Text Editing; its PDF, Excel and Word downloads then appear here.</p>
       </div>}
-      {!!outputs.length && <div className={`rounded-lg border border-gray-200 bg-white p-4 ${isReportView && activeTab === 'exports' || activeSection === 'review' && ['versions', 'finalisation'].includes(activeTab) ? '' : 'hidden'}`}>
+      {!!outputs.length && !separateFs && <div className={`rounded-lg border border-gray-200 bg-white p-4 ${isReportView && activeTab === 'exports' || activeSection === 'review' && ['versions', 'finalisation'].includes(activeTab) ? '' : 'hidden'}`}>
         <h4 className="font-semibold text-gray-900">Saved output versions · PDF, Excel and Word source revision</h4>
         <p className="mt-1 text-xs text-gray-600">Exports use the saved PDF revision and its final Trial Balance snapshot. External workbook/document edits stay in those files and do not write back to the engagement.</p>
         <div className="mt-2 divide-y">

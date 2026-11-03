@@ -457,6 +457,29 @@ export async function ensureEngagementSchema(query) {
   `)
   await query(`ALTER TABLE engagement_report_outputs ADD COLUMN IF NOT EXISTS report_style_snapshot JSONB NOT NULL DEFAULT '{}'`)
   await query(`CREATE INDEX IF NOT EXISTS idx_engagement_report_outputs_context ON engagement_report_outputs(engagement_id, created_at DESC)`)
+  // Additive: immutable draft revisions of the separate-FS UAE report. The model JSON and the source mapping
+  // review are stored with the three files so an exact revision can be reopened after later mapping changes.
+  await query(`
+    CREATE TABLE IF NOT EXISTS engagement_draft_report_revisions (
+      id BIGSERIAL PRIMARY KEY,
+      engagement_id BIGINT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+      final_tb_snapshot_id BIGINT NOT NULL REFERENCES engagement_final_tb_snapshots(id) ON DELETE RESTRICT,
+      revision INTEGER NOT NULL CHECK (revision > 0),
+      pack_id TEXT NOT NULL,
+      pack_version TEXT NOT NULL,
+      model JSONB NOT NULL,
+      source_review JSONB NOT NULL,
+      model_sha256 TEXT NOT NULL CHECK (model_sha256 ~ '^[a-f0-9]{64}$'),
+      unresolved_count INTEGER NOT NULL CHECK (unresolved_count >= 0),
+      arithmetic_reconciled BOOLEAN NOT NULL,
+      pdf_content BYTEA NOT NULL,
+      docx_content BYTEA NOT NULL,
+      xlsx_content BYTEA NOT NULL,
+      created_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (engagement_id, revision)
+    )
+  `)
 
   await query(`
     CREATE TABLE IF NOT EXISTS engagement_audit_log (

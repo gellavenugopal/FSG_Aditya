@@ -86,6 +86,11 @@ The desktop reuses the India financial statement/notes builders and Electron PDF
 
 New reporting frameworks and localization remain governed by [ROADMAP.md](./ROADMAP.md). General UAE IFRS reporting, full IAS 16 coverage, structured schedule editing, India Ind AS, US GAAP and currency translation are not implemented.
 
+### Draft report revisions and startup safety (2026-11-03)
+
+- Draft UAE separate-FS outputs: `src/shared/uae-draft-report-model.mjs` builds one model from the engagement's final-TB version and pack mapping state; `src/main/services/uae-draft-report.js` renders Word and Excel from it; the desktop renders the PDF. The trusted service stores each revision in `engagement_draft_report_revisions` (additive table, 4 routes in `src/server/engagement-server.js`, proxied by `engagement-client.js`, handled in `src/main/ipc/engagements.js`/`engagement-reporting.js`, UI in `UaeDraftRevisions.jsx`). Finalisation paths check unresolved classifications and pack status.
+- Legacy startup: `src/main/index.js` calls `runLegacyStartupSetup` (`src/main/db/startup.js`) inside the startup lock. `schema.js` gates data-rewriting statements on `FSG_STARTUP_DATA_REWRITES` (`rewriteQuery`) and runs once-only migrations with `runOnceMigration` (claim and changes in one transaction). `tools/engagement-normal.ps1` is the normal launcher; it sets the variable to `off`.
+
 ## Known legacy database/IPC bypasses
 
 Legacy financial modules still access PostgreSQL directly and are not engagement-authorized. Important examples include:

@@ -13,6 +13,7 @@
     "uae:workbook:test": "node tools/selftest-uae-engagement-workbook.mjs",
     "uae:word:test": "node tools/selftest-uae-engagement-word.mjs",
     "uae:pdf": "node tools/render-uae-ifrs-testbed-pdfs.mjs",
+    "startup:test": "electron tools/run-electron-selftest.cjs tools/selftest-startup-safety.mjs",
     "isolation:test": "npm run build && node tools/selftest-test-isolation.mjs",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win"

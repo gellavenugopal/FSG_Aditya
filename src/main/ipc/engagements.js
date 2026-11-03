@@ -8,6 +8,8 @@ import {
   LINE_KEYS as UAE_SEPARATE_LINE_KEYS, normaliseLabel as normaliseUaeLabel,
   lineForClassification as uaeLineForClassification, getPackDefinition as getUaeSeparatePackDefinition,
 } from '../../shared/uae-separate-fs-pack.mjs'
+import { buildStatementPreview } from '../../shared/uae-pack-statement-preview.mjs'
+import { PENDING_COMPONENTS, buildDraftReportModel, canonicalJson } from '../../shared/uae-draft-report-model.mjs'
 import {
   DEFAULT_APPEARANCE, DEFAULT_REPORT_STYLE, extractKrestonPublicProfile, sanitizePublicSvg,
   validateAppearance, validatePublicProfileUrl, validateReportStyle,
@@ -2749,10 +2751,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     return { ok: true, rowCount: rows.length }
   })
 
-  ipcMain.handle('engagement:packMappingReviewGet', async (event, input = {}) => {
-    const user = await authenticated(event)
-    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
-    await assertUaeDemoPack(context.engagement)
+  const loadPackMappingReview = async context => {
     const { rows: snapshot } = await query(
       `SELECT version FROM engagement_final_tb_snapshots WHERE engagement_id=$1 AND trial_balance_id=$2`,
       [context.engagement.id, context.trialBalance.id]
@@ -2816,6 +2815,13 @@ export function registerEngagementHandlers(ipcMain, database) {
       referenceRowCount: refs.length, zeroBalanceAccounts, rows,
       coverage: { confirmed: pick(cover.confirmed), suggestedAwaitingReview: pick(cover.suggested), unresolved: pick(cover.unresolved) },
     }
+        }
+
+  ipcMain.handle('engagement:packMappingReviewGet', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    await assertUaeDemoPack(context.engagement)
+    return loadPackMappingReview(context)
   })
 
   ipcMain.handle('engagement:packMappingReviewSave', async (event, input = {}) => {
@@ -3096,9 +3102,179 @@ export function registerEngagementHandlers(ipcMain, database) {
     return { ok: true }
   })
 
+  // An engagement is in the separate-FS draft workflow once it holds reference classifications, saved
+  // pack mapping decisions or a draft revision. Such engagements must not use the synthetic AE_UAE_DEMO
+  // calculation path for outputs, and cannot be finalised while the draft pack is incomplete.
+  const separateFsActive = async engagement => {
+    if (engagement.reporting_pack_id !== 'AE_UAE_DEMO') return false
+    const { rows: [found] } = await query(
+      `SELECT (EXISTS (SELECT 1 FROM engagement_reference_classifications WHERE engagement_id=$1)
+            OR EXISTS (SELECT 1 FROM engagement_pack_mapping_reviews WHERE engagement_id=$1)
+            OR EXISTS (SELECT 1 FROM engagement_draft_report_revisions WHERE engagement_id=$1)) AS active`,
+      [engagement.id]
+    )
+    return Boolean(found?.active)
+  }
+
+  const finalisationBlockers = async engagement => {
+    if (!await separateFsActive(engagement)) return []
+    const { rows: [latest] } = await query(
+      `SELECT trial_balance_id FROM engagement_final_tb_snapshots WHERE engagement_id=$1 ORDER BY version DESC LIMIT 1`,
+      [engagement.id]
+    )
+    if (!latest) return ['No final Trial Balance version has been saved for this engagement.']
+    const review = await loadPackMappingReview({ engagement, trialBalance: { id: latest.trial_balance_id } })
+    const preview = buildStatementPreview(review)
+    const blockers = []
+    if (preview.coverage.unresolvedCount) blockers.push(`${preview.coverage.unresolvedCount} accounts remain unclassified (classify them under Trial Balance, Grouping).`)
+    for (const check of preview.checks.filter(item => item.kind === 'arithmetic' && !item.passed)) blockers.push(`Arithmetic validation failed: ${check.label}.`)
+    if (review.pack.status !== 'approved') blockers.push(`Reporting pack ${review.pack.id} v${review.pack.version} is "${review.pack.status}", not an approved pack.`)
+    blockers.push(`Required components are pending: ${PENDING_COMPONENTS.map(item => item.item).join('; ')}.`)
+    return blockers
+  }
+
+  const assertNoSeparateFsFinalisationBlockers = async engagement => {
+    const blockers = await finalisationBlockers(engagement)
+    if (blockers.length) throw new Error(`Finalisation is blocked for this engagement: ${blockers.join(' ')}`)
+  }
+
+  const buildDraftModel = async context => {
+    const review = await loadPackMappingReview(context)
+    const engagement = context.engagement
+    const model = buildDraftReportModel({
+      review,
+      engagement: {
+        id: Number(engagement.id), reference: engagement.reference, name: engagement.name, clientName: engagement.client_name,
+        periodStart: dateOnly(engagement.period_start), periodEnd: dateOnly(engagement.period_end),
+      },
+    })
+    return { model, review, modelSha256: createHash('sha256').update(canonicalJson(model)).digest('hex') }
+  }
+
+  const DRAFT_FILE_SIGNATURES = { pdf: '%PDF-', docx: 'PK', xlsx: 'PK' }
+  const decodeDraftFile = (encoded, format) => {
+    if (typeof encoded !== 'string' || encoded.length > 12 * 1024 * 1024
+      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+      throw new Error(`The draft ${format.toUpperCase()} is not a valid file within the 8 MB limit.`)
+    }
+    const buffer = Buffer.from(encoded, 'base64')
+    if (buffer.length < 4 || buffer.length > 8 * 1024 * 1024
+      || buffer.subarray(0, DRAFT_FILE_SIGNATURES[format].length).toString('latin1') !== DRAFT_FILE_SIGNATURES[format]) {
+      throw new Error(`The draft ${format.toUpperCase()} is not a valid file within the 8 MB limit.`)
+    }
+    return buffer
+  }
+
+  ipcMain.handle('engagement:draftReportPrepare', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    await assertUaeDemoPack(context.engagement)
+    const { model, modelSha256 } = await buildDraftModel(context)
+    return { model, modelSha256 }
+  })
+
+  ipcMain.handle('engagement:draftReportSave', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    await assertUaeDemoPack(context.engagement)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    const files = {
+      pdf: decodeDraftFile(input.pdfBase64, 'pdf'),
+      docx: decodeDraftFile(input.docxBase64, 'docx'),
+      xlsx: decodeDraftFile(input.xlsxBase64, 'xlsx'),
+    }
+    return runInTransaction(async () => {
+      const { model, review, modelSha256 } = await buildDraftModel(context)
+      // The files were rendered from the model the user saw; reject them if mappings or the TB changed since.
+      if (input.modelSha256 !== modelSha256) {
+        throw new Error('The mapping state changed while the draft files were being generated. Generate the draft again.')
+      }
+      const { rows: [snapshot] } = await query(
+        `SELECT id FROM engagement_final_tb_snapshots WHERE engagement_id=$1 AND trial_balance_id=$2`,
+        [context.engagement.id, context.trialBalance.id]
+      )
+      if (!snapshot) throw new Error('The selected Trial Balance is not a final engagement snapshot.')
+      const { rows: [next] } = await query(
+        `SELECT COALESCE(MAX(revision),0)::integer+1 AS revision FROM engagement_draft_report_revisions WHERE engagement_id=$1`,
+        [context.engagement.id]
+      )
+      const { rows: [saved] } = await query(
+        `INSERT INTO engagement_draft_report_revisions
+           (engagement_id,final_tb_snapshot_id,revision,pack_id,pack_version,model,source_review,model_sha256,
+            unresolved_count,arithmetic_reconciled,pdf_content,docx_content,xlsx_content,created_by)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,$13,$14)
+         RETURNING id,revision,created_at`,
+        [
+          context.engagement.id, snapshot.id, next.revision, review.pack.id, review.pack.version,
+          JSON.stringify(model), JSON.stringify(review), modelSha256, model.coverage.unresolvedCount,
+          model.arithmeticReconciled, files.pdf, files.docx, files.xlsx, user.id,
+        ]
+      )
+      await logAudit(user, 'report.draft_revision_created', context.engagement.id, {
+        revisionId: Number(saved.id), revision: saved.revision, finalTbVersion: model.source.finalTbVersion,
+        packId: review.pack.id, packVersion: review.pack.version, modelSha256, unresolvedCount: model.coverage.unresolvedCount,
+      })
+      return { id: Number(saved.id), revision: Number(saved.revision), createdAt: saved.created_at, modelSha256 }
+    })
+  })
+
+  ipcMain.handle('engagement:draftReportList', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const { engagement } = await assertEngagementTBContext(user, input.engagementId)
+    const { rows } = await query(
+      `SELECT r.id,r.revision,r.pack_id,r.pack_version,r.model_sha256,r.unresolved_count,r.arithmetic_reconciled,
+              r.created_at,u.display_name AS created_by_name,s.version AS final_tb_version,s.trial_balance_id,
+              octet_length(r.pdf_content) AS pdf_bytes,octet_length(r.docx_content) AS docx_bytes,
+              octet_length(r.xlsx_content) AS xlsx_bytes
+       FROM engagement_draft_report_revisions r
+       JOIN firm_users u ON u.id=r.created_by
+       JOIN engagement_final_tb_snapshots s ON s.id=r.final_tb_snapshot_id
+       WHERE r.engagement_id=$1 ORDER BY r.revision DESC`,
+      [engagement.id]
+    )
+    return {
+      separateFs: await separateFsActive(engagement),
+      finalisationBlockers: await finalisationBlockers(engagement),
+      revisions: rows.map(row => ({
+        id: Number(row.id), revision: Number(row.revision), packId: row.pack_id, packVersion: row.pack_version,
+        modelSha256: row.model_sha256, unresolvedCount: Number(row.unresolved_count),
+        arithmeticReconciled: row.arithmetic_reconciled, createdAt: row.created_at, createdByName: row.created_by_name,
+        finalTbVersion: Number(row.final_tb_version), trialBalanceId: Number(row.trial_balance_id),
+        pdfBytes: Number(row.pdf_bytes), docxBytes: Number(row.docx_bytes), xlsxBytes: Number(row.xlsx_bytes),
+      })),
+    }
+  })
+
+  ipcMain.handle('engagement:draftReportRead', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const id = Number(input.revisionId)
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Draft revision not found.')
+    const column = { pdf: 'pdf_content', docx: 'docx_content', xlsx: 'xlsx_content' }[input.format]
+    const { rows: [row] } = await query(
+      `SELECT r.id,r.engagement_id,r.revision,r.model,r.model_sha256,r.created_at${column ? `,r.${column} AS file` : ''}
+       FROM engagement_draft_report_revisions r
+       JOIN engagements e ON e.id=r.engagement_id AND e.firm_id=$2
+       WHERE r.id=$1`,
+      [id, user.firmId]
+    )
+    if (!row) throw new Error('Draft revision not found.')
+    const engagement = await fetchEngagement(user.firmId, row.engagement_id)
+    const membership = await membershipFor(engagement.id, user.id)
+    if (!canViewEngagement(user, engagement, membership)) throw new Error('Draft revision not found.')
+    return {
+      id: Number(row.id), revision: Number(row.revision), createdAt: row.created_at, modelSha256: row.model_sha256,
+      model: row.model,
+      fileBase64: column ? Buffer.from(row.file).toString('base64') : undefined,
+    }
+  })
+
   ipcMain.handle('engagement:reportOutputSave', async (event, input = {}) => {
     const user = await authenticated(event)
     const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    if (await separateFsActive(context.engagement)) {
+      throw new Error('This engagement uses the separate-FS draft pack. Its outputs are saved as draft report revisions; the synthetic AE_UAE_DEMO report path is not available for it.')
+    }
     await assertSupportedReportingWorkflow(context.engagement)
     await assertCanEdit(user, context.engagement)
     assertEngagementEditable(context.engagement, context.period)
@@ -3329,6 +3505,7 @@ export function registerEngagementHandlers(ipcMain, database) {
       if (!output) throw new Error('Report output not found.')
       const engagement = await fetchEngagement(user.firmId, output.engagement_id)
       if (!canFinaliseEngagement(user, engagement)) throw new Error('Only the assigned engagement partner or authorised substitute may finalise this output.')
+      await assertNoSeparateFsFinalisationBlockers(engagement)
       if (output.finalised_at) throw new Error('This report output version is already finalised and cannot be changed.')
       const { rows: [finalised] } = await query(
         `UPDATE engagement_report_outputs SET finalised_by=$1,finalised_at=now()
@@ -3526,6 +3703,7 @@ export function registerEngagementHandlers(ipcMain, database) {
     const engagement = await fetchEngagement(actor.firmId, id)
     if (!canFinaliseEngagement(actor, engagement)) throw new Error('Finalisation is restricted to the assigned engagement partner or authorised substitute.')
     if (engagement.status !== 'active') throw new Error('Only an active engagement can be finalised.')
+    await assertNoSeparateFsFinalisationBlockers(engagement)
     const place = String(input.place || '').trim()
     const date = String(input.date || '').trim()
     const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00.000Z`) : null

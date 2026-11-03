@@ -1,4 +1,4 @@
-import { query } from './client.js'
+import { query, runInTransaction } from './client.js'
 import { seedFinancialPeriodMasters } from '../../shared/financial-periods.mjs'
 
 // One-time migration marker. Used to gate work that must run exactly once
@@ -16,7 +16,21 @@ export async function tryClaimMigration(key) {
   return rows.length > 0
 }
 
+// Claims the marker and runs the migration in one transaction: a failure rolls back both, so a half-applied
+// migration is never recorded as done and can be retried. Data rewrites are skipped entirely when
+// FSG_STARTUP_DATA_REWRITES=off (the marker is then left unclaimed).
+export async function runOnceMigration(key, fn, { rewrite = true } = {}) {
+  if (rewrite && process.env.FSG_STARTUP_DATA_REWRITES === 'off') return false
+  return runInTransaction(async () => {
+    if (!(await tryClaimMigration(key))) return false
+    await fn()
+    return true
+  })
+}
+
 export async function ensureSchema() {
+  // Backfills that rewrite existing mapped ledgers; skipped entirely when FSG_STARTUP_DATA_REWRITES=off.
+  const rewriteQuery = (sql, params) => process.env.FSG_STARTUP_DATA_REWRITES === 'off' ? Promise.resolve(null) : query(sql, params)
   await query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       key        TEXT PRIMARY KEY,
@@ -317,7 +331,7 @@ export async function ensureSchema() {
   await query(`CREATE INDEX IF NOT EXISTS idx_remarks_scope ON remarks(tb_id, scope, scope_key)`)
 
   // ── Backfill ALIE for rows that are missing it ───────────────────────────────
-  await query(`
+  await rewriteQuery(`
     UPDATE mapped_tb SET alie = (
       SELECT lf.alie FROM level_format lf
       WHERE lf.level1 = mapped_tb.mapping1_resultant
@@ -332,7 +346,7 @@ export async function ensureSchema() {
   // Guarded like the other backfills below: skip rows the user has already
   // reviewed/overridden, so this doesn't silently revert manual reclassification
   // of stock ledgers on every app boot.
-  await query(`
+  await rewriteQuery(`
     UPDATE mapped_tb SET
       alie = 'Expenses',
       mapping1_resultant = 'Opening Stock (PL)',
@@ -344,7 +358,7 @@ export async function ensureSchema() {
       WHERE upload_nature = 'Stock Entry' AND name LIKE 'Opening Stock -%'
     )
   `)
-  await query(`
+  await rewriteQuery(`
     UPDATE mapped_tb SET
       alie = 'Income',
       mapping1_resultant = 'Closing Stock (PL)',
@@ -356,7 +370,7 @@ export async function ensureSchema() {
       WHERE upload_nature = 'Stock Entry' AND name LIKE 'Closing Stock - PL -%'
     )
   `)
-  await query(`
+  await rewriteQuery(`
     UPDATE mapped_tb SET
       alie = 'ASSETS',
       mapping1_resultant = 'Current assets',
@@ -378,7 +392,7 @@ export async function ensureSchema() {
   // Strictly NULL -> id: rows that already carry an id are untouched, and rows
   // with no matching format row stay NULL. Preference: exact Level 3 > the
   // Level-2 row > the terminal Level-1 row, mirroring RESOLVE_LF_SQL.
-  await query(`
+  await rewriteQuery(`
     UPDATE mapped_tb mt SET level_format_id = (
       SELECT lf.id FROM level_format lf
       WHERE lf.rule_set_id = mt.rule_set_id
@@ -439,7 +453,7 @@ export async function ensureSchema() {
   `)
 
   // ── Backfill Uncategorised Sale mapping3 ─────────────────────────────────────
-  await query(`
+  await rewriteQuery(`
     UPDATE mapped_tb
     SET mapping3_resultant = 'Uncategorised Sale'
     WHERE mapping1_resultant = 'Revenue from operations'
@@ -449,7 +463,7 @@ export async function ensureSchema() {
   `)
 
   // ── Clear phantom Uncategorised L3 where L2 is terminal ──────────────────────
-  await query(`
+  await rewriteQuery(`
     UPDATE mapped_tb
     SET mapping3_resultant = NULL
     WHERE mapping3_resultant LIKE 'Uncategorised %'
@@ -885,7 +899,7 @@ export async function ensureSchema() {
   // mapping3_resultant (now the correct field), and re-point level_format_id
   // at the corrected row so sort_order/alie stay right. Only touches rows
   // that haven't already been classified at Level 3.
-  await query(`
+  await rewriteQuery(`
     UPDATE mapped_tb
     SET mapping3_resultant = level5_value,
         level5_value = NULL,
@@ -900,6 +914,7 @@ export async function ensureSchema() {
     WHERE mapping2_resultant IN ('Trade payables', 'Trade receivables')
       AND level5_value IS NOT NULL
       AND (mapping3_resultant IS NULL OR mapping3_resultant = '')
+      AND status NOT IN ('user_override', 'user_approved')
   `)
 
   // ── Partners' Remuneration: give it its own terminal Level 1 (not nested
@@ -966,32 +981,38 @@ export async function ensureSchema() {
 
   // Remove the old, wrong Map2/Map3 rules from every rule set (the ones that
   // sent these same keywords to Other expenses / Employee benefits expense).
-  await query(`
-    DELETE FROM map2
-    WHERE constitution = 1 AND mapping2_resultant = 'Partners'' Remuneration' AND mapping1_resultant = 'Other expenses'
-  `)
-  await query(`
-    DELETE FROM map3
-    WHERE constitution IN (1, 2)
-      AND mapping1_resultant = 'Employee benefits expense'
-      AND mapping3_resultant = 'Partners'' Remuneration'
-  `)
+  // Rewrites of rules and mapped ledgers run once, never on reviewed rows, and not at all when the launcher sets
+  // FSG_STARTUP_DATA_REWRITES=off (normal firm profile: no unreviewed data rewrite at startup).
+  await runOnceMigration('partners_remuneration_rule_cleanup_once', async () => {
+    await query(`
+      DELETE FROM map2
+      WHERE constitution = 1 AND mapping2_resultant = 'Partners'' Remuneration' AND mapping1_resultant = 'Other expenses'
+    `)
+    await query(`
+      DELETE FROM map3
+      WHERE constitution IN (1, 2)
+        AND mapping1_resultant = 'Employee benefits expense'
+        AND mapping3_resultant = 'Partners'' Remuneration'
+    `)
 
-  // Retroactively fix ledgers mapped before this fix.
-  await query(`
-    UPDATE mapped_tb
-    SET mapping1_resultant = 'Partners'' Remuneration',
-        mapping2_resultant = NULL,
-        mapping3_resultant = NULL,
-        level_format_id = COALESCE(
-          (SELECT lf.id FROM level_format lf
-           WHERE lf.rule_set_id = mapped_tb.rule_set_id AND lf.level1 = 'Partners'' Remuneration'
-           LIMIT 1),
-          level_format_id
-        )
-    WHERE (mapping1_resultant = 'Employee benefits expense' AND mapping3_resultant = 'Partners'' Remuneration')
-       OR (mapping1_resultant = 'Other expenses' AND mapping2_resultant = 'Partners'' Remuneration')
-  `)
+    // Retroactively fix ledgers mapped before this fix, leaving reviewed and hand-fixed rows alone.
+    await query(`
+      UPDATE mapped_tb
+      SET mapping1_resultant = 'Partners'' Remuneration',
+          mapping2_resultant = NULL,
+          mapping3_resultant = NULL,
+          level_format_id = COALESCE(
+            (SELECT lf.id FROM level_format lf
+             WHERE lf.rule_set_id = mapped_tb.rule_set_id AND lf.level1 = 'Partners'' Remuneration'
+             LIMIT 1),
+            level_format_id
+          )
+      WHERE ((mapping1_resultant = 'Employee benefits expense' AND mapping3_resultant = 'Partners'' Remuneration')
+         OR (mapping1_resultant = 'Other expenses' AND mapping2_resultant = 'Partners'' Remuneration'))
+        AND status NOT IN ('user_override', 'user_approved')
+        AND hand_fixed IS NOT TRUE
+    `)
+  })
 
   // ── Trade Payables/Receivables sign-based reclassification ──────────────
   // See mapping-engine.js's post-pass (applies to every future mapping run,
@@ -1043,7 +1064,7 @@ export async function ensureSchema() {
   // Customers/Suppliers the next time the app happened to restart. The
   // status guard below is kept even now, as defense in depth — this one
   // remaining run must never touch a row already decided on.
-  if (await tryClaimMigration('trade_payables_receivables_sign_reclassify_once')) {
+  await runOnceMigration('trade_payables_receivables_sign_reclassify_once', async () => {
     await query(`
       UPDATE mapped_tb
       SET alie = 'ASSETS',
@@ -1072,7 +1093,7 @@ export async function ensureSchema() {
         AND EXISTS (SELECT 1 FROM level_format WHERE rule_set_id = mapped_tb.rule_set_id AND level2 = 'Other current liabilities' AND level3 = 'Advance from Customers')
         AND tb_row_id IN (SELECT id FROM tb_rows WHERE closing_balance > 0)
     `)
-  }
+  })
 
   // ── Advance to Suppliers now sits under Short-term loans and advances (0.1.102) ──
   // The sub head is added to every rule set / constitution that has Short-term loans and advances ...
@@ -1103,7 +1124,7 @@ export async function ensureSchema() {
   // ... and the ledgers the system itself had moved from Trade Payables (a debit balance) are moved with it, once. Not touched: a ledger the
   // CA decided or fixed by hand, and any Financial Year that is locked (a locked year is immutable); mapping the Trial Balance again
   // after unlocking applies the new place.
-  if (await tryClaimMigration('advance_to_suppliers_to_short_term_loans_once')) {
+  await runOnceMigration('advance_to_suppliers_to_short_term_loans_once', async () => {
     await query(`
       UPDATE mapped_tb m
       SET mapping1_resultant = nf.level1, mapping2_resultant = 'Short-term loans and advances', mapping3_resultant = 'Advance to Suppliers',
@@ -1117,7 +1138,7 @@ export async function ensureSchema() {
         AND m.hand_fixed IS NOT TRUE
         AND m.tb_id NOT IN (SELECT t.id FROM trial_balances t JOIN entity_periods ep ON ep.id = t.entity_period_id WHERE ep.locked)
     `)
-  }
+  })
 
   // ── Manual custom face lines ──────────────────────────────────────────────
   // A line item on a statement face with no backing TB ledger — e.g. a
@@ -1178,7 +1199,7 @@ export async function ensureSchema() {
   // the next re-upload applied it. Now it runs once (0.1.72) and takes each
   // ledger's decision from its LATEST year, as recordLearnedRules does,
   // which also repairs rules an older year's save had overwritten.
-  if (await tryClaimMigration('learned_rules_backfill_latest_year_0172')) await query(`
+  await runOnceMigration('learned_rules_backfill_latest_year_0172', () => query(`
     INSERT INTO learned_ledger_rules
       (entity_id, ledger_name_key, ledger_name, mapping1_resultant, mapping2_resultant, mapping3_resultant,
        level4_value, level5_value, level6_value, level7_value, alie, updated_at)
@@ -1205,7 +1226,7 @@ export async function ensureSchema() {
       level7_value = excluded.level7_value,
       alie = excluded.alie,
       updated_at = excluded.updated_at
-  `)
+  `), { rewrite: false })
 
   // Form 3CD: Details regarding turnover, gross profit, etc.
   await query(`

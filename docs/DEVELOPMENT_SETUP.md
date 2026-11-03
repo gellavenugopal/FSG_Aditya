@@ -17,6 +17,16 @@ $env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
 
 For the focused unsaved-draft UI check, keep the isolated desktop open and run `.\tools\engagement-demo.ps1 draft-guards-ui` from a second PowerShell window. It uses synthetic UAE Sample 01 only, restores the existing audit addressee after its Save and continue check, does not generate report outputs, and saves its result and screenshot under `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-draft-guards\`.
 
+## Normal firm profile launcher (separate from UAT)
+
+From a clean terminal (no `FSG_TEST_*`, `FSG_DEMO_*` or `ENGAGEMENT_SERVICE_*` variable) at the repository root:
+
+```powershell
+.\tools\engagement-normal.ps1
+```
+
+`.\tools\engagement-normal.ps1 -CheckOnly` runs the checks without starting anything. The backup checks run before the running-window check, so they can be exercised while a session is open. The script refuses to start when those variables are inherited, when any FSG window (UAT or normal) is already running, or when `D:\Programs\FinancialStatements\AdityaTool\FSG-normal-backups` has no non-empty, `pg_restore`-listable `vera_financial-*.dump` newer than 24 hours. It sets `FSG_STARTUP_DATA_REWRITES=off`, then runs `npm run dev` against `%APPDATA%\fsg-bharat`. It never reads or prints the stored password and does not create an environment marker, so the badge stays **Unverified**. Create a fresh backup (`pg_dump -Fc`, run by the user or with their authorisation) before any launch that will change the live schema. Close UAT normally first (`.\tools\engagement-demo.ps1 demo` uses DevTools port 9339 and Vite port 5173).
+
 ## Persistent isolated demo
 
 Open PowerShell at the repository root:
@@ -261,6 +271,6 @@ See [UAE_IFRS_TESTBED.md](./UAE_IFRS_TESTBED.md) for case results, PDF paths, co
 - Electron's effective `userData` path is configured and verified before reading saved application configuration.
 - Test mode is service-only: it skips legacy DB initialization, schema/mapping seeding and legacy financial IPC registration. Packaged builds reject test mode.
 - Test credentials are never stored in repository files, logs, this documentation or generated artifacts.
-- The historic production data incident remains unresolved. No test authorizes a live database connection, restore or rollback.
+- The historic production data incident remains unresolved. No test authorizes a live database connection, restore or rollback. The only live access so far was the user-authorised 2026-11-03 backup verification and read-only identity query described in [CURRENT_STATUS.md](./CURRENT_STATUS.md); it is not a standing permission.
 
 For disposable automated isolation checks use `npm run isolation:test`; for service tests use `npm run engagement:test`. Do not use ordinary `npm run dev` with an unknown or saved profile as a substitute for the isolated harness.
