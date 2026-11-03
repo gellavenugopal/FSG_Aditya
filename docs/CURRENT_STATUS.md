@@ -1,10 +1,21 @@
 # Current status
 
-Last updated: **2026-11-02**
+Last updated: **2026-11-03 (Task 2 reconciliation checkpoint)**
+
+## Authoritative current summary
+
+- **Branch / commits:** `redesign/unified-navigation-settings`, pushed to `origin` (no merge, no force-push; `main` untouched). Navigation + draft-pack implementation commit `2b66db6`, on top of `f72d4e7`. Task 2 changes (Balance Sheet reconciliation, Interior headings, evidence notes, docs) are committed after `2b66db6`; the exact SHA is recorded in the final handover for that commit.
+- **Environment:** isolated UAT demo only (`fsg_engagement_demo` on 127.0.0.1:64023, profile `%USERPROFILE%\FSG-Aditya-engagement-demo\electron-user-data`). Live (`vera_financial`) is **Unverified**: no environment marker exists, nothing was run against it.
+- **Launch (verified):** `$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'; .\tools\engagement-demo.ps1 demo`.
+- **Shell:** one shell (Engagements and Settings; select, then Go; five sidebar sections). Details in the feature inventory below.
+- **Interior 2024 (isolated record, final TB v1, pack `AE_UAE_SEPARATE_FS` v0.1-draft):** provisional preview only. Balance Sheet difference is now **-1,033,563**, equal to the net of the 17 unresolved accounts; it is explained, not reconciled. 0 confirmed mappings, 285 suggested, 17 unresolved. Comparative: none verified. See "Task 2" below.
+- **Not complete:** statements are provisional; cash flow, equity movements, notes/schedules from the draft pack, exports for Interior, policies, stale-preview marking and grouping rule display are not built. A passing build is not evidence of completeness.
+- **Next bounded task:** obtain the user's decisions on the 17 unresolved accounts (questions below), save the agreed mappings through the existing review screen, then import/verify the 2023 comparative.
+- Sections below headed with a date are **historical checkpoints**; where they conflict with this summary, this summary and the Task 2 section win.
 
 ## Repository state
 
-- Active review branch: `redesign/unified-navigation-settings`, created at local commit `f72d4e7` (`feat: add secure remembered sign-in and recovery`). The branch and all review changes remain local.
+- Active review branch: `redesign/unified-navigation-settings`, created at local commit `f72d4e7` (`feat: add secure remembered sign-in and recovery`). The branch is pushed to `origin/redesign/unified-navigation-settings`; nothing is merged.
 - Excel workbook implementation and documentation checkpoint: `07ddc24` — `feat: export UAE reporting workbook`.
 - Base HEAD before the Excel workbook checkpoint: `bc6c448` — `docs: record UAE v7 restart reopening check`.
 - UAE note-reference/corrected-output implementation checkpoint: `f3378c5` — `fix: remove dangling UAE note references`.
@@ -16,7 +27,7 @@ Last updated: **2026-11-02**
 - Word export implementation checkpoint: `b7461e4` — `feat: add editable UAE Word reporting export`. The exact output and remaining print-render limitation are recorded below; no push or merge has been performed.
 - Engagement navigation and protected comparative Trial Balance-list checkpoint: `cfe4f7c` — `feat: add shared engagement navigation shell`. The implementation, UI harness and affected context docs are committed locally; no push or merge has been performed.
 - Responsive Reports and Exports layout checkpoint: `19ccc3b` — `ui: compact reporting exports at common viewports`. The combined PDF action, saved source revision and PDF/Excel/Word controls now sit side-by-side at both requested viewport widths; no push or merge has been performed.
-- No push or merge has been performed.
+- Older checkpoints listed above were local when written. The redesign branch was pushed on 2026-11-03 (commit `2b66db6`); no merge to `main` has been performed.
 
 ## Feature inventory: single unified shell (2026-11-03)
 
@@ -32,13 +43,13 @@ One shell for every startup path (`App.jsx`): top destinations Engagements and S
 | Partial | Settings: Employees (directory), User accounts (sign-in) and Roles are explained as distinct in one screen; unsupported operations stated (deactivate/delete/rename account, email invitations, editing a member's role) | Screenshot `04-settings-people-and-access.png` | Separate screens/operations only when the service supports them |
 | Partial | India Financials sub-statements (Balance Sheet, P&L, Equity, Cash Flow) are labelled not available: India statements exist only in the combined PDF; India notes are reachable under Notes to Accounts. These separate previews never existed in the protected workflow | Shell test India run | Build India statement previews behind the service |
 | Partial | Preview and Text Editing offers generate/save and states there is no live rendered preview; wording is edited under Audit Report and Notes | Screenshot `03-presentation-preview.png` | Live preview |
-| Partial | Interior still shows the synthetic-pack heading "UAE reporting demonstration / Synthetic UAE LLC" because its engagement uses pack AE_UAE_DEMO; the draft AE_UAE_SEPARATE_FS preview and unconfirmed-metadata warnings are shown | Screenshot `03-financials-balance-sheet.png` | Assign the engagement to the separate-FS pack once confirmed |
+| Working, verified | Interior headings use the engagement identity ("UAE reporting draft - Interior LLC", reference, period) with the saved pack `AE_UAE_DEMO` stated as unchanged and the draft-pack preview and unconfirmed-metadata warnings retained; synthetic engagements keep the synthetic heading | Screenshot `03-financials-balance-sheet.png` after relaunch; shell test 24 passed (Interior) | Assign the engagement to the separate-FS pack only after the user confirms it |
 | Not built | Stale-preview marking after later adjustments; grouping source rule / review status / confidence display; entity- and firm-level rule gap record; Supporting Schedules, Annexures, Selected Policies, Policy Library (labelled unavailable) | UI placeholders | Later tasks |
 | Previously working, now inaccessible | Mapped / Rules sub-views of the old Mapping section; legacy India tools and pop-outs (they bypass engagement permissions; missing interface: engagement-authorised service routes for legacy schedules, annexures, Annex and Reco) | Code trace | Add service routes, then connect |
 | Not tested | Word pagination visual inspection; physical 2880x1800 at 200% (this machine is 1920x1080 at 1x); live environment; two-client UAT; Live marker (Live stays Unverified, no marker created) | n/a | User UAT |
 Physical 2880x1800 at 200% not tested (this machine is 1920x1080 at 1x). A build passing is not evidence of completeness.
 
-## Interior 2024 mapping review screen (2026-11-03, uncommitted)
+## Interior 2024 mapping review screen (2026-11-03, historical checkpoint; committed in `2b66db6`)
 
 - New draft pack `AE_UAE_SEPARATE_FS` v0.1-draft (`src/shared/uae-separate-fs-pack.mjs`, 37 statement lines, exact normalised label rules, reusable across engagements). The synthetic `AE_UAE_DEMO` pack and its outputs are untouched. The pack is a mapping definition only: no statements, notes, cash flow or exports use it yet.
 - Additive tables `engagement_reference_classifications` and `engagement_pack_mapping_reviews`; protected routes `packReferenceImport`, `packMappingReviewGet`, `packMappingReviewSave`. The Mapping section for UAE engagements shows the review (code, description, balance, statement line, classification source, status, accept/manual actions). Manual mappings are never replaced by suggestions.
@@ -52,10 +63,92 @@ Physical 2880x1800 at 200% not tested (this machine is 1920x1080 at 1x). A build
 ### Interior 2024 provisional Balance Sheet and P&L preview (2026-11-03)
 
 - Statements > Financial position / Profit or loss for UAE engagements now show a provisional preview ([UaePackStatementPreview.jsx](../src/renderer/src/components/Engagements/UaePackStatementPreview.jsx), calculation in [uae-pack-statement-preview.mjs](../src/shared/uae-pack-statement-preview.mjs)). It reads the existing mapping review (final TB v1 and `AE_UAE_SEPARATE_FS` 0.1-draft), uses saved confirmed mappings first, then the 285 suggestions, and lists the 17 unresolved accounts as exceptions. It saves nothing and shows no comparatives, cash flow, equity movements or exports. Final-TB balances are credit-positive.
-- Interior result: total assets 84,920,276; total equity and liabilities 76,464,383; Balance Sheet difference 8,455,893 (profit 9,489,456 not closed to equity, plus unresolved net -1,033,563). Unresolved: 17 accounts, signed net -1,033,563, absolute 31,279,035 of 600,324,806 (5.21%). The source TB net is 0, which does not reconcile the preview.
+- Interior result at that checkpoint (**superseded by the Task 2 section: profit was not yet included in equity, so the difference of 8,455,893 was mostly unclosed profit**): total assets 84,920,276; total equity and liabilities 76,464,383; Balance Sheet difference 8,455,893. Unresolved: 17 accounts, signed net -1,033,563, absolute 31,279,035 of 600,324,806 (5.21%).
 - Reference 2024 comparison is separate evidence. Receivables (-43,160), subsidiary investment, due to related parties, tax payable, trade payables, other income, administrative and contract costs, finance costs and profit differ; most trace to unresolved ledgers (see the on-screen explanations), contract costs/administrative split and due to related parties (49,000) are unexplained.
 - Checks: `node tools/selftest-uae-statement-preview.mjs` (read-only, 87 checks: no omitted or double-counted ledger, per-line sums, totals recomputed independently); `npm run build` passed. Screenshots: `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\Interior-LLC\screenshots\statements-*-provisional.png` (rendered from the live DOM through headless Edge; direct window capture of the occluded Electron window timed out).
 - `client-uat/UAESample1.zip` is excluded through `.git/info/exclude` (local only; the file is retained).
+
+## Task 2: Interior 2024 Balance Sheet / P&L reconciliation (2026-11-03)
+
+**Checkpoint record**
+
+- Source branch: `redesign/unified-navigation-settings` (based on `2b66db6`). Implementation commit: recorded in the handover for the commit that contains this section.
+- Features changed: (1) the preview now adds the P&L profit to equity once, derived from the P&L lines (the final TB is pre-closing; ledger 4502 "Retained Earnings B/Fwd", -2,721,906 debit, holds only the opening balance and no ledger carries current-year profit), so there is no double count; (2) the Balance Sheet difference is now explained exactly; (3) Interior headings use its engagement identity while the saved pack stays `AE_UAE_DEMO`; (4) reference-comparison notes corrected with evidence; (5) read-only helper `tools/interior-llc-dump-review.mjs` (writes a JSON dump under the demo outputs folder, outside Git).
+- Schema changes: none. No data written: TB, journals, final-TB v1, mappings (0 confirmed) and saved outputs are unchanged.
+- Checks run: `node tools/selftest-uae-statement-preview.mjs` against Interior, 89 checks passed (adds: difference equals unresolved net less TB net; only the derived profit was added to equity); `npm run build` passed (exit 0); isolated shell test on Interior, 24 passed after relaunch. **Not run in this task:** `engagement:test`, `isolation:test`, India regressions (no service, schema or India code changed; last run green at `2b66db6`); physical 200% display; Word pagination.
+- Environment/launch: isolated UAT demo; command in the authoritative summary. Note: a Chrome-DevTools `Page.reload` left the renderer blank (module load stuck at `interactive`); closing with `Browser.close` and relaunching with the launcher fixed it.
+- Known stale tests (not updated): `tools/selftest-engagement-demo-navigation-ui.mjs` (old seven section labels) and `tools/selftest-engagement-demo-firm-settings.mjs` (expects link "Team, roles and access"). Superseded by `selftest-engagement-demo-unified-shell-ui.mjs`.
+
+**1. Balance Sheet difference of 8,455,893 (explained)**
+
+| Item | AED |
+|---|---|
+| Total assets (calculated, 285 suggested mappings) | 84,920,276 |
+| Equity before profit (share capital 300,000 + statutory reserve 150,000 + retained earnings b/fwd -2,721,906) | -2,271,906 |
+| Profit for the year from the P&L lines (provisional) | 9,489,456 |
+| Total equity (derived) | 7,217,550 |
+| Liabilities | 78,736,289 |
+| Total equity and liabilities | 85,953,839 |
+| **Difference: assets less equity and liabilities** | **-1,033,563** |
+| Net of the 17 unresolved accounts (credit +) | -1,033,563 |
+| Source TB net | 0 |
+
+Old difference 8,455,893 = profit 9,489,456 (unclosed) + unresolved net -1,033,563. The remaining difference equals the excluded unresolved net exactly; it is an explanation, not a reconciliation. Nothing was inserted.
+
+**2. Evidence for the 17 unresolved accounts (none confirmed or saved; all need your decision)**
+
+Evidence is the reference workbook `Schedules & PL.xlsx` (MMTB revised 31-12-2024 column, BS/P&L sheets, JV 24). Amount equality is evidence of where the reference placed an amount, not proof of the account's nature.
+
+| Ledger | Balance (Cr +) | Evidence | Status |
+|---|---|---|---|
+| 4503 Share holders dividends | -12,911,017 | Equals reference MMTB "Shareholders' current account" 12,911,017; pack has no such line | Decision |
+| 4126 Short term loan - Beehive | 534,618 | Equals reference third-party loan 534,618; pack has no line | Decision / pack change |
+| 7650-20 / 7651-20 Hotel Shareholders (Andrew, Sean) | -177,229 / -480,542 | No reference amount matches | Decision |
+| Smart Option - SC / Andrew - SC | 24,990 / 24,010 | Together 49,000 = reference "Due to related parties" 49,000 (amount only) | Decision |
+| Investment in Subsidiary | -49,000 | Reference JV 24 and MMTB "Investment in subsidiary" 49,000 | Evidence supports; confirm |
+| Interest on lease liability / SH loan / third party | -115,965 / -375,096 / -91,347 | Sum 582,408 = finance-cost difference; MMTB finance-cost JV 115,965 | Evidence supports; confirm |
+| Depreciation ROU | -848,256 | MMTB depreciation JV 848,255 | Evidence supports; confirm |
+| Consultancy fees | -1,107,847 | MMTB legal and professional JV -1,107,847 | Decision (caption) |
+| Royalty fee | 7,974,343 | Equals other-income difference exactly | Decision (nature) |
+| Rebate received | 2,365,148 | No direct reference match | Decision |
+| Provision for corporate tax | 1,662,826 | Equals reference tax payable and tax expense 1,662,826 | Evidence supports; confirm |
+| Due to customers on contracts | 2,536,794 | Reference MMTB "Unearned revenue" 2,536,794 | Evidence supports; confirm |
+| TB round off | 7 | None | Decision |
+
+**3. Mapping visibility:** confirmed, suggested and unresolved remain distinct in the preview and the mapping review. The mapping review (accept, manual correction, mapped accounts) is rendered by `EngagementReportingPanel.jsx` for the **Trial Balance › Grouping** subsection (`EngagementHub.jsx` maps `grouping` to the mapping view), so it is accessible there; unchanged in this task.
+
+**4. Reference reconciliation (calculated vs reference 2024 column)**
+
+| Caption | Calculated | Reference | Difference | Explanation |
+|---|---|---|---|---|
+| Contract and other receivables | 58,023,610 | 58,066,770 | -43,160 | Unresolved. Mirrors a +43,160 part of the payables difference. Not used as a balancing input |
+| Investment in subsidiary | 0 | 49,000 | -49,000 | Unresolved ledger "Investment in Subsidiary" |
+| Total assets | 84,920,276 | 85,012,436 | -92,160 | 49,000 + 43,160 |
+| Trade and other payables | 63,404,877 | 65,984,831 | -2,579,954 | 2,536,794 unresolved (due to customers) + 43,160 |
+| Due to related parties | 0 | 49,000 | -49,000 | Possibly the two "- SC" ledgers (amount match only) |
+| Provision for tax | 0 | 1,662,826 | -1,662,826 | Unresolved provision ledger |
+| Contract costs | -152,539,991 | -151,281,564 | -1,258,427 | Classification split; account-level grouping not reconciled |
+| Administrative and selling | -34,073,350 | -35,580,496 | 1,507,146 | Opposite side of the split; aggregate of both has an unexplained 248,719 |
+| Other income | 4,301,621 | 12,275,964 | -7,974,343 | Unresolved royalty fee |
+| Finance costs | -65,580 | -647,988 | 582,408 | Three unresolved interest ledgers |
+| Profit for the year | 9,489,456 | 16,632,672 | -7,143,216 | Excluded unresolved income and expense ledgers plus the cost-split residual |
+| Due from related parties, PPE, ROU asset, other financial assets, cash, share capital, statutory reserve, end-of-service, lease liabilities, borrowings, loans from related parties, revenue, tax expense | agree | agree | 0 | |
+
+The two documented AED 1 rounding differences are retained unresolved. Reference values are validation evidence only.
+
+**5. Comparative:** none is selected or shown. Missing: an imported, verified 2023 closing TB for Interior (the reference workbook has `TB23` and MMTB 31-12-2023 "Revised T.B" columns, which are reference evidence only), a check that 2023 closing equals the 2024 opening balances (`TB 24` opening columns), and a selected comparative with mappings. Current-year statements do not depend on it.
+
+**Questions for the user (accounting judgment)**
+
+1. 4503 "Share holders dividends" (12,911,017 Dr): shareholders' current account (and equity or liability?) or dividends declared?
+2. Hotel Shareholders (Andrew, Sean) and the two "- SC" ledgers: related-party receivables, payables, or part of the shareholders' current account? Is the 49,000 pair the payable for the subsidiary investment?
+3. Add pack lines for the third-party loan (Beehive 534,618) and a shareholders' current account?
+4. Royalty fee (7,974,343 Cr) and rebate received (2,365,148 Cr): other income, or a reduction of contract costs?
+5. Consultancy fees: administrative/professional, or contract cost? Depreciation ROU and the lease interest: confirm as depreciation and finance cost?
+6. Confirm the evidence-supported items (subsidiary investment, tax provision, due to customers/unearned revenue) as saved mappings?
+7. TB round off (7) and the two AED 1 differences: treatment?
+
+**Remaining blockers / next bounded task:** your decisions above; saving agreed mappings; verifying and selecting the 2023 comparative; account-level contract-cost/administrative reconciliation using the SCH sheet. Screenshots of the equity section were not captured (the viewport capture shows the heading and warnings only).
 
 ## Unified navigation and Settings desktop review (2026-11-02)
 
@@ -67,7 +160,7 @@ Physical 2880x1800 at 200% not tested (this machine is 1920x1080 at 1x). A build
 - Verification in this review: `npm run build` passed (with the existing stale Browserslist and `tallyParsers.js` mixed-import warnings); `node --check` for both visible-export UI scripts; PowerShell parser check for `engagement-demo.ps1`; `git diff --check`; isolated visible workbook export and reopen; isolated visible Word export and reopen. The engagement, branding and UAE suites passed in the previous review phase.
 - No commit or push was made. Existing synthetic demo data and the saved v7 output were used read-only; generated review documents are outside the repository.
 
-## Focused navigation and draft-protection corrections (2026-11-02, uncommitted)
+## Focused navigation and draft-protection corrections (2026-11-02, historical; superseded by the five-section shell; committed in `2b66db6`)
 
 - Engagements is the default workspace. The top bar has only **Engagements** and **Settings**; Settings links to Firm and offices, Partners, Report styles, Appearance, Team/roles/access (existing `FirmTeam`) and Clients. Separate Firm Settings / Firm Team entries are removed; existing implementations are reused.
 - An open engagement has one sidebar: Overview and Setup, Trial Balance, Journals and Adjustments, Mapping, Financial Statements, Audit Report, Review and Export. The header shows client, period, framework (+pack), currency (TB → presentation) and status. A context strip shows source TB, final-TB version and comparative. India packs show only Notes and disclosures under Financial Statements (no in-app India statement preview); there are no schedule/annexure tabs.

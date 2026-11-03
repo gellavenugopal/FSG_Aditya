@@ -4,6 +4,22 @@ This log separates user-approved product/scope decisions from engineering propos
 
 ## User-approved decisions
 
+### 2026-11-03 — Two destinations and one shell in every startup mode
+
+- **Decision:** Engagements and Settings are the only application destinations, rendered by one shell for normal, service-only and isolated startup. An engagement uses exactly five sidebar sections (Trial Balance, Financials, Notes, Accounting Policies, Presentation). Selecting an engagement shows details and a right-side Go action. Settings owns reusable masters; engagements own their selected values; employees, user accounts and roles are distinct concepts. Saving a final-TB version does not finalise the engagement or approve the statements.
+- **Supersedes:** the earlier seven-section sidebar (Overview and Setup, Trial Balance, Journals and Adjustments, Mapping, Financial Statements, Audit Report, Review and Export) and the legacy `ApplicationWorkspace` as a customer route. Legacy India tools and pop-outs are unreachable until engagement-authorised interfaces exist (recorded in the inventory, not restored).
+- **Status:** Implemented and verified in the isolated demo (see [CURRENT_STATUS.md](./CURRENT_STATUS.md)); stale-preview marking and grouping rule display remain unbuilt.
+
+### 2026-11-03 — Draft UAE separate-FS pack; suggestions are never confirmations; reference figures are never inputs
+
+- **Decision:** Interior LLC is reported through the versioned draft pack `AE_UAE_SEPARATE_FS` v0.1-draft. Reference classifications are proposals; only an explicit accept/manual save creates a confirmed mapping, which is never overwritten by reference replacement. Unresolved accounts stay visible as exceptions and are never forced into "Other". Reference statement totals are validation evidence only and never balancing inputs. Legal name, framework and currency remain visibly unconfirmed. The engagement's saved pack selection (`AE_UAE_DEMO`) is not silently changed.
+- **Status:** Implemented as a provisional preview; the user's decisions on the 17 unresolved accounts are pending.
+
+### 2026-11-03 — Current-year profit enters equity once, derived from the P&L (pre-closing final TB)
+
+- **Decision:** The final TB is pre-closing: retained earnings b/fwd holds only the opening balance. The preview adds the P&L profit to equity once as a derived, labelled row, never from a mapping and never as a balancing journal. The remaining Balance Sheet difference is reported as the unresolved-account net and described as explained, not reconciled.
+- **Supersedes:** the earlier preview presentation (same day) that left profit outside equity and showed a difference of 8,455,893.
+
 ### 2026-10-26 — Prioritise UAE Sample 01 client demonstration
 
 - **Decision:** Build one complete UAE client demonstration using a synthetic AED dataset. Supplied client documents may be used as references only and must not be committed. Preserve the verified India workflow and its finalised PDFs. Keep UAE output explicitly identified as demonstration material until reporting coverage is validated.

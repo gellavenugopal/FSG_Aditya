@@ -43,10 +43,13 @@ function buildStatementPreview(review) {
   const totalNonCurrent = sectionTotal('SFP', 'Non-current assets')
   const totalCurrent = sectionTotal('SFP', 'Current assets')
   const totalAssets = round2(totalNonCurrent + totalCurrent)
-  const totalEquity = sectionTotal('SFP', 'Equity')
+  const totalEquityBeforeProfit = sectionTotal('SFP', 'Equity')
   const totalLiabilities = sectionTotal('SFP', 'Liabilities')
-  const totalEquityAndLiabilities = round2(totalEquity + totalLiabilities)
   const profit = round2(lineRows.filter(line => line.statement === 'PL').reduce((sum, line) => sum + line.amount, 0))
+  // The final TB is pre-closing: retained earnings (4502 "B/Fwd") holds only the opening balance and no ledger
+  // carries current-year profit, so profit is added once, derived from the P&L lines, never from a mapping.
+  const totalEquity = round2(totalEquityBeforeProfit + profit)
+  const totalEquityAndLiabilities = round2(totalEquity + totalLiabilities)
   const unresolvedNet = round2(exceptions.reduce((sum, row) => sum + row.balance, 0))
   const unresolvedAbsolute = round2(exceptions.reduce((sum, row) => sum + Math.abs(row.balance), 0))
   const totalAbsolute = round2(review.rows.reduce((sum, row) => sum + Math.abs(row.balance), 0))
@@ -58,11 +61,11 @@ function buildStatementPreview(review) {
   const checks = [
     { label: 'Every non-zero ledger appears exactly once (statement lines + exceptions = review rows)', passed: placed + exceptions.length === review.rows.length && duplicateRows === 0, detail: `${placed} placed + ${exceptions.length} exceptions = ${review.rows.length} accounts; ${duplicateRows} duplicates` },
     { label: 'Sum of statement-line ledger balances + exceptions equals the source TB net', passed: Math.abs(placedNet + unresolvedNet - tbNet) < 0.01, detail: `${round2(placedNet)} + ${unresolvedNet} vs ${round2(tbNet)}` },
-    { label: 'Balance Sheet difference is explained by TB net, unclosed profit and unresolved net', passed: Math.abs(difference - (profit + unresolvedNet - tbNet)) < 0.01, detail: `difference ${difference} = profit ${profit} + unresolved net ${unresolvedNet} - TB net ${round2(tbNet)}` },
+    { label: 'Balance Sheet difference equals the unresolved net (profit is closed into equity once)', passed: Math.abs(difference - (unresolvedNet - tbNet)) < 0.01, detail: `difference ${difference} = unresolved net ${unresolvedNet} - TB net ${round2(tbNet)}; profit ${profit} added to equity once` },
   ]
   return {
     sections, lineRows, exceptions, checks, tbNet: round2(tbNet),
-    totals: { totalNonCurrent, totalCurrent, totalAssets, totalEquity, totalLiabilities, totalEquityAndLiabilities, difference, profit },
+    totals: { totalNonCurrent, totalCurrent, totalAssets, totalEquity, totalEquityBeforeProfit, totalLiabilities, totalEquityAndLiabilities, difference, profit },
     coverage: {
       accounts: review.rows.length, unresolvedCount: exceptions.length, unresolvedNet, unresolvedAbsolute, totalAbsolute,
       unresolvedAbsolutePercent: totalAbsolute ? round2((unresolvedAbsolute / totalAbsolute) * 100) : 0,
@@ -91,19 +94,19 @@ const REFERENCE_2024 = {
     { statement: 'SFP', label: "Provision for employees' end of service benefits", reference: 3820456, lines: ['employee_end_of_service'] },
     { statement: 'SFP', label: 'Lease liabilities (non-current + current)', reference: 2478470, lines: ['lease_liabilities'], note: 'Reference splits 1,623,930 non-current and 854,540 current; the draft pack has one line.' },
     { statement: 'SFP', label: 'Borrowings (non-current + current)', reference: 763114, lines: ['borrowings'], note: 'Reference also shows a separate 534,618 loan from a third party that the draft pack has no line for.' },
-    { statement: 'SFP', label: 'Trade and other payables', reference: 65984831, lines: ['trade_payables', 'contract_liabilities', 'retentions_payable', 'other_payables'], note: 'Unresolved "Due to customers on contracts" (2,536,794) is excluded; the remaining 43,160 equals the open receivables difference. Observation only, not applied.' },
+    { statement: 'SFP', label: 'Trade and other payables', reference: 65984831, lines: ['trade_payables', 'contract_liabilities', 'retentions_payable', 'other_payables'], note: 'Unresolved "Due to customers on contracts" (2,536,794) is excluded and, with the 43,160 receivables difference, equals this difference exactly (2,536,794 + 43,160 = 2,579,954). The reference MMTB shows 2,536,794 as "Unearned revenue" (journal-created). Evidence only; classification awaiting decision.' },
     { statement: 'SFP', label: 'Loans from related parties (non-current + current)', reference: 8269372, lines: ['loans_from_related_parties'] },
-    { statement: 'SFP', label: 'Due to related parties', reference: 49000, lines: ['due_to_related_parties'], note: 'No unresolved or mapped ledger carries 49,000 for this caption; unexplained.' },
+    { statement: 'SFP', label: 'Due to related parties', reference: 49000, lines: ['due_to_related_parties'], note: 'No mapped ledger carries 49,000 for this caption. The unresolved ledgers "Smart Option - SC" (24,990) and "Andrew - SC" (24,010) total exactly 49,000 (amount match only; names do not state the nature). Not classified; decision required.' },
     { statement: 'SFP', label: 'Provision for tax', reference: 1662826, lines: ['tax_payable'], note: 'Unresolved journal-created "Provision for corporate tax" (1,662,826) is excluded and equals this difference.' },
     { statement: 'PL', label: 'Revenue', reference: 193529582, lines: ['revenue'] },
-    { statement: 'PL', label: 'Contract costs', reference: -151281564, lines: ['contract_costs', 'contract_costs_employee'], note: 'Earlier inspection found contract costs not comparable; unresolved. Unclassified cost ledgers may explain part of it.' },
+    { statement: 'PL', label: 'Contract costs', reference: -151281564, lines: ['contract_costs', 'contract_costs_employee'], note: 'Aggregate with administrative expenses: calculated 186,613,341 vs reference 186,862,060 (248,719 unexplained). The split differs by 1,258,427 because suggested mappings come from 2025 classifications while the reference groups 2024 costs differently (reference MMTB: cost of contracts 149,534,066). Unresolved cost ledgers also excluded. Account-level reference grouping (SCH sheet) not yet reconciled.' },
     { statement: 'PL', label: 'Other income', reference: 12275964, lines: ['other_income'], note: 'Unresolved "Royalty fee" (7,974,343) is excluded and equals this difference exactly. Not classified from its name.' },
-    { statement: 'PL', label: 'Administrative and selling expenses', reference: -35580496, lines: ['administrative_selling_expenses', 'employee_costs', 'directors_remuneration'], note: 'Unexplained: the split between contract costs and administrative expenses differs from the reference; unresolved cost ledgers (for example consultancy, ROU depreciation) are also excluded.' },
+    { statement: 'PL', label: 'Administrative and selling expenses', reference: -35580496, lines: ['administrative_selling_expenses', 'employee_costs', 'directors_remuneration'], note: 'See contract costs: the 1,507,146 here is the opposite side of the 1,258,427 contract-cost difference plus the 248,719 aggregate residual. Unresolved ROU depreciation (848,256) and consultancy (1,107,847) are excluded. Unresolved; not a balancing input.' },
     { statement: 'PL', label: 'Finance costs', reference: -647988, lines: ['finance_costs', 'finance_costs_lease'], note: 'Three unresolved interest ledgers (115,965 + 375,096 + 91,347 = 582,408) are excluded and equal this difference.' },
     { statement: 'PL', label: 'Tax expense', reference: -1662826, lines: ['tax_expense'] },
     { statement: 'PL', label: 'Profit for the year', reference: 16632672, total: 'profit', note: 'Excludes the unresolved income and expense ledgers in the exception panel (for example royalty fee, rebate received, interest, ROU depreciation, consultancy); the two documented AED 1 rounding differences are unresolved.' },
   ],
-  notCompared: ['Retained earnings and Shareholders\' current account (reference retained earnings includes current-year profit; the TB equity split is not yet confirmed).'],
+  notCompared: ['Retained earnings and Shareholders\' current account: the TB holds retained earnings b/fwd (4502, 2,721,906 debit, equal to the reference MMTB 2024 retained earnings) and an unresolved dividends/current-account ledger 4503 (12,911,017 debit, equal to the reference "Shareholders\' current account"); their statement placement is an open decision.'],
 }
 
 function compareWithReference(preview) {

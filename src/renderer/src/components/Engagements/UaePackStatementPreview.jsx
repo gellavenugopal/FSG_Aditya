@@ -28,11 +28,12 @@ function LineRow({ line, open, onToggle }) {
   </>
 }
 
-function Section({ title, lines, total, totalLabel, openKeys, toggle }) {
+function Section({ title, lines, total, totalLabel, openKeys, toggle, derived }) {
   return <div className="mb-3">
     <div className="text-xs font-semibold uppercase tracking-wide text-gray-600">{title}</div>
     <table className="w-full text-sm"><tbody>
       {lines.map(line => <LineRow key={line.key} line={line} open={openKeys.has(line.key)} onToggle={() => toggle(line.key)} />)}
+      {derived && <tr className="border-t bg-indigo-50/50" data-testid="bs-derived-profit"><td className="py-1.5 pr-2">{derived.label} <span className="text-[11px] text-gray-600">(derived from the P&amp;L lines, not a ledger or a mapping)</span></td><td className="py-1.5 text-right tabular-nums">{money(derived.amount)}</td></tr>}
       {total !== undefined && <tr className="border-t-2 font-semibold"><td className="py-1.5">{totalLabel} <span className="text-[11px] font-normal text-amber-800">(provisional)</span></td><td className="py-1.5 text-right tabular-nums">{money(total)}</td></tr>}
     </tbody></table>
   </div>
@@ -89,6 +90,7 @@ export default function UaePackStatementPreview({ engagement, trialBalanceId, vi
       <h4 className="font-semibold text-gray-900">Statement of financial position - provisional, potentially incomplete</h4>
       <p className="mb-2 text-xs text-gray-500">AED, {periodText}. Select a line to inspect its ledgers.</p>
       {sectionsOf('SFP').map(([title, lines]) => <Section key={title} title={title} lines={lines} openKeys={openKeys} toggle={toggle}
+        derived={title === 'Equity' ? { label: 'Profit / (loss) for the year (provisional)', amount: totals.profit } : undefined}
         total={title === 'Non-current assets' ? totals.totalNonCurrent : title === 'Current assets' ? totals.totalCurrent : title === 'Equity' ? totals.totalEquity : totals.totalLiabilities}
         totalLabel={`Total ${title.toLowerCase()}`} />)}
       <table className="w-full text-sm"><tbody>
@@ -96,7 +98,7 @@ export default function UaePackStatementPreview({ engagement, trialBalanceId, vi
         <tr className="font-semibold"><td className="py-1">Total equity and liabilities (provisional)</td><td className="py-1 text-right tabular-nums">{money(totals.totalEquityAndLiabilities)}</td></tr>
         <tr className={Math.abs(totals.difference) < 0.005 ? 'text-green-800' : 'font-semibold text-red-700'} data-testid="bs-difference"><td className="py-1">Balance Sheet difference (assets less equity and liabilities)</td><td className="py-1 text-right tabular-nums">{money(totals.difference)}</td></tr>
       </tbody></table>
-      <p className="mt-2 rounded bg-gray-50 p-2 text-xs text-gray-700">The source Trial Balance net is {money(preview.tbNet)}, but that does not reconcile this preview. The difference arises because profit or loss of {money(totals.profit)} has not been closed to equity, and unresolved accounts (net {money(coverage.unresolvedNet)}) are excluded. Nothing has been inserted to balance it.</p>
+      <p className="mt-2 rounded bg-gray-50 p-2 text-xs text-gray-700">The source Trial Balance net is {money(preview.tbNet)}. The final TB is pre-closing: Retained earnings b/fwd holds only the opening balance, so the P&amp;L profit of {money(totals.profit)} is added to equity once (it is not in any ledger). The remaining difference equals the net of the {coverage.unresolvedCount} unresolved accounts ({money(coverage.unresolvedNet)}) that are excluded; this explains the difference but does not reconcile it. Nothing has been inserted to balance it.</p>
     </section>}
 
     {isPL && <section className="rounded-lg border border-gray-200 bg-white p-4" aria-label="Provisional statement of profit or loss">

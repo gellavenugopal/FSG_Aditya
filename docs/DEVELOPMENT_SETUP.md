@@ -53,11 +53,17 @@ The verified non-secret target is loopback PostgreSQL `127.0.0.1:64023`, databas
 
 Do not run a second app process against the same profile. Do not run `init` to fix an ordinary startup issue; first inspect the manifest, exact process tree and logs.
 
+**Renderer changes (2026-11-03):** the isolated desktop serves the renderer from a Vite dev server. A DevTools `Page.reload` after a source change left the window blank (module load stuck at `interactive`). Close the window normally (or via DevTools `Browser.close`), wait for the DevTools port to free, and relaunch with `.\tools\engagement-demo.ps1 demo`; ready within about 15 seconds. Main-process changes always need this restart.
+
+**UI checks after the unified shell:** `tools\selftest-engagement-demo-unified-shell-ui.mjs` (set `FSG_TEST_MODE=true`, `FSG_TEST_TARGET_FILE=<demo home>\target.json`, optional `FSG_SHELL_CLIENT`, e.g. `Interior LLC`) drives landing, select-then-Go, the five sections, Settings round trip and screenshots under `outputs\unified-shell-review\`. `tools\selftest-uae-statement-preview.mjs` is a read-only check of Interior's provisional preview. `tools\interior-llc-dump-review.mjs` is a read-only dump to `outputs\Interior-LLC\` (outside Git). `tools\selftest-engagement-demo-navigation-ui.mjs` and `...-firm-settings.mjs` still use the old labels and are stale. Screenshots are 1440 x 900 logical on a 1x display, not physical 200%.
+
+**Schema and migrations:** no schema change in the 2026-11-03 Task 2 checkpoint. Earlier that day the additive tables `engagement_reference_classifications` and `engagement_pack_mapping_reviews` were added (see [ARCHITECTURE.md](./ARCHITECTURE.md)). Legacy (non-service-only) startup still runs `DELETE FROM map2/map3` and `UPDATE mapped_tb`; take a verified backup before launching against any real database. Live remains Unverified (no environment marker); do not run `npm run dev` against saved configuration.
+
 ## Sign-in recovery
 
 The sign-in form pre-fills the last successful username for this service. On Windows, optionally select **Keep me signed in on this Windows profile** to store a revocable 30-day token using Electron's protected storage. The profile keeps one locally resumable account per service; a successful login replaces older local remembered accounts, and sign out clears the service's local remembered files. The service still enforces account status and permissions.
 
-For a forgotten password, an authenticated firm administrator uses **Firm Team → Issue reset** and securely gives the user the single-use 30-minute credential. The user selects **Forgot password?** on the sign-in screen and chooses a new password. No email is sent. Sole-administrator recovery requires separately verified operator access on the service host; follow the guarded procedure in [ENGAGEMENT_SERVICE.md](../ENGAGEMENT_SERVICE.md#remembered-sign-in-and-password-recovery). Do not use database initialization or credential reseeding to recover access.
+For a forgotten password, an authenticated firm administrator uses **Settings → Employees, accounts and roles → Issue reset** and securely gives the user the single-use 30-minute credential. The user selects **Forgot password?** on the sign-in screen and chooses a new password. No email is sent. Sole-administrator recovery requires separately verified operator access on the service host; follow the guarded procedure in [ENGAGEMENT_SERVICE.md](../ENGAGEMENT_SERVICE.md#remembered-sign-in-and-password-recovery). Do not use database initialization or credential reseeding to recover access.
 
 ## Reopen the preserved India v5 output
 
@@ -118,7 +124,7 @@ $env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
 .\tools\engagement-demo.ps1 launch
 ```
 
-The click-by-click route is **Sign in → Engagements → All Engagements → UAE-SAMPLE-01-2025 → Reports and Exports → Saved output versions → Version 7 → Download PDF**. Sign in as `Demo Administrator` in **FSG Isolated Demo Firm**. Version 7 is the current corrected draft, generated from final Trial Balance v3; downloading it does not finalise or reopen the engagement. Versions 5 and 6 remain preserved. The v7 local copy is:
+The click-by-click route is **Sign in → Engagements → select UAE-SAMPLE-01-2025 → Go → Presentation → Saved Versions and Exports → Version 7 → Download PDF**. Sign in as `Demo Administrator` in **FSG Isolated Demo Firm**. Version 7 is the current corrected draft, generated from final Trial Balance v3; downloading it does not finalise or reopen the engagement. Versions 5 and 6 remain preserved. The v7 local copy is:
 
 ```powershell
 $v7 = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-reporting-pack-v7-corrected.pdf'

@@ -95,12 +95,14 @@ for (const line of preview.lineRows) {
 const sectionOf = key => lineByKey.get(key).section
 const sum = predicate => [...independent].filter(([key]) => predicate(lineByKey.get(key))).reduce((acc, [, v]) => acc + v, 0)
 const assets = -sum(line => line.statement === 'SFP' && ['Non-current assets', 'Current assets'].includes(line.section))
-const equityLiab = sum(line => line.statement === 'SFP' && ['Equity', 'Liabilities'].includes(line.section))
 const profit = sum(line => line.statement === 'PL')
+const equityLiab = sum(line => line.statement === 'SFP' && ['Equity', 'Liabilities'].includes(line.section)) + profit
 check(near(preview.totals.totalAssets, assets), `total assets ${preview.totals.totalAssets} matches independent ${assets}`)
 check(near(preview.totals.totalEquityAndLiabilities, equityLiab), `total equity and liabilities ${preview.totals.totalEquityAndLiabilities} matches independent ${equityLiab}`)
 check(near(preview.totals.profit, profit), `profit ${preview.totals.profit} matches independent ${profit}`)
 check(near(preview.totals.difference, assets - equityLiab), `Balance Sheet difference ${preview.totals.difference} shown, not forced to zero`)
+check(near(preview.totals.difference, unresolvedNet - preview.tbNet), `difference equals unresolved net ${unresolvedNet} less TB net ${preview.tbNet}; profit counted in equity once`)
+check(near(preview.totals.totalEquity - preview.totals.totalEquityBeforeProfit, profit), 'only the derived P&L profit was added to equity')
 check(preview.checks.every(item => item.passed), 'built-in omission/double-count/difference-explanation checks pass')
 check(sectionOf('revenue') === 'Profit or loss', 'sanity: revenue is a P&L line')
 

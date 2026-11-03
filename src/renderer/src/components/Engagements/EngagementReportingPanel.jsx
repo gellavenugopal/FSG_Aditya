@@ -242,6 +242,7 @@ export default function EngagementReportingPanel({
   useEffect(() => { onUnsavedChange(hasUnsavedChanges) }, [hasUnsavedChanges, onUnsavedChange])
 
   const isUaeDemo = engagement.reporting_pack_id === 'AE_UAE_DEMO'
+  const isSyntheticUae = isUaeDemo && /synthetic|sample/i.test(`${engagement.client_name || ''} ${engagement.name || ''}`)
     && engagement.trial_balance_currency === 'AED'
     && engagement.presentation_currency === 'AED'
   const supported = (engagement.reporting_pack_id === 'IN_SCHEDULE_III_LEGACY'
@@ -1008,9 +1009,11 @@ export default function EngagementReportingPanel({
     <section className={`mt-5 rounded-xl border border-indigo-200 bg-white p-4 sm:p-5 ${panelVisible ? '' : 'hidden'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">{isUaeDemo ? 'UAE reporting demonstration' : 'India reporting pack'}</h3>
+          <h3 className="text-lg font-semibold text-gray-900">{isUaeDemo ? (isSyntheticUae ? 'UAE reporting demonstration' : `UAE reporting draft - ${engagement.client_name || engagement.name}`) : 'India reporting pack'}</h3>
           <p className="mt-1 max-w-3xl text-sm text-gray-600">{isUaeDemo
-            ? `Synthetic UAE LLC · AED source balances · ${selectedPeriodText}. This limited demonstration is not a validated IFRS reporting pack.`
+            ? (isSyntheticUae
+              ? `Synthetic UAE LLC · AED source balances · ${selectedPeriodText}. This limited demonstration is not a validated IFRS reporting pack.`
+              : `${engagement.client_name || engagement.name}${engagement.reference ? ` (${engagement.reference})` : ''} · AED source balances · ${selectedPeriodText}. Saved reporting pack: ${engagement.reporting_pack_id} (unchanged). Balance Sheet and P&L use the draft AE_UAE_SEPARATE_FS pack. Legal name and framework are unconfirmed; this is not a validated IFRS reporting pack.`)
             : 'Import → post journals → create an immutable final Trial Balance → map → generate one audit report, financial statements and notes PDF.'}</p>
           <p className="mt-1 max-w-3xl text-xs text-gray-500">Generation saves a draft PDF. The assigned partner or authorised substitute must explicitly finalise it. Finalised engagements are never reopened automatically.</p>
         </div>
