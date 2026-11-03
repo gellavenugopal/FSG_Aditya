@@ -4,6 +4,19 @@ Use the existing disposable desktop demo for application testing. Never use save
 
 The detailed harness definition and reporting workflow are in [ENGAGEMENT_SERVICE.md](../ENGAGEMENT_SERVICE.md). This file gives the safe repeatable commands without credentials.
 
+## One-command isolated demo launcher
+
+From the repository root, the existing isolated desktop can be started with one command:
+
+```powershell
+$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'
+.\tools\engagement-demo.ps1 demo
+```
+
+`demo` reads the existing manifest and local credential configuration, refuses to start a second desktop when the isolated DevTools port is occupied, starts only the dedicated disposable PostgreSQL cluster if it is stopped, configures the explicit service-only test environment and lets the application validate the target before launching with its isolated Electron `userData` profile. It does not initialize, reset or reseed the demo. Use this instead of ordinary `npm run dev`; the lower-level `start-db` and `launch` actions remain available for diagnosis.
+
+For the focused unsaved-draft UI check, keep the isolated desktop open and run `.\tools\engagement-demo.ps1 draft-guards-ui` from a second PowerShell window. It uses synthetic UAE Sample 01 only, restores the existing audit addressee after its Save and continue check, does not generate report outputs, and saves its result and screenshot under `%USERPROFILE%\FSG-Aditya-engagement-demo\outputs\UAE-Sample-01-draft-guards\`.
+
 ## Persistent isolated demo
 
 Open PowerShell at the repository root:

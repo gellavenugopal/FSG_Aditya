@@ -65,6 +65,9 @@ contextBridge.exposeInMainWorld('api', {
   correctEngagementMapping: (data) => inv('engagement:mappingOverride', data),
   getEngagementReportingData:  (data) => inv('engagement:reportingData', data),
   saveEngagementUaeDemoMappings: (data) => inv('engagement:uaeDemoMappingsSave', data),
+  importEngagementPackReference: (data) => inv('engagement:packReferenceImport', data),
+  getEngagementPackMappingReview: (data) => inv('engagement:packMappingReviewGet', data),
+  saveEngagementPackMappingReview: (data) => inv('engagement:packMappingReviewSave', data),
   saveEngagementAuditReportSettings: (data) => inv('engagement:reportingSettingsSave', data),
   saveEngagementReportingSelections: (data) => inv('engagement:reportingSelectionsSave', data),
   selectEngagementReportStyle: (data) => inv('engagement:reportStyleSelect', data),
@@ -185,6 +188,7 @@ contextBridge.exposeInMainWorld('api', {
   getBranchTBsData:          (entityId)   => inv('financials:getBranchTBsData', entityId),
   renderPDF:                 (html)       => inv('financials:renderPDF', html),
   getAppVersion:             ()           => inv('app:getVersion'),
+  getEnvironment:            ()           => inv('app:getEnvironment'),
 
   // Masters — Auditors & Signatories (legacy per-entity)
   listAuditors:         (entityId)            => inv('auditor:list', entityId),

@@ -1,6 +1,7 @@
 import './dev-output-guard-bootstrap.js'
 import { app, BrowserWindow, ipcMain, Menu, dialog } from 'electron'
 import { join } from 'path'
+import { existsSync, readFileSync } from 'node:fs'
 import { initDB, loadConfig, flushDB, withStartupLock } from './db/client.js'
 import { ensureSchema } from './db/schema.js'
 import { seedDefaultMapping, ensureStockCategories } from './services/excel.js'
@@ -188,7 +189,25 @@ app.whenReady().then(async () => {
     registerFsSnapshotHandlers()
   }
   registerEngagementClientHandlers(ipcMain, engagementClientOptions)
-  if (serviceOnlyMode) registerEngagementReportingDesktopHandlers()
+  registerEngagementReportingDesktopHandlers()
+  // Live is claimed only when the profile carries an identity marker that names the configured database; test mode is UAT because
+  // its target was resolved and verified by the disposable harness. Anything else is Unverified, never assumed Live.
+  ipcMain.handle('app:getEnvironment', () => {
+    let config = {}
+    try { config = loadConfig() || {} } catch { config = {} }
+    const target = { database: config.database || null, host: config.host || null, port: config.port || null }
+    if (disposableTestMode) return { label: 'UAT', basis: 'Isolated disposable test target', ...target }
+    try {
+      const markerPath = join(app.getPath('userData'), 'environment-identity.json')
+      if (existsSync(markerPath)) {
+        const marker = JSON.parse(readFileSync(markerPath, 'utf8'))
+        if (marker?.label === 'live' && marker.database && marker.database === config.database) {
+          return { label: 'Live', basis: 'Profile identity marker matches configured database', ...target }
+        }
+      }
+    } catch { /* an unreadable marker leaves the environment unverified */ }
+    return { label: 'Unverified', basis: 'No verified environment marker for this profile', ...target }
+  })
   // The running exe's own version (package.json at build time), shown beside
   // the app name so it's obvious which build a server or client PC is on.
   ipcMain.handle('app:getVersion', () => app.getVersion())

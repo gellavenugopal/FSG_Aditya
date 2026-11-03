@@ -2276,7 +2276,7 @@ export function buildNoteTemplateRows(note, lfRows, depData, msmeData = null, ca
   if (!note || note.isPL) return rows
 
   // Special handling for Property, Plant & Equipment — use Depreciation sheet data
-  const isPPE = /property.*plant.*equipment|PPE|fixed assets/i.test(note.title || '')
+  const isPPE = !!(note.title || '').match(/property.*plant.*equipment|PPE|fixed assets/i)
   if (isPPE && depData?.rows && depData.rows.length > 0) {
     return buildPPENoteFromDepreciation(depData, note)
   }

@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true, Position = 0)]
-  [ValidateSet('init', 'start-db', 'stop-db', 'status', 'provision-users', 'generate-uae-tbs', 'generate-ifrs-testbed-tbs', 'ifrs-cases-create-ui', 'ifrs-cases-reopen-ui', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'uae-access-ui', 'uae-correct-output-ui', 'uae-workbook-export-ui', 'uae-word-export-ui', 'navigation-ui', 'auth-ui', 'auth-resume-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui')]
+  [ValidateSet('init', 'demo', 'start-db', 'stop-db', 'status', 'provision-users', 'generate-uae-tbs', 'generate-ifrs-testbed-tbs', 'ifrs-cases-create-ui', 'ifrs-cases-reopen-ui', 'verify-ui', 'workflow-ui', 'reconcile-ui', 'finalize-ui', 'reopen-ui', 'uae-access-ui', 'uae-correct-output-ui', 'uae-workbook-export-ui', 'uae-word-export-ui', 'navigation-ui', 'auth-ui', 'auth-resume-ui', 'firm-settings-ui', 'firm-settings-reopen-ui', 'firm-settings-verify-master-ui', 'launch', 'epipe-ui', 'interior-llc-setup', 'draft-guards-ui')]
   [string]$Action
 )
 
@@ -68,7 +68,44 @@ function Wait-ForDemoDesktop {
   throw 'The isolated desktop DevTools endpoint did not become available within 60 seconds.'
 }
 
+function Assert-DemoDesktopClosed {
+  $client = New-Object System.Net.Sockets.TcpClient
+  try {
+    $attempt = $client.BeginConnect('127.0.0.1', 9339, $null, $null)
+    if ($attempt.AsyncWaitHandle.WaitOne(500)) {
+      try {
+        $client.EndConnect($attempt)
+        throw 'An Electron DevTools endpoint is already listening on 127.0.0.1:9339. Close the existing desktop before launching the isolated demo.'
+      } catch [System.Net.Sockets.SocketException] {
+      }
+    }
+  } finally {
+    $client.Dispose()
+  }
+}
+
+function Start-IsolatedDesktop($state) {
+  Set-DisposableTestEnvironment $state
+  Push-Location $RepositoryRoot
+  try {
+    npm run dev
+    if ($LASTEXITCODE -ne 0) { throw 'Desktop application exited with an error.' }
+  } finally { Pop-Location }
+}
+
 switch ($Action) {
+  'demo' {
+    $state = Read-DemoManifest
+    Assert-DemoDesktopClosed
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) {
+      $logPath = Join-Path $DemoHome 'postgres.log'
+      & $pgCtl -D $state.Target.dataDirectory -o "-h 127.0.0.1 -p $($state.Target.port) -c listen_addresses=127.0.0.1" -l $logPath -w start
+      if ($LASTEXITCODE -ne 0) { throw 'Could not start the isolated PostgreSQL instance.' }
+    }
+    Start-IsolatedDesktop $state
+  }
   'init' {
     if (Test-Path -LiteralPath $ManifestPath) { throw "Demo already exists at $DemoHome; it will not be replaced." }
     $env:FSG_DEMO_HOME = $DemoHome
@@ -306,15 +343,11 @@ switch ($Action) {
   }
   'launch' {
     $state = Read-DemoManifest
+    Assert-DemoDesktopClosed
     $pgCtl = Get-PostgresControl
     & $pgCtl -D $state.Target.dataDirectory status *> $null
     if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
-    Set-DisposableTestEnvironment $state
-    Push-Location $RepositoryRoot
-    try {
-      npm run dev
-      if ($LASTEXITCODE -ne 0) { throw 'Desktop application exited with an error.' }
-    } finally { Pop-Location }
+    Start-IsolatedDesktop $state
   }
   'uae-workbook-export-ui' {
     $state = Read-DemoManifest
@@ -350,6 +383,27 @@ switch ($Action) {
     try {
       & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-navigation-ui.mjs')
       if ($LASTEXITCODE -ne 0) { throw 'Engagement navigation visual verification failed.' }
+    } finally { Pop-Location }
+  }
+  'draft-guards-ui' {
+    $state = Read-DemoManifest
+    Set-DisposableTestEnvironment $state
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\selftest-engagement-demo-draft-guards-ui.mjs')
+      if ($LASTEXITCODE -ne 0) { throw 'Draft-guard UI verification failed.' }
+    } finally { Pop-Location }
+  }
+  'interior-llc-setup' {
+    $state = Read-DemoManifest
+    $pgCtl = Get-PostgresControl
+    & $pgCtl -D $state.Target.dataDirectory status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Start the disposable database first with .\tools\engagement-demo.ps1 start-db.' }
+    Set-DisposableTestEnvironment $state
+    Push-Location $RepositoryRoot
+    try {
+      & node (Join-Path $RepositoryRoot 'tools\interior-llc-case.mjs')
+      if ($LASTEXITCODE -ne 0) { throw 'Interior LLC isolated setup and reconciliation failed.' }
     } finally { Pop-Location }
   }
   'auth-ui' {

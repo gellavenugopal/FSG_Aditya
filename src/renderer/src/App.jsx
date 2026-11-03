@@ -1082,7 +1082,10 @@ export default function App() {
   const [signingOut, setSigningOut] = useState(false)
   const [showDatabaseSetup, setShowDatabaseSetup] = useState(false)
   const [firmAppearance, setFirmAppearance] = useState(readCachedAppearance)
-
+  const [environment, setEnvironment] = useState({ label: 'Unverified', basis: 'Environment not yet identified' })
+  useEffect(() => {
+    window.api?.getEnvironment?.().then(value => value && setEnvironment(value)).catch(() => {})
+  }, [])
   const refreshAuth = useCallback(async () => {
     let localSetupAvailable = false
     try {
@@ -1105,6 +1108,47 @@ export default function App() {
   }, [])
 
   useEffect(() => { refreshAuth() }, [refreshAuth])
+
+  // The main process can drop its session (expiry, credential change, disabled account) without telling the renderer.
+  useEffect(() => {
+    if (!auth.user) return undefined
+    const expectedUserId = auth.user.id
+    let checking = false
+    const verify = async () => {
+      if (checking) return
+      checking = true
+      try {
+        const result = await window.api.engagementAuthStatus()
+        if (!result?.user || result.user.id !== expectedUserId) {
+          setAuth(current => ({
+            ...current,
+            user: result?.user || null,
+            loginHint: result?.loginHint ?? current.loginHint,
+            loginNotice: result?.user ? '' : 'Your sign-in ended. Sign in again to continue; unsaved screens must be re-entered.',
+            error: '',
+          }))
+        }
+      } catch {
+        // A transient service error is not evidence that the session ended.
+      } finally {
+        checking = false
+      }
+    }
+    const onAuthFailure = event => {
+      if (/Sign in to use engagement management|sign-in expired|account is disabled/i.test(String(event.reason?.message || event.reason || ''))) verify()
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') verify() }
+    const timer = setInterval(verify, 60000)
+    window.addEventListener('focus', verify)
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('unhandledrejection', onAuthFailure)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', verify)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('unhandledrejection', onAuthFailure)
+    }
+  }, [auth.user?.id])
 
   useEffect(() => {
     if (!auth.user) {
@@ -1156,7 +1200,9 @@ export default function App() {
     document.body.setAttribute('data-app-density', settings.density)
   }, [firmAppearance])
 
+  const leaveGuardRef = React.useRef(null)
   const signOut = async () => {
+    if (leaveGuardRef.current && !await leaveGuardRef.current('Signing out closes the open engagement and its working screens.')) return
     setSigningOut(true)
     try {
       const result = await window.api.logoutEngagementUser()
@@ -1230,35 +1276,34 @@ export default function App() {
     </div>
   }
 
-  if (auth.serviceOnlyMode) {
-    return (
-      <div className="flex h-screen min-h-0 flex-col bg-gray-50">
-        <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-5 py-3">
-          <div>
-            <p className="flex items-center gap-2 text-sm font-bold text-gray-900">
-              {firmAppearance.logoBase64 && <img alt="" src={`data:${firmAppearance.logoMimeType};base64,${firmAppearance.logoBase64}`} className="h-7 max-w-28 object-contain" />}
-              {firmAppearance.displayName} · Firm service
-            </p>
-            <p className="text-xs text-gray-500">
-              Signed in as {auth.user.displayName} · {auth.user.firmName || 'Firm not identified'} · Protected engagement mode
-            </p>
-          </div>
-          <button disabled={signingOut} onClick={signOut} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out'}</button>
-        </header>
-        <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-5 py-2 text-xs text-blue-900">
-          Service-connected desktop: no local PostgreSQL connection is opened. Engagement imports, journals, final Trial Balances, mapping, notes and reporting use the trusted service; legacy standalone financial operations remain unavailable. UAE reporting is a synthetic demonstration only.
-        </div>
-        {auth.loginNotice && <div role="status" className="shrink-0 border-b border-amber-200 bg-amber-50 px-5 py-2 text-sm text-amber-900">{auth.loginNotice}</div>}
-        <main className="min-h-0 flex-1">
-          <EngagementHub key={auth.user.id} user={auth.user} serviceOnlyMode />
-        </main>
-      </div>
-    )
-  }
+  // One shell for every startup path. The legacy multi-menu workspace (ApplicationWorkspace) is intentionally not reachable from here.
+  const environmentStyle = { Live: 'bg-red-50 text-red-800 border-red-200', UAT: 'bg-emerald-50 text-emerald-800 border-emerald-200' }[environment.label] || 'bg-amber-50 text-amber-900 border-amber-300'
   return (
-    <>
-      {auth.loginNotice && <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-sm text-amber-900">{auth.loginNotice}</div>}
-      <ApplicationWorkspace key={auth.user.id} user={auth.user} onSignOut={signOut} signingOut={signingOut} appearance={firmAppearance} />
-    </>
+    <div className="flex h-screen min-h-0 flex-col bg-gray-50">
+      <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-5 py-3">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-bold text-gray-900">
+            {firmAppearance.logoBase64 && <img alt="" src={`data:${firmAppearance.logoMimeType};base64,${firmAppearance.logoBase64}`} className="h-7 max-w-28 object-contain" />}
+            {firmAppearance.displayName} · Firm service
+            <span data-testid="environment-badge" title={`${environment.basis}${environment.database ? ` · database ${environment.database}${environment.port ? ` on port ${environment.port}` : ''}` : ''}`}
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${environmentStyle}`}>Environment: {environment.label}</span>
+          </p>
+          <p className="text-xs text-gray-500">
+            Signed in as {auth.user.displayName} · {auth.user.firmName || 'Firm not identified'} · Protected engagement mode
+          </p>
+        </div>
+        <button disabled={signingOut} onClick={signOut} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out'}</button>
+      </header>
+      <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-5 py-2 text-xs text-blue-900">
+        {auth.serviceOnlyMode
+          ? 'Service-connected desktop: no local PostgreSQL connection is opened. Engagement imports, journals, final Trial Balances, mapping, notes and reporting use the trusted service; legacy standalone financial operations remain unavailable.'
+          : 'Engagement workspace on the local development service. Legacy standalone India tools are not offered here because they bypass engagement permissions; see the feature inventory in docs/CURRENT_STATUS.md.'}
+        {environment.label === 'Unverified' && ' This environment is not verified as Live or UAT; confirm the target before relying on results.'}
+      </div>
+      {auth.loginNotice && <div role="status" className="shrink-0 border-b border-amber-200 bg-amber-50 px-5 py-2 text-sm text-amber-900">{auth.loginNotice}</div>}
+      <main className="min-h-0 flex-1">
+        <EngagementHub key={auth.user.id} user={auth.user} serviceOnlyMode={auth.serviceOnlyMode} leaveGuardRef={leaveGuardRef} />
+      </main>
+    </div>
   )
 }

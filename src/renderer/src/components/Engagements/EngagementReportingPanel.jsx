@@ -3,12 +3,15 @@ import { buildEngagementFinancials } from '../../hooks/useFinancials'
 import { buildFinancialsHTML } from '../GenerateFinancials/buildHTML'
 import { formatPeriodDate, formatPeriodRange } from '../../utils/financialPeriodDisplay'
 import { makeAuditReportPage, prependAuditReport } from './engagementReportHtml'
+import UaePackMappingReview from './UaePackMappingReview'
+import UaePackStatementPreview from './UaePackStatementPreview'
 import {
   buildUaeDemoComparativeMappings,
   buildUaeDemoFinancials,
   buildUaeDemoFinancialsHtml,
   getUaeDemoAccountLine,
   getUaeDemoReportingBalance,
+  suggestUaeDemoAccountLine,
   UAE_DEMO_ACCOUNT_LINES,
 } from './uaeDemoReporting'
 
@@ -200,7 +203,10 @@ export default function EngagementReportingPanel({
   activeSection = 'reports',
   activeTab = 'audit',
   onUnsavedChange = () => {},
+  confirmUnsaved = async () => 'cancel',
+  controllerRef = null,
 }) {
+  const [discardTick, setDiscardTick] = useState(0)
   const [trialBalances, setTrialBalances] = useState([])
   const [sourceId, setSourceId] = useState('')
   const [snapshots, setSnapshots] = useState([])
@@ -328,7 +334,7 @@ export default function EngagementReportingPanel({
       if (!cancelled) setLoading(false)
     })
     return () => { cancelled = true }
-  }, [engagement.id, finalId, supported])
+  }, [engagement.id, finalId, supported, discardTick])
 
   const financialData = useMemo(() => {
     if (!bundle) return null
@@ -359,10 +365,9 @@ export default function EngagementReportingPanel({
     markDirty(`note:${title}`)
     setDisclosures(current => ({ ...current, [title]: value }))
   }
-  const selectFinalTrialBalance = id => {
+  const selectFinalTrialBalance = async id => {
     if (String(id) === String(finalId)) return
-    if (hasUnsavedChanges && !window.confirm('Switching the final Trial Balance will discard unsaved section edits. Continue?')) return
-    setDirtyAreas({})
+    if (!await resolveDraft('Switching the final Trial Balance reloads report wording, notes, mappings and selections from the saved version.', { overwriteOnly: true })) return
     setFinalId(id)
   }
   const run = async operation => {
@@ -406,7 +411,12 @@ export default function EngagementReportingPanel({
     return result
   })
 
-  const createFinalTrialBalance = () => run(async () => {
+  const createFinalTrialBalance = async () => {
+    if (!sourceId) { setError('Import or link a source Trial Balance first.'); return }
+    if (!await resolveDraft('Creating a final Trial Balance loads that version and replaces report wording, notes, mappings and selections on screen.', { overwriteOnly: true })) return
+    return createFinalTrialBalanceNow()
+  }
+  const createFinalTrialBalanceNow = () => run(async () => {
     if (!sourceId) throw new Error('Import or link a source Trial Balance first.')
     const result = await window.api.createEngagementFinalTrialBalance({
       engagementId: engagement.id,
@@ -565,6 +575,113 @@ export default function EngagementReportingPanel({
     if (target < 0 || target >= next.length) return current
     ;[next[index], next[target]] = [next[target], next[index]]
     return { ...current, signatoryIds: next }
+  })
+
+  const UNSAVEABLE_AREAS = ['journal', 'signatory']
+  const areaLabel = area => {
+    if (area === 'journal') return 'Unposted journal entry (posting is explicit; drafts are never auto-posted)'
+    if (area === 'report') return 'Audit report wording'
+    if (area === 'selections') return 'Report selections and approval details'
+    if (area === 'signatory') return 'New signatory form'
+    if (area === 'comparative') return 'Prior-year comparative selection'
+    if (area === 'mapping') return 'Mapping changes'
+    if (area.startsWith('note:')) return `Note disclosure: ${area.slice(5)}`
+    if (area.startsWith('structured:')) return `Structured note details: ${area.slice(11)}`
+    return area
+  }
+
+  const saveAll = async () => {
+    setBusy(true)
+    setError('')
+    setMessage('')
+    try {
+      const dirty = Object.entries(dirtyAreas).filter(([, isDirty]) => isDirty).map(([area]) => area)
+      if (dirty.some(area => UNSAVEABLE_AREAS.includes(area))) throw new Error('Journal and signatory drafts must be posted or added explicitly.')
+      if (dirty.includes('report')) await saveReportSettings()
+      if (dirty.includes('selections')) await saveSelections()
+      for (const area of dirty.filter(item => item.startsWith('note:'))) {
+        const title = area.slice(5)
+        const note = notes.find(item => item.title === title)
+        if (!note) continue
+        await window.api.saveEngagementNoteDisclosure({
+          engagementId: engagement.id, trialBalanceId: Number(finalId), noteNum: Number(note.num), noteTitle: title, text: disclosures[title] || '',
+        })
+        markSaved(area)
+      }
+      for (const area of dirty.filter(item => item.startsWith('structured:'))) {
+        const title = area.slice(11)
+        const note = notes.find(item => item.title === title)
+        if (!note) continue
+        await window.api.saveEngagementNoteDetails({
+          engagementId: engagement.id, trialBalanceId: Number(finalId), noteNum: Number(note.num), noteTitle: title,
+          data: structuredDetails[title] || EMPTY_SHARE_DETAILS(),
+        })
+        markSaved(area)
+      }
+      if (dirty.includes('mapping')) {
+        if (isUaeDemo) {
+          const allMappings = finalRows
+            .filter(item => Math.abs(Number(item.closing_balance || 0)) >= 0.005)
+            .map(item => ({ tbRowId: Number(item.id), lineKey: String(mappingSelections[item.id] || suggestUaeDemoAccountLine(item.name) || '') }))
+          if (allMappings.some(item => !item.lineKey)) throw new Error('Choose a UAE statement line for every non-zero account before saving mappings.')
+          await window.api.saveEngagementUaeDemoMappings({ engagementId: engagement.id, trialBalanceId: Number(finalId), mappings: allMappings })
+        } else {
+          for (const row of finalRows) {
+            const levelFormatId = Number(mappingSelections[row.id])
+            if (Number.isInteger(levelFormatId) && levelFormatId !== Number(row.lf_id)) {
+              await window.api.correctEngagementMapping({
+                engagementId: engagement.id, trialBalanceId: Number(finalId), trialBalanceRowId: Number(row.id), levelFormatId,
+              })
+            }
+          }
+        }
+        markSaved('mapping')
+      }
+      if (dirty.includes('comparative')) {
+        await window.api.selectEngagementComparativeTrialBalance({
+          engagementId: engagement.id, trialBalanceId: comparativeId ? Number(comparativeId) : null,
+        })
+        markSaved('comparative')
+      }
+      setMessage('Edits saved.')
+      return true
+    } catch (saveError) {
+      setError(saveError.message || 'Unable to save edits.')
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const discardDraft = overwriteOnly => {
+    setDirtyAreas(current => overwriteOnly
+      ? Object.fromEntries(Object.entries(current).filter(([area]) => UNSAVEABLE_AREAS.includes(area)))
+      : {})
+    if (!overwriteOnly) {
+      setJournal({ date: '', narration: '' })
+      setEntries([EMPTY_ENTRY(), EMPTY_ENTRY()])
+      setSignatory({ name: '', designation: '', din: '' })
+    }
+    setDiscardTick(value => value + 1)
+  }
+
+  // Returns true when the caller may proceed; false keeps the draft and the current screen.
+  const resolveDraft = async (reason, { overwriteOnly = false } = {}) => {
+    const relevant = Object.entries(dirtyAreas)
+      .filter(([area, isDirty]) => isDirty && (!overwriteOnly || !UNSAVEABLE_AREAS.includes(area)))
+      .map(([area]) => area)
+    if (!relevant.length) return true
+    const canSave = relevant.every(area => !UNSAVEABLE_AREAS.includes(area))
+    const decision = await confirmUnsaved({ reason, areas: relevant.map(areaLabel), canSave })
+    if (decision === 'save' && canSave) return saveAll()
+    if (decision === 'discard') { discardDraft(overwriteOnly); return true }
+    return false
+  }
+
+  useEffect(() => {
+    if (!controllerRef) return undefined
+    controllerRef.current = { resolve: resolveDraft }
+    return () => { controllerRef.current = null }
   })
 
   const generateReport = () => run(async () => {
@@ -851,10 +968,12 @@ export default function EngagementReportingPanel({
   const isJournalView = activeSection === 'journals'
   const isFinalTbView = activeSection === 'trial-balance' && activeTab === 'final'
   const isMappingView = activeSection === 'mapping'
-  const isReportView = activeSection === 'reports'
+  const isReportView = activeSection === 'audit-report' || (activeSection === 'review' && activeTab === 'exports')
   const isStatementView = activeSection === 'statements'
+  const isIndiaNotesView = isStatementView && !isUaeDemo
   const isReviewCheckView = activeSection === 'review' && activeTab === 'checks'
-  const panelVisible = isJournalView || isFinalTbView || isMappingView || isReportView || isStatementView || isReviewCheckView
+  const isVersionsView = activeSection === 'review' && ['versions', 'finalisation'].includes(activeTab)
+  const panelVisible = isJournalView || isFinalTbView || isMappingView || isReportView || isStatementView || isReviewCheckView || isVersionsView
   const savedUaeMappingIds = new Set((bundle?.uaeMappings || []).map(item => String(item.trialBalanceRowId)))
   const isPersistedMapped = row => isUaeDemo
     ? savedUaeMappingIds.has(String(row.id))
@@ -879,6 +998,11 @@ export default function EngagementReportingPanel({
     ['Cash movement agrees to closing cash', financialData.current.cashFlow.openingCash
       + financialData.current.cashFlow.netMovement - financialData.current.cashFlow.closingCash],
   ] : []
+  const periodStart = engagement.period_start || engagement.periodStart
+  const periodEnd = engagement.period_end || engagement.periodEnd
+  const selectedPeriodText = periodStart && periodEnd
+    ? formatPeriodRange(periodStart, periodEnd)
+    : periodEnd ? formatPeriodDate(periodEnd) : 'selected reporting period'
 
   return (
     <section className={`mt-5 rounded-xl border border-indigo-200 bg-white p-4 sm:p-5 ${panelVisible ? '' : 'hidden'}`}>
@@ -886,7 +1010,7 @@ export default function EngagementReportingPanel({
         <div>
           <h3 className="text-lg font-semibold text-gray-900">{isUaeDemo ? 'UAE reporting demonstration' : 'India reporting pack'}</h3>
           <p className="mt-1 max-w-3xl text-sm text-gray-600">{isUaeDemo
-            ? 'Synthetic UAE LLC · AED source balances · 2025 with 2024 comparatives. This limited demonstration is not a validated IFRS reporting pack.'
+            ? `Synthetic UAE LLC · AED source balances · ${selectedPeriodText}. This limited demonstration is not a validated IFRS reporting pack.`
             : 'Import → post journals → create an immutable final Trial Balance → map → generate one audit report, financial statements and notes PDF.'}</p>
           <p className="mt-1 max-w-3xl text-xs text-gray-500">Generation saves a draft PDF. The assigned partner or authorised substitute must explicitly finalise it. Finalised engagements are never reopened automatically.</p>
         </div>
@@ -894,6 +1018,11 @@ export default function EngagementReportingPanel({
           {isUaeDemo ? 'Draft for demonstration · AED' : supported ? 'India legacy · INR' : 'Processing unavailable'}
         </span>
       </div>
+      <dl aria-label="Selected Trial Balance sources" className="mt-3 flex flex-wrap gap-x-6 gap-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+        <div className="flex gap-1"><dt className="font-semibold">Source TB:</dt><dd>{selectedSource ? `${selectedSource.filename || `TB #${selectedSource.id}`} · ${selectedSource.period || engagement.period_label || 'period not set'} · ${selectedSource.row_count ?? '—'} rows` : 'None imported'}</dd></div>
+        <div className="flex gap-1"><dt className="font-semibold">Final TB:</dt><dd>{selectedFinal ? `Version ${selectedFinal.version}` : 'Not created'}</dd></div>
+        <div className="flex gap-1"><dt className="font-semibold">Comparative:</dt><dd>{bundle?.comparativeTrialBalance ? `${bundle.comparativeTrialBalance.dateTill || 'selected'}` : 'Not selected'}</dd></div>
+      </dl>
       {!supported && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">This reporting workflow is not implemented for the selected basis and currencies.</p>}
       {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {message && <p role="status" className="mt-4 rounded-lg bg-green-50 p-3 text-sm text-green-800">{message}</p>}
@@ -905,8 +1034,12 @@ export default function EngagementReportingPanel({
           <h3 className="text-base font-semibold text-gray-900">{statementTitle}</h3>
           <p className="mt-1 text-sm text-gray-600">Statements and note balances use the existing UAE reporting calculation; this navigation change does not alter accounting logic.</p>
         </div>
-        <UaeStatementPreview financialData={isUaeDemo ? financialData : null} activeTab={activeTab} disclosures={disclosures}
-          editable={editable} busy={busy} onDisclosureChange={changeDisclosure} onSaveDisclosure={saveDisclosure} />
+        {isIndiaNotesView
+          ? <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-700">India Schedule III statements, schedules and annexures are produced in the combined PDF (Review and Export). An in-app statement preview is not available for this pack. Note narrative disclosures are edited below.</p>
+          : isUaeDemo && finalId && ['position', 'profit'].includes(activeTab)
+            ? <UaePackStatementPreview engagement={engagement} trialBalanceId={finalId} view={activeTab} />
+            : <UaeStatementPreview financialData={isUaeDemo ? financialData : null} activeTab={activeTab} disclosures={disclosures}
+            editable={editable} busy={busy} onDisclosureChange={changeDisclosure} onSaveDisclosure={saveDisclosure} />}
       </div>}
       {isReviewCheckView && <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
         <h4 className="font-semibold text-gray-900">Reporting checks</h4>
@@ -992,6 +1125,7 @@ export default function EngagementReportingPanel({
           </details>}
         </div>
 
+        {isMappingView && isUaeDemo && finalId && <UaePackMappingReview engagementId={engagement.id} trialBalanceId={finalId} />}
         <div className={`rounded-lg border border-gray-200 p-4 ${isFinalTbView || isMappingView ? '' : 'hidden'}`}>
           <h4 className="font-semibold text-gray-900">{isMappingView ? 'Engagement statement mappings' : 'Final Trial Balance snapshot'}</h4>
           <p className="mt-1 text-xs text-gray-500">{isUaeDemo
@@ -1054,11 +1188,12 @@ export default function EngagementReportingPanel({
       </div>
 
       <div className={`mt-4 grid gap-3 ${isReportView && activeTab === 'exports' ? 'lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-start' : ''}`}>
-      <div className={`rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 ${isReportView ? '' : 'hidden'}`}>
+      <div className={`rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 ${isReportView || isIndiaNotesView ? '' : 'hidden'}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h4 className="font-semibold text-gray-900">3. Audit report, financial statements &amp; notes</h4>
+            <h4 className="font-semibold text-gray-900">Audit report, financial statements &amp; notes</h4>
             <p className="mt-1 text-xs text-gray-600">The audit opinion is blank until entered by the auditor. The audit report date/place and financial-statement approval date/place are separate fields.</p>
+            {activeTab === 'exports' && <p className="mt-1 text-xs text-amber-800">Edit report wording under Audit Report and note disclosures under Notes › Notes to Accounts. There is no live rendered preview yet: generating saves a PDF that you open from Saved Versions and Exports.</p>}
           </div>
           {selectedFinal && <span className="text-xs text-gray-500">Reporting period {formatPeriodRange(bundle?.engagement.periodStart, bundle?.engagement.periodEnd)}</span>}
         </div>
@@ -1190,7 +1325,7 @@ export default function EngagementReportingPanel({
             </div>}
           </div>
 
-          {notes.length > 0 && <details className={`mt-4 rounded-md border border-gray-200 bg-white p-3 ${activeTab === 'audit' ? '' : 'hidden'}`}>
+          {notes.length > 0 && <details open={isIndiaNotesView} className={`mt-4 rounded-md border border-gray-200 bg-white p-3 ${activeTab === 'audit' || activeTab === 'notes' ? '' : 'hidden'}`}>
             <summary className="cursor-pointer text-sm font-semibold text-gray-800">Notes to accounts — add separate narrative disclosures ({notes.length})</summary>
             <div className="mt-3 space-y-3">
               {notes.map(note => <div key={note.title} className="border-t pt-3">
@@ -1242,6 +1377,10 @@ export default function EngagementReportingPanel({
         </>}
       </div>
 
+      {!outputs.length && activeSection === 'review' && activeTab === 'versions' && <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-700">
+        <h4 className="font-semibold text-gray-900">Saved versions and exports</h4>
+        <p className="mt-1 text-xs text-gray-600">No combined PDF has been saved for this engagement yet. Generate one from Presentation › Preview and Text Editing; its PDF, Excel and Word downloads then appear here.</p>
+      </div>}
       {!!outputs.length && <div className={`rounded-lg border border-gray-200 bg-white p-4 ${isReportView && activeTab === 'exports' || activeSection === 'review' && ['versions', 'finalisation'].includes(activeTab) ? '' : 'hidden'}`}>
         <h4 className="font-semibold text-gray-900">Saved output versions · PDF, Excel and Word source revision</h4>
         <p className="mt-1 text-xs text-gray-600">Exports use the saved PDF revision and its final Trial Balance snapshot. External workbook/document edits stay in those files and do not write back to the engagement.</p>

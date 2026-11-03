@@ -371,6 +371,41 @@ export async function ensureEngagementSchema(query) {
       PRIMARY KEY (engagement_id,trial_balance_id,tb_row_id)
     )
   `)
+  await query(`
+    CREATE TABLE IF NOT EXISTS engagement_reference_classifications (
+      id SERIAL PRIMARY KEY,
+      engagement_id BIGINT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+      source_label TEXT NOT NULL,
+      source_year INTEGER NOT NULL,
+      source_sheet TEXT NOT NULL,
+      account_code TEXT NOT NULL,
+      description TEXT,
+      client_mapping TEXT,
+      main_classification TEXT,
+      sub_classification TEXT,
+      sub_classification_2 TEXT,
+      imported_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
+      imported_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `)
+  await query(`
+    CREATE INDEX IF NOT EXISTS engagement_reference_classifications_lookup
+    ON engagement_reference_classifications (engagement_id, source_label)
+  `)
+  await query(`
+    CREATE TABLE IF NOT EXISTS engagement_pack_mapping_reviews (
+      engagement_id BIGINT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+      trial_balance_id INTEGER NOT NULL REFERENCES trial_balances(id) ON DELETE CASCADE,
+      tb_row_id INTEGER NOT NULL REFERENCES tb_rows(id) ON DELETE CASCADE,
+      pack_id TEXT NOT NULL,
+      pack_version TEXT NOT NULL,
+      line_key TEXT NOT NULL,
+      basis TEXT NOT NULL CHECK (basis IN ('manual','accepted_suggestion')),
+      updated_by INTEGER NOT NULL REFERENCES firm_users(id) ON DELETE RESTRICT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (engagement_id,trial_balance_id,tb_row_id,pack_id,pack_version)
+    )
+  `)
   const { rows: mappingConstraints } = await query(`
     SELECT pg_get_constraintdef(oid) AS definition
     FROM pg_constraint

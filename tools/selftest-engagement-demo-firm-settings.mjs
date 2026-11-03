@@ -421,7 +421,7 @@ try {
   } else {
     fs.writeFileSync(logoPath, makeSyntheticLogo())
     await signIn(credentials.testUsers.administrator)
-    await clickButton('Firm Settings')
+    await clickButton('Settings')
     await waitFor(`text.includes('Maintain the existing auditor firm')`, 'Firm Settings')
 
     if (!await setSelectByOptionText('Existing firm', professionalFirmName, 'Professional firm')
@@ -630,7 +630,7 @@ try {
 
     await signOut()
     await signIn(credentials.testUsers.administrator)
-    await clickButton('Firm Settings')
+    await clickButton('Settings')
     await waitFor(`text.includes('Maintain the existing auditor firm')`, 'master edit screen')
     await setControl('Firm name', changedMasterName, 'Professional firm')
     await setControl('Firm Registration Number (FRN)', 'FRN-DEMO-SYNTHETIC-02', 'Professional firm')

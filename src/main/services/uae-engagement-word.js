@@ -30,6 +30,27 @@ function safeText(value, maxLength = 4000) {
   return String(value ?? '').slice(0, maxLength)
 }
 
+function dateLabel(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''))
+  if (!match) return safeText(value)
+  const [, year, month, day] = match
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+  if (date.toISOString().slice(0, 10) !== `${year}-${month}-${day}`) return safeText(value)
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date)
+}
+
+function periodLabel(dateFrom, dateTill) {
+  const start = dateLabel(dateFrom)
+  const end = dateLabel(dateTill)
+  if (!end) throw new Error('Current and comparative reporting period end dates are required for Word export.')
+  return start ? `${start} to ${end}` : end
+}
+
 function amount(value) {
   const number = Number(value)
   if (!Number.isFinite(number)) throw new Error('Word report source contains a non-numeric statement balance.')
@@ -277,9 +298,12 @@ export async function buildUaeEngagementWordDocument(source = {}) {
   const reportStyle = validateReportStyle(output.report_style_snapshot?.settings || DEFAULT_REPORT_STYLE)
   const logo = imageBuffer(branding)
   const periodEnd = safeText(engagement.periodEnd || financials.periods?.current)
-  const currentYear = String(financials.periods?.current || periodEnd).slice(0, 4)
-  const comparativeYear = String(financials.periods?.comparative || source.comparativeTrialBalance?.dateTill || '').slice(0, 4)
+  const comparativeEnd = safeText(source.comparativeTrialBalance?.dateTill || financials.periods?.comparative)
+  const currentYear = /^(\d{4})/.exec(periodEnd)?.[1] || ''
+  const comparativeYear = /^(\d{4})/.exec(comparativeEnd)?.[1] || ''
   if (!currentYear || !comparativeYear) throw new Error('Current and comparative reporting periods are required for Word export.')
+  const currentPeriodLabel = periodLabel(engagement.periodStart, periodEnd)
+  const comparativePeriodLabel = periodLabel(source.comparativeTrialBalance?.dateFrom, comparativeEnd)
 
   const content = []
   content.push(new Paragraph({ heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER, children: [new TextRun('Financial Reporting Pack')] }))
@@ -305,9 +329,9 @@ export async function buildUaeEngagementWordDocument(source = {}) {
     paragraph(engagement.clientName || engagement.name, { alignment: AlignmentType.CENTER, spacing: { after: 100 } }),
     paragraph(safeText(branding.name || identity.responsibleFirm?.name || fields.firmName), { alignment: AlignmentType.CENTER }),
     paragraph('DRAFT FOR DEMONSTRATION', { alignment: AlignmentType.CENTER, spacing: { before: 600, after: 250 } }),
-    paragraph(`Year ended 31 December ${currentYear}`, { alignment: AlignmentType.CENTER }),
+    paragraph(`Reporting period: ${currentPeriodLabel}`, { alignment: AlignmentType.CENTER }),
     paragraph('United Arab Emirates | AED functional, source and presentation currency', { alignment: AlignmentType.CENTER }),
-    paragraph(`Comparative year ended 31 December ${comparativeYear}`, { alignment: AlignmentType.CENTER }),
+    paragraph(`Comparative period: ${comparativePeriodLabel}`, { alignment: AlignmentType.CENTER }),
     paragraph(`Saved PDF version ${output.version} | Final Trial Balance version ${output.final_tb_version}`, {
       alignment: AlignmentType.CENTER, spacing: { before: 300 },
     }),
@@ -351,9 +375,10 @@ export async function buildUaeEngagementWordDocument(source = {}) {
     content.push(new Paragraph({ children: [new PageBreak()] }))
     content.push(heading(statement.title))
     content.push(paragraph(`${safeText(engagement.clientName || engagement.name)} - ${statement.title === 'Statement of financial position'
-      ? `As at 31 December ${currentYear}`
-      : `Year ended 31 December ${currentYear}`}`, {
+      ? `As at ${dateLabel(periodEnd)}`
+      : `For the period ${currentPeriodLabel}`}`, {
       spacing: { after: 160 },
+      keepNext: true,
     }))
     content.push(reportTable(statement.rows, currentLabel, comparativeLabel, reportStyle))
   }
@@ -363,7 +388,7 @@ export async function buildUaeEngagementWordDocument(source = {}) {
   for (const note of [...financials.notes].sort((a, b) => Number(a.number) - Number(b.number))) {
     content.push(heading(`Note ${note.number} - ${note.title}`, HeadingLevel.HEADING_2))
     content.push(paragraph(narratives.get(Number(note.number))
-      || 'Supporting account balances derived from the saved final Trial Balance.'))
+      || 'Supporting account balances derived from the saved final Trial Balance.', { keepNext: true }))
     const rows = noteAccounts(note).map(account => ({
       label: account.displayName || account.name,
       current: account.current,

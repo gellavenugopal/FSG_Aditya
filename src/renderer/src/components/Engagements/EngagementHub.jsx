@@ -11,15 +11,50 @@ const SCOPE_OPTIONS = [
 ]
 const LEGAL_FORMS = ['Company', 'LLC', 'LLP', 'Partnership', 'Proprietorship', 'Individual', 'Other']
 const COMMON_CURRENCIES = ['INR', 'AED', 'USD', 'EUR', 'GBP', 'SAR', 'AUD', 'CAD', 'CHF', 'CNY', 'JPY', 'NZD', 'SGD', 'ZAR']
+// Every sidebar item is [id, label, internalSection, internalTab, unavailableNote?]. The internal pair selects the existing working
+// component; items with a note have no safely connected implementation yet and explain that instead of implying completion.
 const ENGAGEMENT_SECTIONS = [
-  { id: 'overview', label: 'Overview', tabs: [['summary', 'Summary'], ['team', 'Team & access'], ['activity', 'Activity']] },
-  { id: 'trial-balance', label: 'Trial Balance', tabs: [['imports', 'Imports'], ['current', 'Current year'], ['prior', 'Prior year'], ['final', 'Final TB']] },
-  { id: 'journals', label: 'Journals', tabs: [['posted', 'Posted journals'], ['new', 'New journal'], ['history', 'History']] },
-  { id: 'mapping', label: 'Mapping', tabs: [['unmapped', 'Unmapped'], ['mapped', 'Mapped'], ['rules', 'Rules']] },
-  { id: 'statements', label: 'Statements and Notes', tabs: [['position', 'Financial position'], ['profit', 'Profit or loss / OCI'], ['equity', 'Changes in equity'], ['cash-flow', 'Cash flows'], ['notes', 'Notes']] },
-  { id: 'reports', label: 'Reports and Exports', tabs: [['audit', 'Audit report'], ['branding', 'Branding & signatures'], ['exports', 'Preview & exports']] },
-  { id: 'review', label: 'Review', tabs: [['checks', 'Checks'], ['finalisation', 'Finalisation'], ['versions', 'Saved versions']] },
+  { id: 'trial-balance', label: 'Trial Balance', tabs: [
+    ['import', 'Import', 'trial-balance', 'imports'],
+    ['journals', 'Journals', 'journals', 'new'],
+    ['adjusted', 'Adjusted TB', 'trial-balance', 'final'],
+    ['grouping', 'Grouping', 'mapping', 'unmapped'],
+  ] },
+  { id: 'financials', label: 'Financials', tabs: [
+    ['position', 'Balance Sheet', 'statements', 'position'],
+    ['profit', 'Profit and Loss', 'statements', 'profit'],
+    ['equity', 'Changes in Equity', 'statements', 'equity'],
+    ['cash-flow', 'Cash Flow', 'statements', 'cash-flow'],
+  ] },
+  { id: 'notes', label: 'Notes', tabs: [
+    ['notes', 'Notes to Accounts', 'statements', 'notes'],
+    ['schedules', 'Supporting Schedules', 'unavailable', 'schedules', 'Supporting schedules are not connected to this engagement workflow yet. The legacy India schedules and annexures still run only in the unprotected legacy application, and are not offered here because they bypass engagement permissions.'],
+    ['annexures', 'Annexures', 'unavailable', 'annexures', 'Annexures are not connected to this engagement workflow yet (legacy India Annex & Reco is not permission-enforced). Nothing has been generated.'],
+  ] },
+  { id: 'policies', label: 'Accounting Policies', tabs: [
+    ['selected', 'Selected Policies', 'unavailable', 'selected', 'Selecting accounting policies per engagement is not implemented. Policy wording currently lives inside each reporting pack and its notes.'],
+    ['library', 'Policy Library', 'unavailable', 'library', 'A reusable firm policy library is not implemented. It belongs under Settings once built; engagements would then own their selected values.'],
+  ] },
+  { id: 'presentation', label: 'Presentation', tabs: [
+    ['preview', 'Preview and Text Editing', 'review', 'exports'],
+    ['audit', 'Audit Report', 'audit-report', 'audit'],
+    ['checks', 'Checks', 'review', 'checks'],
+    ['versions', 'Saved Versions and Exports', 'review', 'versions'],
+  ] },
 ]
+// Engagement setup, access, history, signatures and finalisation are engagement-level, reached from the header, not the sidebar.
+const ENGAGEMENT_DETAIL_TABS = [
+  ['summary', 'Summary', 'overview', 'summary'],
+  ['team', 'Team & access', 'overview', 'team'],
+  ['activity', 'Activity', 'overview', 'activity'],
+  ['branding', 'Branding & signatures', 'audit-report', 'branding'],
+  ['finalisation', 'Finalise engagement', 'review', 'finalisation'],
+]
+const DETAILS_SECTION = { id: 'details', label: 'Engagement details', tabs: ENGAGEMENT_DETAIL_TABS }
+const INDIA_STATEMENT_NOTE = 'India statements are produced in the combined reporting pack. Individual statement previews are not available in the protected India workflow yet; nothing is implied as generated here.'
+const sectionsForEngagement = engagement => ENGAGEMENT_SECTIONS.map(section => section.id === 'financials' && engagement
+  && engagement.reporting_pack_id !== 'AE_UAE_DEMO' && !String(engagement.reporting_pack_id || '').startsWith('AE_UAE')
+  ? { ...section, tabs: section.tabs.map(([id, label]) => [id, label, 'unavailable', id, INDIA_STATEMENT_NOTE]) } : section)
 
 function Field({ label, children, hint }) {
   return (
@@ -182,7 +217,7 @@ export function PasswordChange({ user, onChanged }) {
   )
 }
 
-function EngagementList({ user, onCreate, onOpen }) {
+function EngagementList({ user, onCreate, onOpen, serviceOnlyMode = false }) {
   const canSeeAll = ['administrator', 'partner'].includes(user.role)
   const [scope, setScope] = useState(canSeeAll ? 'all' : 'my')
   const [rows, setRows] = useState([])
@@ -190,6 +225,7 @@ function EngagementList({ user, onCreate, onOpen }) {
   const [status, setStatus] = useState('all')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [pickedId, setPickedId] = useState(null)
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -220,9 +256,9 @@ function EngagementList({ user, onCreate, onOpen }) {
         </div>
         <PrimaryButton onClick={onCreate}>+ Create engagement</PrimaryButton>
       </div>
-      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900">
+      {!serviceOnlyMode && <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900">
         Foundation only — desktop clients still connect directly to PostgreSQL, and legacy financial IPC operations do not enforce these engagement permissions. This is not secure firm-wide isolation; a firm-hosted API and migration of legacy operations are required before multi-user production use.
-      </div>
+      </div>}
 
       <div className="mt-6 flex flex-wrap items-center gap-2 border-b border-gray-200">
         <button onClick={() => setScope('my')} className={`border-b-2 px-3 py-2 text-sm font-medium ${scope === 'my' ? 'border-blue-700 text-blue-800' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>My Engagements</button>
@@ -247,7 +283,8 @@ function EngagementList({ user, onCreate, onOpen }) {
           <button type="button" onClick={load} className="font-semibold underline">Retry</button>
         </div>
       )}
-      <div className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
         {loading ? <p className="p-8 text-center text-sm text-gray-500">Loading engagements…</p>
           : visible.length === 0 ? (
             <div className="p-10 text-center">
@@ -280,13 +317,14 @@ function EngagementList({ user, onCreate, onOpen }) {
           )
             : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] text-left text-sm">
+                <table className="w-full min-w-[720px] text-left text-sm">
                   <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                     <tr>{['Client / engagement', 'Reference', 'Reporting period', 'Basis', 'Owner', 'Partner', 'Status', 'Your access'].map(label => <th key={label} className="px-4 py-3 font-semibold">{label}</th>)}</tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {visible.map(row => (
-                      <tr key={row.id} className="cursor-pointer hover:bg-blue-50/40" onClick={() => onOpen(row.id)}>
+                      <tr key={row.id} aria-selected={pickedId === row.id} tabIndex={0} className={`cursor-pointer hover:bg-blue-50/40 ${pickedId === row.id ? 'bg-blue-50' : ''}`}
+                        onClick={() => setPickedId(row.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setPickedId(row.id) } }}>
                         <td className="px-4 py-3"><span className="block font-semibold text-gray-900">{row.client_name}</span><span className="text-xs text-gray-500">{row.name}</span></td>
                         <td className="px-4 py-3 font-mono text-xs text-gray-600">{row.reference}</td>
                         <td className="px-4 py-3 text-gray-700">{row.period_start && row.period_end ? formatPeriodRange(row.period_start, row.period_end) : 'Not set'}</td>
@@ -302,7 +340,28 @@ function EngagementList({ user, onCreate, onOpen }) {
               </div>
             )}
       </div>
-
+      <aside aria-label="Selected engagement" className="h-fit rounded-xl border border-gray-200 bg-white p-4 text-sm">
+        {(() => {
+          const picked = rows.find(row => row.id === pickedId)
+          if (!picked) return <p className="text-gray-500">Select an engagement to see its details, then press Go.</p>
+          return <>
+            <p className="font-mono text-xs text-gray-500">{picked.reference}</p>
+            <p className="mt-1 text-base font-semibold text-gray-900">{picked.client_name}</p>
+            <p className="text-xs text-gray-500">{picked.name}</p>
+            <dl className="mt-3 space-y-1.5 text-xs text-gray-700">
+              <div><dt className="inline font-semibold">Period: </dt><dd className="inline">{picked.period_start && picked.period_end ? formatPeriodRange(picked.period_start, picked.period_end) : 'Not set'}</dd></div>
+              <div><dt className="inline font-semibold">Framework: </dt><dd className="inline">{picked.accounting_framework || 'Not selected'}</dd></div>
+              <div><dt className="inline font-semibold">Currency: </dt><dd className="inline">{picked.trial_balance_currency || '—'} → {picked.presentation_currency || '—'}</dd></div>
+              <div><dt className="inline font-semibold">Partner: </dt><dd className="inline">{picked.partner_name || 'Unassigned'}</dd></div>
+              <div><dt className="inline font-semibold">Owner: </dt><dd className="inline">{picked.owner_name}</dd></div>
+              <div><dt className="inline font-semibold">Status: </dt><dd className="inline">{picked.status}</dd></div>
+              <div><dt className="inline font-semibold">Your access: </dt><dd className="inline">{picked.current_access}</dd></div>
+            </dl>
+            <button type="button" onClick={() => onOpen(picked.id)} className="mt-4 w-full rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white">Go</button>
+          </>
+        })()}
+      </aside>
+      </div>
     </div>
   )
 }
@@ -375,6 +434,15 @@ export function FirmTeam({ user }) {
         <h2 className="mt-1 text-2xl font-bold text-gray-900">People in your firm</h2>
         <p className="mt-1 text-sm text-gray-500">Add a colleague once, then assign them to the engagements they work on.</p>
       </div>
+
+      <section aria-label="Employees, user accounts and roles" className="mt-5 grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-gray-200 bg-white p-4"><h3 className="text-sm font-semibold text-gray-900">Employees</h3>
+          <p className="mt-1 text-xs leading-relaxed text-gray-600">The firm directory: name, work email and position (Employee, Article assistant, Auditor, Partner). Positions describe the person; they grant no access.</p></div>
+        <div className="rounded-xl border border-gray-200 bg-white p-4"><h3 className="text-sm font-semibold text-gray-900">User accounts</h3>
+          <p className="mt-1 text-xs leading-relaxed text-gray-600">Each added member receives one sign-in account with a temporary password. Supported: add and issue a single-use password reset. Not supported yet: deactivate, delete or rename an account, and email invitations.</p></div>
+        <div className="rounded-xl border border-gray-200 bg-white p-4"><h3 className="text-sm font-semibold text-gray-900">Roles and access</h3>
+          <p className="mt-1 text-xs leading-relaxed text-gray-600">The service decides permissions: Administrator manages the firm; engagement access (view, edit) is granted per engagement; only the assigned partner or substitute finalises. Editing a member's role is not supported yet.</p></div>
+      </section>
 
       <form onSubmit={addUser} className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
         <h3 className="text-sm font-semibold text-gray-900">Add a team member</h3>
@@ -456,7 +524,7 @@ function formFromEngagement(data, currentUserId) {
   }
 }
 
-function CreateEngagement({ user, onCancel, onCreated, onOpen, initialEngagement, onUpdated }) {
+function CreateEngagement({ user, onCancel, onCreated, onOpen, initialEngagement, onUpdated, confirmUnsaved, onDirtyChange }) {
   const isEditing = !!initialEngagement
   const linkedPeriodIsFixed = !!initialEngagement?.engagement?.entity_period_id
   const [step, setStep] = useState(0)
@@ -471,6 +539,20 @@ function CreateEngagement({ user, onCancel, onCreated, onOpen, initialEngagement
     status: 'draft', separateReason: '', compatibilityConfirmed: false, legacyConfirmationNote: '',
   }))
   const [newClient, setNewClient] = useState({ name: '', jurisdiction: '', legalForm: '' })
+  const initialFormJson = React.useRef(JSON.stringify(form))
+  const formDirty = JSON.stringify(form) !== initialFormJson.current
+  useEffect(() => { onDirtyChange?.(formDirty) }, [formDirty, onDirtyChange])
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
+  const cancelForm = async () => {
+    if (formDirty) {
+      const decision = await confirmUnsaved({
+        reason: 'Leaving engagement setup will lose the entries below unless you save them as a draft on the final step.',
+        areas: ['Engagement setup form'], canSave: false,
+      })
+      if (decision !== 'discard') return
+    }
+    onCancel()
+  }
   const [showNewClientForm, setShowNewClientForm] = useState(false)
   const [creatingClient, setCreatingClient] = useState(false)
   const [duplicates, setDuplicates] = useState(null)
@@ -725,7 +807,7 @@ function CreateEngagement({ user, onCancel, onCreated, onOpen, initialEngagement
         )}
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <button onClick={() => step === 0 ? onCancel() : setStep(step - 1)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{step === 0 ? 'Cancel' : 'Back'}</button>
+        <button onClick={() => step === 0 ? cancelForm() : setStep(step - 1)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{step === 0 ? 'Cancel' : 'Back'}</button>
         <div className="flex gap-2">
           {step === 3 && <button disabled={saving} onClick={() => submit('draft')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40">{saving ? 'Saving…' : isEditing ? 'Save changes' : 'Save Draft'}</button>}
           {step < 3 ? <PrimaryButton onClick={async () => { if (step === 2) await checkMatches(); setStep(step + 1) }}>Continue</PrimaryButton>
@@ -740,7 +822,7 @@ function Summary({ label, value }) {
   return <div><p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</p><p className="mt-1 text-sm font-medium text-gray-900">{value}</p></div>
 }
 
-function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false }) {
+function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false, confirmUnsaved, controllerRef, onDirtyChange }) {
   const [data, setData] = useState(null)
   const [trialBalanceRefresh, setTrialBalanceRefresh] = useState(0)
   const [options, setOptions] = useState({ users: [] })
@@ -751,8 +833,8 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
   const [legacyNote, setLegacyNote] = useState('')
   const [legacyTbNote, setLegacyTbNote] = useState('')
   const [selectedLegacyTbIds, setSelectedLegacyTbIds] = useState([])
-  const [activeSection, setActiveSection] = useState('overview')
-  const [activeTab, setActiveTab] = useState('summary')
+  const [navSection, setNavSection] = useState('trial-balance')
+  const [navTab, setNavTab] = useState('import')
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   const load = useCallback(async () => {
@@ -780,25 +862,36 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
     ? [...new Set([...current, Number(tbId)])]
     : current.filter(idValue => idValue !== Number(tbId)))
   const periodLabel = engagement?.period_start && engagement?.period_end ? formatPeriodRange(engagement.period_start, engagement.period_end) : 'Not set'
-  const activeSectionDefinition = ENGAGEMENT_SECTIONS.find(item => item.id === activeSection) || ENGAGEMENT_SECTIONS[0]
+  const sections = useMemo(() => sectionsForEngagement(engagement), [engagement])
+  const allSections = [...sections, DETAILS_SECTION]
+  const activeSectionDefinition = allSections.find(item => item.id === navSection) || sections[0]
+  const activeTabDefinition = activeSectionDefinition.tabs.find(tab => tab[0] === navTab) || activeSectionDefinition.tabs[0]
+  // Internal ids drive the existing working components; navSection/navTab are what the customer sees.
+  const activeSection = activeTabDefinition[2]
+  const activeTab = activeTabDefinition[3]
+  const unavailableNote = activeTabDefinition[4]
   const selectSection = sectionId => {
-    const section = ENGAGEMENT_SECTIONS.find(item => item.id === sectionId)
+    const section = allSections.find(item => item.id === sectionId)
     if (!section) return
-    setActiveSection(section.id)
-    setActiveTab(section.tabs[0][0])
+    setNavSection(section.id)
+    setNavTab(section.tabs[0][0])
   }
-  const selectTab = tabId => setActiveTab(tabId)
-  const leaveEngagement = () => {
-    if (hasUnsavedChanges && !window.confirm('There are unsaved section edits. Leave this engagement and discard them?')) return
-    onBack()
+  const selectTab = tabId => setNavTab(tabId)
+  const guardedLeave = async (reason, proceed) => {
+    const controller = controllerRef?.current
+    if (controller && !await controller.resolve(reason)) return
+    proceed()
   }
-  const onReportingDirtyChange = useCallback(value => setHasUnsavedChanges(value), [])
+  const leaveEngagement = () => guardedLeave('Leaving this engagement closes its working screens.', onBack)
+  const editEngagement = () => guardedLeave('Opening engagement setup closes the current working screens.', () => onEdit(data))
+  const onReportingDirtyChange = useCallback(value => { setHasUnsavedChanges(value); onDirtyChange?.(value) }, [onDirtyChange])
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
 
   return (
     <div className="min-h-full bg-gray-50">
       {!engagement ? <p className="p-8 text-center text-sm text-gray-500">Loading engagement…</p> : (
         <div className="mx-auto max-w-[1680px] px-4 pb-6 sm:px-6">
-          <header className="sticky top-0 z-20 -mx-4 border-b border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur sm:-mx-6 sm:px-6">
+          <header className="sticky top-[52px] z-20 -mx-4 border-b border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur sm:-mx-6 sm:px-6">
             <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
               <div className="flex min-w-0 items-center gap-3">
                 <button onClick={leaveEngagement} className="shrink-0 rounded-md px-2 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100" aria-label="Back to engagements">← Engagements</button>
@@ -808,10 +901,12 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
-                <span>{periodLabel}</span>
-                <span>{engagement.presentation_currency || engagement.trial_balance_currency || 'Currency not set'}</span>
+                <span><span className="font-semibold">Period:</span> {periodLabel}</span>
+                <span><span className="font-semibold">Framework:</span> {engagement.accounting_framework || 'Not selected'}{engagement.reporting_pack_id ? ` · ${engagement.reporting_pack_id}` : ''}</span>
+                <span><span className="font-semibold">Currency:</span> {engagement.trial_balance_currency || '—'} → {engagement.presentation_currency || '—'}</span>
                 <span className={`rounded-full px-2.5 py-1 font-semibold ${engagement.status === 'finalised' ? 'bg-emerald-50 text-emerald-800' : 'bg-blue-50 text-blue-800'}`}>{engagement.status}</span>
                 <span className="font-medium">{engagement.accessLevel}{engagement.canEdit ? ' · edit' : ' · view-only'}</span>
+                <button type="button" aria-current={navSection === 'details' ? 'page' : undefined} onClick={() => selectSection('details')} className="rounded-md border border-gray-300 px-2.5 py-1 font-semibold text-gray-700 hover:bg-gray-50">Engagement details</button>
               </div>
             </div>
             <p role="status" className={`mt-1 text-[11px] ${hasUnsavedChanges ? 'font-medium text-amber-800' : 'text-gray-500'}`}>
@@ -822,11 +917,11 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
           </header>
           {error && <p role="alert" className="my-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
           <div className="mt-4 grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-            <nav aria-label="Engagement sections" className="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-2 lg:sticky lg:top-[104px] lg:h-fit lg:flex-col lg:overflow-visible">
-              {ENGAGEMENT_SECTIONS.map(section => (
-                <button key={section.id} type="button" aria-current={activeSection === section.id ? 'page' : undefined}
+            <nav aria-label="Engagement sections" className="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-2 lg:sticky lg:top-[156px] lg:h-fit lg:flex-col lg:overflow-visible">
+              {sections.map(section => (
+                <button key={section.id} type="button" aria-current={navSection === section.id ? 'page' : undefined}
                   onClick={() => selectSection(section.id)}
-                  className={`shrink-0 rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition-colors ${activeSection === section.id
+                  className={`shrink-0 rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition-colors ${navSection === section.id
                     ? 'bg-[var(--color-primary)] text-white shadow-sm'
                     : 'text-gray-700 hover:bg-gray-100'}`}>
                   {section.label}
@@ -834,7 +929,7 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
               ))}
             </nav>
             <main className="min-w-0">
-              <div className="sticky top-[72px] z-10 -mx-1 mb-4 border-b border-gray-200 bg-gray-50/95 px-1 pt-1 backdrop-blur lg:top-[104px]">
+              <div className="sticky top-[124px] z-10 -mx-1 mb-4 border-b border-gray-200 bg-gray-50/95 px-1 pt-1 backdrop-blur lg:top-[156px]">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="text-lg font-semibold text-gray-900">{activeSectionDefinition.label}</h2>
@@ -844,9 +939,9 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
                 </div>
                 <div role="tablist" aria-label={`${activeSectionDefinition.label} subsections`} className="mt-2 flex gap-1 overflow-x-auto">
                   {activeSectionDefinition.tabs.map(([tabId, label]) => (
-                    <button key={tabId} type="button" role="tab" aria-selected={activeTab === tabId}
+                    <button key={tabId} type="button" role="tab" aria-selected={activeTabDefinition[0] === tabId}
                       onClick={() => selectTab(tabId)}
-                      className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium ${activeTab === tabId
+                      className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium ${activeTabDefinition[0] === tabId
                         ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
                         : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900'}`}>
                       {label}
@@ -858,7 +953,7 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
           <div className="rounded-2xl border border-gray-200 bg-white p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">{engagement.reference} · {engagement.status}</p><h2 className="mt-1 text-2xl font-bold text-gray-900">{engagement.client_name}</h2><p className="mt-1 text-sm text-gray-500">{engagement.name}</p></div>
-              <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800">{engagement.accessLevel}{engagement.canEdit ? ' · edit' : ' · view-only'}</span>
+              <span className="flex items-center gap-2"><span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800">{engagement.accessLevel}{engagement.canEdit ? ' · edit' : ' · view-only'}</span>{engagement.status === 'draft' && engagement.canEdit && <button type="button" onClick={editEngagement} className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50">Edit setup</button>}</span>
             </div>
             <div className="mt-6 grid gap-5 border-t border-gray-100 pt-5 sm:grid-cols-2 lg:grid-cols-4">
               <Summary label="Reporting period" value={periodLabel} />
@@ -957,7 +1052,11 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
             })}</ol> : <p className="mt-2 text-sm text-gray-500">No history recorded yet.</p>}
           </section>
           </div>
-          {serviceOnlyMode && <>
+          {unavailableNote && <section role="status" aria-label={`${activeTabDefinition[1]} status`} className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+            <h3 className="font-semibold text-amber-900">{activeTabDefinition[1]} — not available yet</h3>
+            <p className="mt-2 text-sm text-amber-900">{unavailableNote}</p>
+          </section>}
+          {!unavailableNote && <>
             <div className={activeSection === 'trial-balance' && activeTab !== 'final' ? '' : 'hidden'}>
               <ProtectedTrialBalancePanel engagement={engagement} activeTab={activeTab} onImported={() => setTrialBalanceRefresh(value => value + 1)} />
             </div>
@@ -968,6 +1067,8 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false 
               activeSection={activeSection}
               activeTab={activeTab}
               onUnsavedChange={onReportingDirtyChange}
+              confirmUnsaved={confirmUnsaved}
+              controllerRef={controllerRef}
             />
           </>}
             </main>
@@ -1122,34 +1223,114 @@ function ProtectedTrialBalancePanel({ engagement, activeTab = 'imports', onImpor
   )
 }
 
-export default function EngagementHub({ user, initialView = 'engagements', serviceOnlyMode = false }) {
+const SETTINGS_LINKS = [
+  { id: 'firm', label: 'Firm and offices', anchor: 'settings-firm', adminOnly: true },
+  { id: 'partners', label: 'Partners', anchor: 'settings-partners', adminOnly: true },
+  { id: 'report-styles', label: 'Report styles', anchor: 'settings-report-styles', adminOnly: true },
+  { id: 'appearance', label: 'Appearance', anchor: 'settings-appearance', adminOnly: true },
+  { id: 'team', label: 'Employees, accounts and roles' },
+  { id: 'clients', label: 'Clients (create in Engagements)' },
+]
+
+function UnsavedChangesDialog({ request, onDecision }) {
+  const ref = React.useRef(null)
+  useEffect(() => { ref.current?.querySelector('button')?.focus() }, [])
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onKeyDown={event => { if (event.key === 'Escape') onDecision('cancel') }}>
+      <div ref={ref} role="alertdialog" aria-modal="true" aria-labelledby="unsaved-title" className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+        <h2 id="unsaved-title" className="text-base font-semibold text-gray-900">You have unsaved changes</h2>
+        <p className="mt-2 text-sm text-gray-600">{request.reason}</p>
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-gray-800">{request.areas.map(area => <li key={area}>{area}</li>)}</ul>
+        {!request.canSave && <p className="mt-3 rounded-md bg-amber-50 p-2 text-xs text-amber-900">These edits cannot be saved from here. Choose Keep editing to post or save them explicitly; Discard removes them.</p>}
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={() => onDecision('cancel')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50">Keep editing</button>
+          <button type="button" onClick={() => onDecision('discard')} className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">Discard changes</button>
+          {request.canSave && <button type="button" onClick={() => onDecision('save')} className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white">Save and continue</button>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function EngagementHub({ user, initialView = 'engagements', serviceOnlyMode = false, leaveGuardRef = null }) {
   const [screen, setScreen] = useState({ type: 'list' })
-  const [section, setSection] = useState(initialView === 'team' ? 'team' : 'engagements')
+  const [section, setSection] = useState(initialView === 'team' ? 'settings' : 'engagements')
+  const [settingsView, setSettingsView] = useState(initialView === 'team' ? 'team' : 'firm')
+  const [settingsVisited, setSettingsVisited] = useState(initialView === 'team')
   const [error, setError] = useState('')
+  const [dialog, setDialog] = useState(null)
+  const controllerRef = React.useRef(null)
+  const formDirtyRef = React.useRef(false)
+  const onFormDirtyChange = useCallback(value => { formDirtyRef.current = value }, [])
+  const onEngagementDirtyChange = useCallback(() => {}, [])
+  const confirmUnsaved = useCallback(request => new Promise(resolve => setDialog({ request, resolve })), [])
+  const decide = decision => { dialog?.resolve(decision); setDialog(null) }
+
+  useEffect(() => {
+    if (!leaveGuardRef) return undefined
+    leaveGuardRef.current = async reason => {
+      if (formDirtyRef.current) {
+        const decision = await confirmUnsaved({ reason, areas: ['Engagement setup form'], canSave: false })
+        return decision === 'discard'
+      }
+      return controllerRef.current ? controllerRef.current.resolve(reason) : true
+    }
+    return () => { leaveGuardRef.current = null }
+  }, [leaveGuardRef, confirmUnsaved])
+
   if (!user) return <div role="alert" className="p-6 text-sm text-red-700">Sign in to access firm settings.</div>
+
+  const openSettings = view => {
+    setSettingsVisited(true)
+    setSection('settings')
+    if (view) setSettingsView(view)
+  }
+  const chooseSetting = link => {
+    if (link.id === 'clients') {
+      setSection('engagements')
+      if (screen.type === 'list') { setError(''); setScreen({ type: 'create' }) }
+      return
+    }
+    setSettingsView(link.id)
+    if (link.anchor) setTimeout(() => document.getElementById(link.anchor)?.scrollIntoView({ block: 'start' }), 0)
+  }
+  const isAdmin = user.role === 'administrator'
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-gray-50">
-      <nav aria-label="Firm workspace" className="sticky top-0 z-10 flex shrink-0 items-center gap-1 border-b border-gray-200 bg-white px-4 py-2 shadow-sm">
+      <nav aria-label="Firm workspace" className="sticky top-0 z-30 flex shrink-0 items-center gap-1 border-b border-gray-200 bg-white px-4 py-2 shadow-sm">
         <button type="button" aria-current={section === 'engagements' ? 'page' : undefined}
           onClick={() => setSection('engagements')}
           className={`rounded-lg px-3 py-2 text-sm font-semibold ${section === 'engagements' ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50'}`}>Engagements</button>
-        {user.role === 'administrator' && <button type="button" aria-current={section === 'firm-settings' ? 'page' : undefined}
-          onClick={() => setSection('firm-settings')}
-          className={`rounded-lg px-3 py-2 text-sm font-semibold ${section === 'firm-settings' ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50'}`}>Firm Settings</button>}
-        <button type="button" aria-current={section === 'team' ? 'page' : undefined}
-          onClick={() => setSection('team')}
-          className={`rounded-lg px-3 py-2 text-sm font-semibold ${section === 'team' ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50'}`}>Firm Team</button>
+        <button type="button" aria-current={section === 'settings' ? 'page' : undefined}
+          onClick={() => openSettings()}
+          className={`rounded-lg px-3 py-2 text-sm font-semibold ${section === 'settings' ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50'}`}>Settings</button>
       </nav>
       <main className="min-h-0 flex-1">
-        {section === 'firm-settings' && user.role === 'administrator' && <FirmSettingsPanel user={user} />}
-        {section === 'team' && <div className="mx-auto max-w-6xl p-5 sm:p-7"><FirmTeam user={user} /></div>}
-        {section === 'engagements' && <>
-          {screen.type === 'list' && <EngagementList user={user} onCreate={() => { setError(''); setScreen({ type: 'create' }) }} onOpen={id => { setError(''); setScreen({ type: 'overview', id }) }} />}
+        {settingsVisited && <div className={section === 'settings' ? '' : 'hidden'}>
+          <div className="mx-auto grid max-w-6xl gap-4 p-5 sm:p-7 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <nav aria-label="Settings sections" className="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-2 lg:h-fit lg:flex-col lg:overflow-visible">
+              {SETTINGS_LINKS.filter(link => isAdmin || !link.adminOnly).map(link => (
+                <button key={link.id} type="button" onClick={() => chooseSetting(link)}
+                  aria-current={settingsView === link.id ? 'page' : undefined}
+                  className={`shrink-0 rounded-lg px-3 py-2 text-left text-sm font-semibold ${settingsView === link.id ? 'bg-[var(--color-primary)] text-white' : 'text-gray-700 hover:bg-gray-100'}`}>{link.label}</button>
+              ))}
+            </nav>
+            <div className="min-w-0">
+              {isAdmin && <div className={settingsView === 'team' ? 'hidden' : ''}><FirmSettingsPanel user={user} /></div>}
+              <div className={settingsView === 'team' || !isAdmin ? '' : 'hidden'}><FirmTeam user={user} /></div>
+            </div>
+          </div>
+        </div>}
+        <div className={section === 'engagements' ? '' : 'hidden'}>
+          {screen.type === 'list' && <EngagementList user={user} serviceOnlyMode={serviceOnlyMode} onCreate={() => { setError(''); setScreen({ type: 'create' }) }} onOpen={id => { setError(''); setScreen({ type: 'overview', id }) }} />}
           {(screen.type === 'create' || screen.type === 'edit') && <CreateEngagement
             user={user}
             initialEngagement={screen.type === 'edit' ? screen.initialEngagement : null}
-            onCancel={() => setScreen({ type: 'list' })}
+            confirmUnsaved={confirmUnsaved}
+            onDirtyChange={onFormDirtyChange}
+            onCancel={() => setScreen(screen.type === 'edit' ? { type: 'overview', id: screen.initialEngagement.engagement.id } : { type: 'list' })}
             onCreated={id => setScreen({ type: 'overview', id })}
             onUpdated={id => setScreen({ type: 'overview', id })}
             onOpen={id => setScreen({ type: 'overview', id })}
@@ -1158,11 +1339,15 @@ export default function EngagementHub({ user, initialView = 'engagements', servi
             user={user}
             id={screen.id}
             serviceOnlyMode={serviceOnlyMode}
+            confirmUnsaved={confirmUnsaved}
+            controllerRef={controllerRef}
+            onDirtyChange={onEngagementDirtyChange}
             onBack={() => setScreen({ type: 'list' })}
             onEdit={data => setScreen({ type: 'edit', initialEngagement: data })}
           />}
-        </>}
+        </div>
       </main>
+      {dialog && <UnsavedChangesDialog request={dialog.request} onDecision={decide} />}
     </div>
   )
 }

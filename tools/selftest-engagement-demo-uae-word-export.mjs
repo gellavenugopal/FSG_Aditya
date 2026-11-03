@@ -119,6 +119,16 @@ async function clickButton(text) {
   if (!clicked) throw new Error(`The enabled "${text}" button was not available.`)
 }
 
+async function clickTab(text) {
+  const clicked = await evaluate(`(() => {
+    const tab=[...document.querySelectorAll('[role="tab"]')].find(item=>item.innerText.trim()===${JSON.stringify(text)});
+    if(!tab)return false;
+    tab.click();
+    return true;
+  })()`)
+  if (!clicked) throw new Error(`The "${text}" subsection tab was not available.`)
+}
+
 async function signInNormally() {
   const identity = 'Signed in as ' + administrator.displayName + ' · FSG Isolated Demo Firm'
   const body = await evaluate('document.body?.innerText || ""')
@@ -174,7 +184,15 @@ try {
     return true;
   })()`)
   if (!opened) throw new Error('Could not open the existing UAE Sample 01 engagement.')
+  await waitFor(`!!document.querySelector('aside[aria-label="Selected engagement"] button')`, 'the selected-engagement Go button')
+  await evaluate(`[...document.querySelectorAll('aside[aria-label="Selected engagement"] button')].find(b=>b.innerText.trim()==='Go').click()`)
+  await waitFor(`!!document.querySelector('nav[aria-label="Engagement sections"]')`, 'the engagement workspace')
+  await clickButton('Presentation')
+  await clickTab('Audit Report')
   await waitFor(`text.includes('Financial-statement approval date')`, 'the UAE reporting panel')
+  await clickButton('Presentation')
+  await clickTab('Saved Versions and Exports')
+  await waitFor(`text.includes('Version 7 · Final TB v3')`, 'saved report version 7')
   assert.ok((await evaluate('document.body?.innerText || ""')).includes('UAE Sample 01 Demo LLC'),
     'the selected engagement is the existing UAE sample')
 

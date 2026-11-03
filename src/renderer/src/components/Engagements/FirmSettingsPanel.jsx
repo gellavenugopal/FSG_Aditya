@@ -230,76 +230,77 @@ export default function FirmSettingsPanel({ user }) {
     } finally {
       setBusy(false)
     }
+  }
 
-    const fetchPublicPreview = async () => {
-      setError('')
-      setMessage('')
-      setFetchingPublic(true)
-      try {
-        const response = await window.api.fetchPublicFirmProfilePreview({ websiteUrl: firm.websiteUrl || 'https://www.krestonmenon.com/' })
-        setPublicPreview(response)
-        setMessage(`Public details fetched ${new Date(response.preview.retrievedAt).toLocaleString()}. Review every field before applying.`)
-      } catch (fetchError) {
-        setError(fetchError.message || 'Unable to fetch public firm details.')
-      } finally {
-        setFetchingPublic(false)
-      }
+  const fetchPublicPreview = async () => {
+    setError('')
+    setMessage('')
+    setFetchingPublic(true)
+    try {
+      const response = await window.api.fetchPublicFirmProfilePreview({ websiteUrl: firm.websiteUrl || 'https://www.krestonmenon.com/' })
+      setPublicPreview(response)
+      setMessage(`Public details fetched ${new Date(response.preview.retrievedAt).toLocaleString()}. Review every field before applying.`)
+    } catch (fetchError) {
+      setError(fetchError.message || 'Unable to fetch public firm details.')
     }
+    finally {
+      setFetchingPublic(false)
+    }
+  }
 
-    const applyPublicPreview = () => {
-      if (!publicPreview) return
-      const hasDraftContent = firm.id || firm.firmName.trim() || firm.address.trim() || firm.email.trim()
-      if (hasDraftContent && !window.confirm('Start a new Kreston Menon demo-profile draft? Your current form edits will not be saved or overwritten.')) return
-      const preview = publicPreview.preview
-      setSelectedFirmId('')
-      setFirm({
-        ...EMPTY_FIRM,
-        firmName: preview.firmName,
-        address: preview.address,
-        email: preview.email,
-        phone: preview.phone,
-        websiteUrl: preview.websiteUrl,
-        profileStatus: 'demo',
-        sourceUrls: preview.sourceUrls,
-        sourceRetrievedAt: preview.retrievedAt,
-        createSeparateProfile: true,
-        logoMimeType: publicPreview.logoMimeType,
-        logoBase64: publicPreview.logoBase64,
-      })
-      setOffice({
-        ...EMPTY_OFFICE,
-        officeName: preview.office.officeName,
-        address: preview.office.address,
-        phone: preview.office.phone,
-        email: preview.office.email,
-        sourceUrl: preview.office.sourceUrl,
-        sourceRetrievedAt: preview.retrievedAt,
-      })
-      setMessage('An editable Kreston Menon draft is ready. Save creates a separate firm record; no signing partner or registration credential was inferred.')
-    }
+  const applyPublicPreview = () => {
+    if (!publicPreview) return
+    const hasDraftContent = firm.id || firm.firmName.trim() || firm.address.trim() || firm.email.trim()
+    if (hasDraftContent && !window.confirm('Start a new Kreston Menon demo-profile draft? Your current form edits will not be saved or overwritten.')) return
+    const preview = publicPreview.preview
+    setSelectedFirmId('')
+    setFirm({
+      ...EMPTY_FIRM,
+      firmName: preview.firmName,
+      address: preview.address,
+      email: preview.email,
+      phone: preview.phone,
+      websiteUrl: preview.websiteUrl,
+      profileStatus: 'demo',
+      sourceUrls: preview.sourceUrls,
+      sourceRetrievedAt: preview.retrievedAt,
+      createSeparateProfile: true,
+      logoMimeType: publicPreview.logoMimeType,
+      logoBase64: publicPreview.logoBase64,
+    })
+    setOffice({
+      ...EMPTY_OFFICE,
+      officeName: preview.office.officeName,
+      address: preview.office.address,
+      phone: preview.office.phone,
+      email: preview.office.email,
+      sourceUrl: preview.office.sourceUrl,
+      sourceRetrievedAt: preview.retrievedAt,
+    })
+    setMessage('An editable Kreston Menon draft is ready. Save creates a separate firm record; no signing partner or registration credential was inferred.')
+  }
 
-    const saveAppearance = async () => {
-      setBusy(true); setError(''); setMessage('')
-      try {
-        const result = await window.api.saveFirmAppearance({ settings: appearance })
-        setAppearance(result.settings); setSavedAppearance(result.settings)
-        window.dispatchEvent(new CustomEvent('fsg:appearance-updated', { detail: result.settings }))
-        setMessage('Application appearance saved for this authenticated firm.')
-      } catch (saveError) { setError(saveError.message || 'Unable to save appearance.') }
-      finally { setBusy(false) }
-    }
+  const saveAppearance = async () => {
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const result = await window.api.saveFirmAppearance({ settings: appearance })
+      setAppearance(result.settings); setSavedAppearance(result.settings)
+      window.dispatchEvent(new CustomEvent('fsg:appearance-updated', { detail: result.settings }))
+      setMessage('Application appearance saved for this authenticated firm.')
+    } catch (saveError) { setError(saveError.message || 'Unable to save appearance.') }
+    finally { setBusy(false) }
+  }
 
-    const saveReportStyle = async () => {
-      setBusy(true); setError(''); setMessage('')
-      try {
-        const saved = await window.api.saveFirmReportStyle({ name: styleName, settings: reportStyle })
-        setReportStyles(current => [saved, ...current])
-        setReportStyle(saved.settings); setSavedReportStyle(saved.settings)
-        setStyleName(saved.name); setSavedStyleName(saved.name)
-        setMessage(`Saved immutable report style version ${saved.version}. Select it for an engagement in Reports and Exports.`)
-      } catch (saveError) { setError(saveError.message || 'Unable to save report style.') }
-      finally { setBusy(false) }
-    }
+  const saveReportStyle = async () => {
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const saved = await window.api.saveFirmReportStyle({ name: styleName, settings: reportStyle })
+      setReportStyles(current => [saved, ...current])
+      setReportStyle(saved.settings); setSavedReportStyle(saved.settings)
+      setStyleName(saved.name); setSavedStyleName(saved.name)
+      setMessage(`Saved immutable report style version ${saved.version}. Select it for an engagement in Reports and Exports.`)
+    } catch (saveError) { setError(saveError.message || 'Unable to save report style.') }
+    finally { setBusy(false) }
   }
 
   const updateFirm = (key, value) => setFirm(current => ({ ...current, [key]: value }))
@@ -331,7 +332,7 @@ export default function FirmSettingsPanel({ user }) {
         <section className="rounded-xl border border-gray-200 bg-white p-5">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h3 className="font-semibold text-gray-900">Professional firm</h3>
+              <h3 id="settings-firm" className="scroll-mt-4 font-semibold text-gray-900">Professional firm</h3>
               <p className="mt-1 text-xs text-gray-500">Reusable firm and office masters are separate from client entities, engagement membership and signing authority.</p>
             </div>
             <button type="button" onClick={() => { setFirm(EMPTY_FIRM); setSelectedFirmId('') }}
@@ -422,7 +423,7 @@ export default function FirmSettingsPanel({ user }) {
         </section>
 
         <section className="rounded-xl border border-gray-200 bg-white p-5">
-          <h3 className="font-semibold text-gray-900">Offices</h3>
+          <h3 id="settings-offices" className="scroll-mt-4 font-semibold text-gray-900">Offices</h3>
           <p className="mt-1 text-xs text-gray-500">Office addresses can be selected for each engagement and report.</p>
           <label className="mt-4 block">
             <span className="mb-1 block text-xs font-medium text-gray-700">Edit office</span>
@@ -460,7 +461,7 @@ export default function FirmSettingsPanel({ user }) {
       <section className="mt-5 rounded-xl border border-gray-200 bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-gray-900">Application appearance</h3>
+            <h3 id="settings-appearance" className="scroll-mt-4 font-semibold text-gray-900">Application appearance</h3>
             <p className="mt-1 text-xs text-gray-600">Distinct from report styles. Changes preview immediately and save to this authenticated service firm; no renderer-supplied firm or user identity is accepted.</p>
           </div>
           {data.canManage && <div className="flex gap-2">
@@ -553,7 +554,7 @@ export default function FirmSettingsPanel({ user }) {
       <section className="mt-5 rounded-xl border border-gray-200 bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-gray-900">Report styles · versioned and separate</h3>
+            <h3 id="settings-report-styles" className="scroll-mt-4 font-semibold text-gray-900">Report styles · versioned and separate</h3>
             <p className="mt-1 text-xs text-gray-600">Each save creates an immutable firm-owned version. Existing engagements keep their selected version; previously saved PDFs keep their original bytes and style snapshot.</p>
             <p className="mt-1 text-xs text-gray-500">{reportStyles.map(item => `${item.name} v${item.version}`).join(' · ') || 'No saved report style versions yet.'}</p>
           </div>
@@ -600,7 +601,7 @@ export default function FirmSettingsPanel({ user }) {
       </section>
 
       <section className="mt-5 rounded-xl border border-gray-200 bg-white p-5">
-        <h3 className="font-semibold text-gray-900">Engagement partners</h3>
+        <h3 id="settings-partners" className="scroll-mt-4 font-semibold text-gray-900">Engagement partners</h3>
         <p className="mt-1 text-xs text-gray-500">Partner accounts are the existing firm-user records. Inactive accounts cannot sign in or be selected for new engagements.</p>
         {!data.partners.length ? <p className="mt-4 text-sm text-gray-500">No partner accounts are configured. Add one under Firm Team.</p> : (
           <div className="mt-4 divide-y divide-gray-100">

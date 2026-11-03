@@ -147,24 +147,52 @@ async function signInNormally() {
   await waitFor(`(document.body?.innerText || '').includes(${JSON.stringify(identity)})`, 'the authorized isolated administrator')
 }
 
-async function saveScreenshot(name, scrollToTop = true) {
+async function saveScreenshot(name, scrollToTop = true, expectEngagementContext = true) {
   if (scrollToTop) await evaluate('window.scrollTo(0, 0)')
   await new Promise(resolve => setTimeout(resolve, 350))
   const filePath = path.join(screenshotDirectory, name)
   const snapshot = JSON.parse(await evaluate(`JSON.stringify({
     styles: [...document.head.querySelectorAll('style')].map(style=>style.outerHTML).join(''),
-    body: document.body.innerHTML,
+    body: (() => {
+      document.querySelectorAll('[data-fsg-screenshot-scroll-top], [data-fsg-screenshot-scroll-left]')
+        .forEach(element => {
+          element.removeAttribute('data-fsg-screenshot-scroll-top');
+          element.removeAttribute('data-fsg-screenshot-scroll-left');
+        });
+      const scrolled = [...document.querySelectorAll('body *')]
+        .filter(element => element.scrollTop > 0 || element.scrollLeft > 0);
+      scrolled.forEach(element => {
+        if (element.scrollTop > 0) element.setAttribute('data-fsg-screenshot-scroll-top', String(element.scrollTop));
+        if (element.scrollLeft > 0) element.setAttribute('data-fsg-screenshot-scroll-left', String(element.scrollLeft));
+      });
+      const body = document.body.innerHTML;
+      scrolled.forEach(element => {
+        element.removeAttribute('data-fsg-screenshot-scroll-top');
+        element.removeAttribute('data-fsg-screenshot-scroll-left');
+      });
+      return body;
+    })(),
     scrollY: window.scrollY
   })`))
   const htmlPath = path.join(temporaryDirectory, `${name}.html`)
   const profilePath = path.join(temporaryDirectory, `edge-${name}`)
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><base href="http://localhost:5173/">${snapshot.styles}</head><body>${snapshot.body}<script>window.scrollTo(0, ${Number(snapshot.scrollY) || 0})</script></body></html>`
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><base href="http://localhost:5173/">${snapshot.styles}</head><body>${snapshot.body}<script>
+    window.scrollTo(0, ${Number(snapshot.scrollY) || 0});
+    document.querySelectorAll('[data-fsg-screenshot-scroll-top], [data-fsg-screenshot-scroll-left]').forEach(element => {
+      if (element.hasAttribute('data-fsg-screenshot-scroll-top')) {
+        element.scrollTop = Number(element.getAttribute('data-fsg-screenshot-scroll-top')) || 0;
+      }
+      if (element.hasAttribute('data-fsg-screenshot-scroll-left')) {
+        element.scrollLeft = Number(element.getAttribute('data-fsg-screenshot-scroll-left')) || 0;
+      }
+    });
+  </script></body></html>`
   fs.writeFileSync(htmlPath, html, 'utf8')
   const result = spawnSync(edgePath, [
     '--headless=new',
     '--disable-gpu',
     '--hide-scrollbars',
-    '--force-device-scale-factor=1',
+    `--force-device-scale-factor=${currentViewport.scaleFactor}`,
     `--window-size=${currentViewport.width},${currentViewport.height}`,
     `--user-data-dir=${profilePath}`,
     `--screenshot=${filePath}`,
@@ -174,12 +202,15 @@ async function saveScreenshot(name, scrollToTop = true) {
     throw new Error(`The local screenshot renderer failed: ${result.error?.message || result.stderr || result.stdout || result.status}`)
   }
   const image = fs.readFileSync(filePath)
-  assert.equal(image.readUInt32BE(16), currentViewport.width, 'the saved screenshot has the requested width')
-  assert.equal(image.readUInt32BE(20), currentViewport.height, 'the saved screenshot has the requested height')
+  assert.equal(image.readUInt32BE(16), currentViewport.width * currentViewport.scaleFactor,
+    'the saved screenshot has the requested physical-pixel width')
+  assert.equal(image.readUInt32BE(20), currentViewport.height * currentViewport.scaleFactor,
+    'the saved screenshot has the requested physical-pixel height')
   assert.ok(image.length > 5000, 'the saved screenshot contains the desktop UI')
   const metrics = await evaluate(`({
     width: window.innerWidth,
     height: window.innerHeight,
+    devicePixelRatio: window.devicePixelRatio,
     documentWidth: document.documentElement.scrollWidth,
     engagement: document.body.innerText.includes(${JSON.stringify(engagementName)}),
     header: [...document.querySelectorAll('header')].map(item=>item.innerText).find(text=>text.includes(${JSON.stringify(engagementName)})) || '',
@@ -187,22 +218,31 @@ async function saveScreenshot(name, scrollToTop = true) {
   })`)
   assert.equal(metrics.width, currentViewport.width, 'the requested viewport width was applied')
   assert.equal(metrics.height, currentViewport.height, 'the requested viewport height was applied')
+  assert.equal(metrics.devicePixelRatio, currentViewport.scaleFactor, 'the requested display scale was applied')
   assert.ok(metrics.documentWidth <= currentViewport.width, 'the screen has no page-level horizontal overflow')
-  assert.ok(metrics.engagement, 'the selected engagement remains visible while navigating')
-  assert.ok(metrics.header.includes('AED'), 'the presentation currency remains in the compact engagement header')
-  assert.ok(metrics.period, 'the reporting period remains in the compact engagement header')
+  if (expectEngagementContext) {
+    assert.ok(metrics.engagement, 'the selected engagement remains visible while navigating')
+    assert.ok(metrics.header.includes('AED'), 'the presentation currency remains in the compact engagement header')
+    assert.ok(metrics.period, 'the reporting period remains in the compact engagement header')
+  }
   return { filePath, ...metrics }
 }
 
 const sections = [
-  { section: 'Overview', tab: 'Summary', key: 'overview' },
+  { section: 'Overview and Setup', tab: 'Summary', key: 'overview' },
   { section: 'Trial Balance', tab: 'Imports', key: 'trial-balance' },
-  { section: 'Journals', tab: 'Posted journals', key: 'journals' },
+  { section: 'Journals and Adjustments', tab: 'Posted journals', key: 'journals' },
   { section: 'Mapping', tab: 'Unmapped', key: 'mapping' },
-  { section: 'Statements and Notes', tab: 'Notes', key: 'statements-notes' },
-  { section: 'Reports and Exports', tab: 'Preview & exports', key: 'reports-exports' },
+  { section: 'Financial Statements', tab: 'Notes', key: 'statements-notes' },
+  { section: 'Audit Report', tab: 'Audit report', key: 'audit-report' },
+  { section: 'Review and Export', tab: 'Preview & exports', key: 'reports-exports' },
 ]
-const viewports = [{ width: 1366, height: 768 }, { width: 1920, height: 1080 }]
+const viewports = [
+  { width: 1366, height: 768, scaleFactor: 1, name: '1366x768' },
+  { width: 1920, height: 1080, scaleFactor: 1, name: '1920x1080' },
+  { width: 1440, height: 900, scaleFactor: 1, name: '1440x900' },
+  { width: 1440, height: 900, scaleFactor: 2, name: '1440x900-200pct' },
+]
 let currentViewport = viewports[0]
 const captures = []
 let confirmOverridden = false
@@ -210,10 +250,20 @@ let confirmOverridden = false
 try {
   await command('Page.enable')
   await command('Runtime.enable')
+  const nativeWindowsDisplay = await evaluate(`({
+    width: screen.width,
+    height: screen.height,
+    devicePixelRatio: window.devicePixelRatio
+  })`)
+  nativeWindowsDisplay.matchesDemoLaptop = nativeWindowsDisplay.width === 1440
+    && nativeWindowsDisplay.height === 900 && nativeWindowsDisplay.devicePixelRatio === 2
+  if (!nativeWindowsDisplay.matchesDemoLaptop) {
+    console.warn(`This computer exposes ${nativeWindowsDisplay.width}x${nativeWindowsDisplay.height} at ${nativeWindowsDisplay.devicePixelRatio}x, not the 1440x900 at 200% demo laptop; the 200% case below is emulated.`)
+  }
   await command('Emulation.setDeviceMetricsOverride', {
     width: currentViewport.width,
     height: currentViewport.height,
-    deviceScaleFactor: 1,
+    deviceScaleFactor: currentViewport.scaleFactor,
     mobile: false,
   })
   await signInNormally()
@@ -243,7 +293,7 @@ try {
     await command('Emulation.setDeviceMetricsOverride', {
       width: currentViewport.width,
       height: currentViewport.height,
-      deviceScaleFactor: 1,
+      deviceScaleFactor: currentViewport.scaleFactor,
       mobile: false,
     })
     for (const item of sections) {
@@ -301,18 +351,73 @@ try {
       } else if (item.key === 'statements-notes') {
         scrollToTop = false
       }
-      const fileName = `UAE-Sample-01-${item.key}-${currentViewport.width}x${currentViewport.height}.png`
+      const fileName = `UAE-Sample-01-${item.key}-${currentViewport.name}.png`
       captures.push(await saveScreenshot(fileName, scrollToTop))
     }
     const finalState = await evaluate(`({
       client: document.body.innerText.includes(${JSON.stringify(engagementName)}),
       reference: document.body.innerText.includes(${JSON.stringify(engagementReference)}),
-      readOnly: document.body.innerText.includes('view-only')
+      readOnly: document.body.innerText.includes('view-only'),
+      sidebars: document.querySelectorAll('nav[aria-label="Engagement sections"]').length,
+      sidebarLabels: [...document.querySelectorAll('nav[aria-label="Engagement sections"] button')].map(item=>item.innerText.trim()),
+      legacyEntries: [...document.querySelectorAll('button')].filter(item=>['Firm Settings','Firm Team'].includes(item.innerText.trim())).length,
+      header: [...document.querySelectorAll('header')].map(item=>item.innerText).find(text=>text.includes(${JSON.stringify(engagementName)})) || ''
     })`)
     assert.ok(finalState.client && finalState.reference, 'the same client and engagement persist across sections')
+    assert.equal(finalState.sidebars, 1, 'an open engagement has exactly one primary sidebar')
+    assert.deepEqual(finalState.sidebarLabels, ['Overview and Setup', 'Trial Balance', 'Journals and Adjustments', 'Mapping',
+      'Financial Statements', 'Audit Report', 'Review and Export'], 'the primary sidebar lists the seven agreed sections')
+    assert.equal(finalState.legacyEntries, 0, 'separate Firm Settings and Firm Team entries are absent')
+    for (const label of ['Period:', 'Framework:', 'Currency:']) assert.ok(finalState.header.includes(label), `the engagement header shows ${label}`)
+
+    await clickButton('Settings')
+    await waitFor(`(document.body?.innerText || '').includes('Firm settings')`, 'the Settings workspace')
+    await waitFor(`!(document.body?.innerText || '').includes('Loading firm records')`, 'loaded Firm Settings records')
+    const settingsText = await evaluate('document.body?.innerText || ""')
+    for (const link of ['Firm and offices', 'Partners', 'Report styles', 'Appearance', 'Team, roles and access', 'Clients']) {
+      assert.ok(settingsText.includes(link), `Settings links to ${link}`)
+    }
+    for (const section of ['Professional firm', 'Offices', 'Application appearance', 'Report styles · versioned and separate', 'Engagement partners']) {
+      assert.ok(settingsText.includes(section), `Firm Settings exposes ${section}`)
+    }
+    const settingsControls = await evaluate(`(() => {
+      const appearanceSave = [...document.querySelectorAll('button')]
+        .find(item => item.innerText.trim() === 'Save appearance');
+      return {
+        appearanceSaveAvailable: !!appearanceSave,
+        appearanceSaveEnabled: !!appearanceSave && !appearanceSave.disabled,
+        administratorWarning: (document.body?.innerText || '').includes('Firm master edits are restricted to administrators')
+      };
+    })()`)
+    assert.ok(settingsControls.appearanceSaveAvailable && settingsControls.appearanceSaveEnabled
+      && !settingsControls.administratorWarning, 'the authenticated administrator can manage loaded firm settings')
+    captures.push(await saveScreenshot(
+      `Firm-settings-${currentViewport.name}.png`,
+      true,
+      false,
+    ))
+    const appearanceVisible = await evaluate(`(() => {
+      const heading = [...document.querySelectorAll('h3')]
+        .find(item => item.innerText.trim() === 'Application appearance');
+      if (!heading) return false;
+      heading.scrollIntoView({ block: 'start' });
+      const workspace = document.querySelector('nav[aria-label="Firm workspace"]')?.parentElement;
+      if (workspace) workspace.scrollTop = Math.max(0, workspace.scrollTop - 96);
+      const bounds = heading.getBoundingClientRect();
+      return bounds.top >= 96 && bounds.top < window.innerHeight;
+    })()`)
+    assert.ok(appearanceVisible, 'the application appearance heading clears the sticky workspace navigation')
+    captures.push(await saveScreenshot(
+      `Firm-settings-appearance-${currentViewport.name}.png`,
+      false,
+      false,
+    ))
+    await clickButton('Engagements')
+    await waitFor(`!!document.querySelector('nav[aria-label="Engagement sections"]')`,
+      'the same engagement after visiting Firm Settings')
   }
 
-  await clickButton('Reports and Exports')
+  await clickButton('Audit Report')
   await clickTab('Audit report')
   await waitFor('!![...document.querySelectorAll("label")].some(item => item.innerText.trim() === "Addressee")',
     'the editable audit-report addressee')
@@ -330,19 +435,36 @@ try {
   })()`)
   await waitFor(`(document.body?.innerText || '').includes('Unsaved edits are preserved')`, 'the unsaved-change indicator')
   await clickButton('Mapping')
-  await clickButton('Reports and Exports')
+  await clickButton('Audit Report')
   await clickTab('Audit report')
   const preservedDraft = await evaluate(`(() => [...document.querySelectorAll('label')]
     .find(item=>item.innerText.trim()==='Addressee')?.querySelector('input')?.value ?? null)()`)
   assert.equal(preservedDraft, changedAddressee, 'an unsaved edit survives navigation between engagement sections')
-  await evaluate(`window.__navigationDiscardPrompt = '';
-    window.__navigationNativeConfirm = window.confirm;
-    window.confirm = message => { window.__navigationDiscardPrompt = message; return true; }`)
-  confirmOverridden = true
+  await clickButton('Settings')
+  await waitFor(`(document.body?.innerText || '').includes('Firm settings')`, 'Settings while an engagement draft is open')
+  await clickButton('Engagements')
+  await waitFor(`!!document.querySelector('nav[aria-label="Engagement sections"]')`, 'the same engagement after a Settings visit')
+  const draftAfterSettings = await evaluate(`(() => [...document.querySelectorAll('label')]
+    .find(item=>item.innerText.trim()==='Addressee')?.querySelector('input')?.value ?? null)()`)
+  assert.equal(draftAfterSettings, changedAddressee, 'an unsaved edit survives a visit to Settings')
   await clickButton('← Engagements')
+  await waitFor(`!!document.querySelector('[role="alertdialog"]')`, 'the Save / Discard / Keep editing choice')
+  const dialogText = await evaluate(`document.querySelector('[role="alertdialog"]').innerText`)
+  for (const label of ['Save and continue', 'Discard changes', 'Keep editing']) assert.ok(dialogText.includes(label), `the dialog offers ${label}`)
+  await clickButton('Keep editing')
+  await waitFor(`!document.querySelector('[role="alertdialog"]')`, 'the dialog closing after Keep editing')
+  const afterCancel = await evaluate(`({
+    onEngagement: !!document.querySelector('nav[aria-label="Engagement sections"]'),
+    value: [...document.querySelectorAll('label')].find(item=>item.innerText.trim()==='Addressee')?.querySelector('input')?.value ?? null
+  })`)
+  assert.ok(afterCancel.onEngagement, 'cancelling keeps the current screen')
+  assert.equal(afterCancel.value, changedAddressee, 'cancelling keeps the draft')
+  await clickButton('← Engagements')
+  await waitFor(`!!document.querySelector('[role="alertdialog"]')`, 'the choice shown again')
+  await clickButton('Discard changes')
   await waitFor(`[...document.querySelectorAll('h2')].some(item=>item.innerText.trim()==='Engagements')`,
     'the engagement list after explicitly discarding an unsaved edit')
-  const discardPrompt = await evaluate('window.__navigationDiscardPrompt')
+  const discardPrompt = 'discard'
   assert.ok(discardPrompt.includes('discard'), 'leaving asks before discarding unsaved edits')
   await waitFor(`[...document.querySelectorAll('tr')].some(row=>row.innerText.includes(${JSON.stringify(engagementReference)}))`,
     'the same authorized UAE engagement after returning to the list')
@@ -354,22 +476,24 @@ try {
   })()`)
   assert.ok(reopened, 'reopen the same UAE engagement through the normal list')
   await waitFor(`(document.body?.innerText || '').includes(${JSON.stringify(engagementName)})`, 'the reopened UAE engagement')
-  await clickButton('Reports and Exports')
+  await clickButton('Audit Report')
   await clickTab('Audit report')
   await waitFor(`(() => [...document.querySelectorAll('label')].some(item=>item.innerText.trim()==='Addressee'))()`,
     'the saved audit-report field after reopening')
   const reopenedAddressee = await evaluate(`(() => [...document.querySelectorAll('label')]
     .find(item=>item.innerText.trim()==='Addressee')?.querySelector('input')?.value ?? null)()`)
   assert.equal(reopenedAddressee, originalAddressee, 'the explicitly discarded draft does not alter saved report settings')
-  await evaluate(`window.confirm = window.__navigationNativeConfirm; delete window.__navigationNativeConfirm;`)
-  confirmOverridden = false
+  await clickButton('Review and Export')
   await clickTab('Preview & exports')
 
   console.log(JSON.stringify({
     engagement: engagementReference,
     authenticatedFirm: 'FSG Isolated Demo Firm',
     editPermission: true,
+    nativeWindowsDisplay,
     unsavedEditsPreservedAndDiscardConfirmed: true,
+    firmSettingsVisitedWithoutSaving: true,
+    viewports: viewports.map(({ width, height, scaleFactor, name }) => ({ width, height, scaleFactor, name })),
     screenshots: captures,
   }, null, 2))
 } finally {

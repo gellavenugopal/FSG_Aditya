@@ -5,6 +5,10 @@ import { runMappingEngine, persistMappingResults } from '../services/mapping-eng
 import { createEngagementPasswordRecord, verifyEngagementPassword } from '../services/engagement-password.js'
 import { financialPeriodLabel } from '../../shared/financial-periods.mjs'
 import {
+  LINE_KEYS as UAE_SEPARATE_LINE_KEYS, normaliseLabel as normaliseUaeLabel,
+  lineForClassification as uaeLineForClassification, getPackDefinition as getUaeSeparatePackDefinition,
+} from '../../shared/uae-separate-fs-pack.mjs'
+import {
   DEFAULT_APPEARANCE, DEFAULT_REPORT_STYLE, extractKrestonPublicProfile, sanitizePublicSvg,
   validateAppearance, validatePublicProfileUrl, validateReportStyle,
 } from '../services/branding-domain.mjs'
@@ -2687,6 +2691,175 @@ export function registerEngagementHandlers(ipcMain, database) {
       })
     })
     return { ok: true, mappingCount: mappings.length }
+  })
+
+  ipcMain.handle('engagement:packReferenceImport', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertEngagementTBContext(user, input.engagementId)
+    await assertUaeDemoPack(context.engagement)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    const text = (value, max = 300) => String(value ?? '').trim().slice(0, max)
+    const sourceLabel = text(input.sourceLabel, 120)
+    const sourceSheet = text(input.sourceSheet, 120)
+    const sourceYear = Number(input.sourceYear)
+    if (!sourceLabel || !sourceSheet || !Number.isInteger(sourceYear) || sourceYear < 2000 || sourceYear > 2100) {
+      throw new Error('Reference classifications need a source label, sheet and year.')
+    }
+    if (!Array.isArray(input.rows) || input.rows.length < 1 || input.rows.length > 5000) {
+      throw new Error('Import between 1 and 5,000 reference classification rows.')
+    }
+    const rows = input.rows.map(item => ({
+      code: text(item?.accountCode, 80), description: text(item?.description),
+      clientMapping: text(item?.clientMapping), main: text(item?.mainClassification),
+      sub: text(item?.subClassification), sub2: text(item?.subClassification2),
+    }))
+    if (rows.some(item => !item.code)) throw new Error('Every reference classification row needs an account code.')
+    const { rows: existing } = await query(
+      `SELECT 1 FROM engagement_reference_classifications WHERE engagement_id=$1 AND source_label=$2 LIMIT 1`,
+      [context.engagement.id, sourceLabel]
+    )
+    if (existing.length && input.replace !== true) throw new Error(`Reference classifications "${sourceLabel}" were already imported for this engagement.`)
+    await runInTransaction(async () => {
+      if (existing.length) {
+        await query(`DELETE FROM engagement_reference_classifications WHERE engagement_id=$1 AND source_label=$2`, [context.engagement.id, sourceLabel])
+      }
+      for (let start = 0; start < rows.length; start += 200) {
+        const chunk = rows.slice(start, start + 200)
+        const values = []
+        const params = []
+        chunk.forEach((item, index) => {
+          const base = index * 11
+          values.push(`(${Array.from({ length: 11 }, (_, n) => `$${base + n + 1}`).join(',')})`)
+          params.push(context.engagement.id, sourceLabel, sourceYear, sourceSheet, item.code, item.description,
+            item.clientMapping, item.main, item.sub, item.sub2, user.id)
+        })
+        await query(
+          `INSERT INTO engagement_reference_classifications
+             (engagement_id,source_label,source_year,source_sheet,account_code,description,client_mapping,
+              main_classification,sub_classification,sub_classification_2,imported_by)
+           VALUES ${values.join(',')}`,
+          params
+        )
+      }
+      await logAudit(user, 'report.reference_classifications_imported', context.engagement.id, {
+        sourceLabel, sourceYear, rowCount: rows.length, replaced: existing.length > 0,
+      })
+    })
+    return { ok: true, rowCount: rows.length }
+  })
+
+  ipcMain.handle('engagement:packMappingReviewGet', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    await assertUaeDemoPack(context.engagement)
+    const { rows: snapshot } = await query(
+      `SELECT version FROM engagement_final_tb_snapshots WHERE engagement_id=$1 AND trial_balance_id=$2`,
+      [context.engagement.id, context.trialBalance.id]
+    )
+    if (!snapshot.length) throw new Error('The mapping review is available only for a final engagement Trial Balance.')
+    const pack = getUaeSeparatePackDefinition()
+    const [{ rows: tbRows }, { rows: refs }, { rows: saved }] = await Promise.all([
+      query(`SELECT id,ledger_code,name,closing_balance FROM tb_rows WHERE tb_id=$1 ORDER BY id`, [context.trialBalance.id]),
+      query(
+        `SELECT account_code,description,client_mapping,main_classification,sub_classification,source_label,source_year,source_sheet
+         FROM engagement_reference_classifications WHERE engagement_id=$1 ORDER BY id`,
+        [context.engagement.id]
+      ),
+      query(
+        `SELECT tb_row_id,line_key,basis FROM engagement_pack_mapping_reviews
+         WHERE engagement_id=$1 AND trial_balance_id=$2 AND pack_id=$3 AND pack_version=$4`,
+        [context.engagement.id, context.trialBalance.id, pack.id, pack.version]
+      ),
+    ])
+    const refsByCode = new Map()
+    for (const ref of refs) {
+      const key = normaliseUaeLabel(ref.account_code)
+      if (!refsByCode.has(key)) refsByCode.set(key, [])
+      refsByCode.get(key).push(ref)
+    }
+    const savedByRow = new Map(saved.map(item => [Number(item.tb_row_id), item]))
+    const rows = []
+    const cover = { confirmed: [0, 0, 0], suggested: [0, 0, 0], unresolved: [0, 0, 0] }
+    const add = (bucket, balance) => { bucket[0] += 1; bucket[1] += balance; bucket[2] += Math.abs(balance) }
+    let zeroBalanceAccounts = 0
+    for (const row of tbRows) {
+      const balance = Number(row.closing_balance || 0)
+      if (Math.abs(balance) < 0.005) { zeroBalanceAccounts += 1; continue }
+      const matches = refsByCode.get(normaliseUaeLabel(row.ledger_code)) || []
+      const classKeys = new Set(matches.map(ref => `${normaliseUaeLabel(ref.main_classification)}|${normaliseUaeLabel(ref.sub_classification)}`))
+      const lines = new Set(matches.map(ref => uaeLineForClassification(ref.main_classification, ref.sub_classification)).filter(Boolean))
+      const duplicate = matches.length > 1
+      const conflict = classKeys.size > 1
+      let suggestedLine = null
+      let issue = null
+      if (!matches.length) issue = 'No reference classification for this account code.'
+      else if (conflict) issue = 'Conflicting reference classifications for this account code.'
+      else if (lines.size === 1) suggestedLine = [...lines][0]
+      else issue = 'The reference classification has no rule in this draft pack.'
+      const decision = savedByRow.get(Number(row.id))
+      const status = decision ? 'confirmed' : suggestedLine ? 'suggested' : (conflict ? 'conflict' : 'unresolved')
+      add(cover[status === 'confirmed' ? 'confirmed' : status === 'suggested' ? 'suggested' : 'unresolved'], balance)
+      rows.push({
+        id: Number(row.id), code: row.ledger_code, name: row.name, balance,
+        lineKey: decision?.line_key || null, basis: decision?.basis || null,
+        suggestedLineKey: suggestedLine, status, issue, duplicate, conflict,
+        references: matches.map(ref => ({
+          sourceLabel: ref.source_label, sourceYear: Number(ref.source_year), sheet: ref.source_sheet,
+          clientMapping: ref.client_mapping, main: ref.main_classification, sub: ref.sub_classification,
+        })),
+      })
+    }
+    const pick = ([count, net, abs]) => ({ count, signedNet: Math.round(net * 100) / 100, absoluteTotal: Math.round(abs * 100) / 100 })
+    return {
+      pack, finalVersion: Number(snapshot[0].version), trialBalanceId: Number(context.trialBalance.id),
+      referenceRowCount: refs.length, zeroBalanceAccounts, rows,
+      coverage: { confirmed: pick(cover.confirmed), suggestedAwaitingReview: pick(cover.suggested), unresolved: pick(cover.unresolved) },
+    }
+  })
+
+  ipcMain.handle('engagement:packMappingReviewSave', async (event, input = {}) => {
+    const user = await authenticated(event)
+    const context = await assertAuthorizedEngagementTB(user, input.engagementId, input.trialBalanceId)
+    await assertUaeDemoPack(context.engagement)
+    await assertCanEdit(user, context.engagement)
+    assertEngagementEditable(context.engagement, context.period)
+    const pack = getUaeSeparatePackDefinition()
+    const tbRowId = Number(input.tbRowId)
+    const lineKey = String(input.lineKey || '')
+    const basis = input.basis === 'accepted_suggestion' ? 'accepted_suggestion' : 'manual'
+    if (!Number.isSafeInteger(tbRowId) || tbRowId <= 0 || !UAE_SEPARATE_LINE_KEYS.has(lineKey)) {
+      throw new Error('Choose a Trial Balance row and a statement line defined in the UAE reporting pack.')
+    }
+    const { rows: snapshot } = await query(
+      `SELECT 1 FROM engagement_final_tb_snapshots WHERE engagement_id=$1 AND trial_balance_id=$2`,
+      [context.engagement.id, context.trialBalance.id]
+    )
+    if (!snapshot.length) throw new Error('Mappings can be reviewed only for a final engagement Trial Balance.')
+    const { rows: valid } = await query(`SELECT 1 FROM tb_rows WHERE tb_id=$1 AND id=$2`, [context.trialBalance.id, tbRowId])
+    if (!valid.length) throw new Error('The account is not in this final Trial Balance.')
+    const { rows: [current] } = await query(
+      `SELECT basis FROM engagement_pack_mapping_reviews
+       WHERE engagement_id=$1 AND trial_balance_id=$2 AND tb_row_id=$3 AND pack_id=$4 AND pack_version=$5`,
+      [context.engagement.id, context.trialBalance.id, tbRowId, pack.id, pack.version]
+    )
+    if (current?.basis === 'manual' && basis !== 'manual') {
+      throw new Error('A manual mapping is never replaced by a suggestion. Correct it manually instead.')
+    }
+    await runInTransaction(async () => {
+      await query(
+        `INSERT INTO engagement_pack_mapping_reviews
+           (engagement_id,trial_balance_id,tb_row_id,pack_id,pack_version,line_key,basis,updated_by,updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
+         ON CONFLICT (engagement_id,trial_balance_id,tb_row_id,pack_id,pack_version)
+         DO UPDATE SET line_key=EXCLUDED.line_key, basis=EXCLUDED.basis, updated_by=EXCLUDED.updated_by, updated_at=now()`,
+        [context.engagement.id, context.trialBalance.id, tbRowId, pack.id, pack.version, lineKey, basis, user.id]
+      )
+      await logAudit(user, 'report.pack_mapping_reviewed', context.engagement.id, {
+        trialBalanceId: context.trialBalance.id, tbRowId, lineKey, basis, packVersion: pack.version,
+      })
+    })
+    return { ok: true }
   })
 
   ipcMain.handle('engagement:reportingSelectionsSave', async (event, input = {}) => {
