@@ -835,6 +835,8 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false,
   const [selectedLegacyTbIds, setSelectedLegacyTbIds] = useState([])
   const [navSection, setNavSection] = useState('trial-balance')
   const [navTab, setNavTab] = useState('import')
+  const [groupingFocus, setGroupingFocus] = useState(null)
+  const openGrouping = mode => { setGroupingFocus({ mode, tick: Date.now() }); setNavSection('trial-balance'); setNavTab('grouping') }
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   const load = useCallback(async () => {
@@ -1066,7 +1068,8 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false,
               trialBalanceRefresh={trialBalanceRefresh}
               activeSection={activeSection}
               activeTab={activeTab}
-              onUnsavedChange={onReportingDirtyChange}
+              onOpenGrouping={openGrouping}
+              groupingFocus={groupingFocus}
               confirmUnsaved={confirmUnsaved}
               controllerRef={controllerRef}
             />

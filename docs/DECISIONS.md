@@ -93,6 +93,12 @@ This log separates user-approved product/scope decisions from engineering propos
 - **Rationale:** Close the direct-inspection gap while preserving tenant isolation, provenance, existing financial/report data and the explicit demo boundary.
 - **Status:** Implemented in code and focused tests. Visual viewport UAT and persistent separate-profile save remain pending; do not populate the existing isolated demo.
 
+### 2026-11-03 — Unclassified balances appear as visible placeholders in draft statements
+
+- **Decision:** Every non-zero final-TB account appears exactly once. Unclassified debit balances show under Assets and unclassified credit balances under Liabilities, as separate red "Action required" lines linking to Trial Balance › Grouping. They are presentation only: no suspense journal, no ledger change, no saved classification. Draft previews are allowed with warnings; finalisation must stay blocked until classifications are resolved. Profit is derived from classified P&L ledgers and added to equity once; pre-closing versus closed treatment is detected from classified P&L balances.
+- **Supersedes:** the earlier rule that unresolved accounts were excluded from both statements and shown only in an exceptions panel (the panel remains).
+- **Status:** Implemented and verified on Interior (difference 0, 17 accounts visible). The finalisation gate for the draft pack is not yet wired.
+
 ## Engineering proposals and operational choices
 
 ### 2026-10-26 — Enforce engagement authorization at the trusted service

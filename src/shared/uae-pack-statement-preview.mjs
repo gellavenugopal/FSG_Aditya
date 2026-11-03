@@ -40,14 +40,29 @@ function buildStatementPreview(review) {
     sections[line.statement].get(line.section).push(entry)
   }
   const sectionTotal = (statement, section) => round2((sections[statement].get(section) || []).reduce((sum, line) => sum + line.amount, 0))
+  // Accounts awaiting classification are presentation placeholders only: debit balances sit under assets and
+  // credit balances under liabilities so every non-zero ledger appears once. Nothing is saved or journalled.
+  const debitExceptions = exceptions.filter(row => row.balance < 0)
+  const creditExceptions = exceptions.filter(row => row.balance > 0)
+  const unclassified = {
+    debit: { rows: debitExceptions, count: debitExceptions.length, amount: round2(-debitExceptions.reduce((sum, row) => sum + row.balance, 0)) },
+    credit: { rows: creditExceptions, count: creditExceptions.length, amount: round2(creditExceptions.reduce((sum, row) => sum + row.balance, 0)) },
+  }
   const totalNonCurrent = sectionTotal('SFP', 'Non-current assets')
   const totalCurrent = sectionTotal('SFP', 'Current assets')
-  const totalAssets = round2(totalNonCurrent + totalCurrent)
+  const totalAssets = round2(totalNonCurrent + totalCurrent + unclassified.debit.amount)
   const totalEquityBeforeProfit = sectionTotal('SFP', 'Equity')
-  const totalLiabilities = sectionTotal('SFP', 'Liabilities')
-  const profit = round2(lineRows.filter(line => line.statement === 'PL').reduce((sum, line) => sum + line.amount, 0))
-  // The final TB is pre-closing: retained earnings (4502 "B/Fwd") holds only the opening balance and no ledger
-  // carries current-year profit, so profit is added once, derived from the P&L lines, never from a mapping.
+  const totalClassifiedLiabilities = sectionTotal('SFP', 'Liabilities')
+  const totalLiabilities = round2(totalClassifiedLiabilities + unclassified.credit.amount)
+  const plLines = lineRows.filter(line => line.statement === 'PL')
+  const profit = round2(plLines.reduce((sum, line) => sum + line.amount, 0))
+  // Profit is always derived from the classified P&L ledgers present in the TB. A pre-closing TB carries
+  // P&L balances and a retained-earnings balance that excludes them, so profit is added to equity once. An
+  // already-closed TB carries no P&L balances (profit already sits in retained earnings), so nothing is added.
+  const plLedgerCount = plLines.reduce((sum, line) => sum + line.members.length, 0)
+  const closing = plLedgerCount
+    ? { treatment: 'pre-closing', plLedgerCount, note: `${plLedgerCount} classified P&L ledgers carry balances, so the TB is pre-closing and profit is added to equity once.` }
+    : { treatment: 'closed-or-no-pl', plLedgerCount, note: 'No classified P&L ledger carries a balance: either the TB is already closed (profit is in retained earnings) or P&L ledgers are still unclassified. Nothing is added to equity.' }
   const totalEquity = round2(totalEquityBeforeProfit + profit)
   const totalEquityAndLiabilities = round2(totalEquity + totalLiabilities)
   const unresolvedNet = round2(exceptions.reduce((sum, row) => sum + row.balance, 0))
@@ -56,16 +71,26 @@ function buildStatementPreview(review) {
   const difference = round2(totalAssets - totalEquityAndLiabilities)
   const placed = lineRows.reduce((sum, line) => sum + line.members.length, 0)
   const placedNet = lineRows.reduce((sum, line) => sum + line.net, 0)
-  // Every non-zero ledger must be in exactly one line or in the exception list. With credit-positive
-  // balances: assets = -A, E+L = E+L, profit = P, so difference = -(A) - (E+L) = -(tbNet - P - unresolved).
-  const checks = [
-    { label: 'Every non-zero ledger appears exactly once (statement lines + exceptions = review rows)', passed: placed + exceptions.length === review.rows.length && duplicateRows === 0, detail: `${placed} placed + ${exceptions.length} exceptions = ${review.rows.length} accounts; ${duplicateRows} duplicates` },
-    { label: 'Sum of statement-line ledger balances + exceptions equals the source TB net', passed: Math.abs(placedNet + unresolvedNet - tbNet) < 0.01, detail: `${round2(placedNet)} + ${unresolvedNet} vs ${round2(tbNet)}` },
-    { label: 'Balance Sheet difference equals the unresolved net (profit is closed into equity once)', passed: Math.abs(difference - (unresolvedNet - tbNet)) < 0.01, detail: `difference ${difference} = unresolved net ${unresolvedNet} - TB net ${round2(tbNet)}; profit ${profit} added to equity once` },
+  // Every non-zero ledger is in exactly one line or one unclassified placeholder. With credit-positive balances
+  // assets = -(asset net) - (debit placeholder net), equity+liabilities = (equity net) + (liability net) +
+  // (credit placeholder net) + profit, so difference = -(source TB net): zero for a balanced TB. Profit counted
+  // twice (or omitted) would break that identity.
+  const arithmetic = [
+    { kind: 'arithmetic', label: 'Every non-zero ledger appears exactly once (statement lines + unclassified lines = review rows)', passed: placed + exceptions.length === review.rows.length && duplicateRows === 0, detail: `${placed} placed + ${exceptions.length} unclassified = ${review.rows.length} accounts; ${duplicateRows} duplicates` },
+    { kind: 'arithmetic', label: 'Sum of statement-line ledger balances + unclassified balances equals the source TB net', passed: Math.abs(placedNet + unresolvedNet - tbNet) < 0.01, detail: `${round2(placedNet)} + ${unresolvedNet} vs ${round2(tbNet)}` },
+    { kind: 'arithmetic', label: 'Source final TB net is zero (otherwise the TB itself is out of balance, or profit is already in retained earnings while P&L ledgers still carry balances)', passed: Math.abs(tbNet) < 0.01, detail: `source TB net ${round2(tbNet)}` },
+    { kind: 'arithmetic', label: 'Balance Sheet difference equals minus the source TB net (profit closed into equity once)', passed: Math.abs(difference + tbNet) < 0.01, detail: `difference ${difference}; source TB net ${round2(tbNet)}; profit ${profit} added to equity once (${closing.treatment})` },
   ]
+  const classification = {
+    kind: 'classification', complete: exceptions.length === 0,
+    label: exceptions.length === 0 ? 'Classification complete: every non-zero ledger has a line' : `Classification incomplete: ${exceptions.length} accounts await classification (finalisation blocked)`,
+    detail: `${unclassified.debit.count} debit (${unclassified.debit.amount}) and ${unclassified.credit.count} credit (${unclassified.credit.amount}) placeholders`,
+  }
+  const checks = [...arithmetic, { ...classification, passed: classification.complete }]
   return {
-    sections, lineRows, exceptions, checks, tbNet: round2(tbNet),
-    totals: { totalNonCurrent, totalCurrent, totalAssets, totalEquity, totalEquityBeforeProfit, totalLiabilities, totalEquityAndLiabilities, difference, profit },
+    sections, lineRows, exceptions, checks, unclassified, closing, classification, tbNet: round2(tbNet),
+    arithmeticReconciled: arithmetic.every(check => check.passed),
+    totals: { totalNonCurrent, totalCurrent, totalAssets, totalAssetsClassified: round2(totalNonCurrent + totalCurrent), totalEquity, totalEquityBeforeProfit, totalClassifiedLiabilities, totalLiabilities, totalEquityAndLiabilities, difference, profit },
     coverage: {
       accounts: review.rows.length, unresolvedCount: exceptions.length, unresolvedNet, unresolvedAbsolute, totalAbsolute,
       unresolvedAbsolutePercent: totalAbsolute ? round2((unresolvedAbsolute / totalAbsolute) * 100) : 0,
@@ -88,7 +113,7 @@ const REFERENCE_2024 = {
     { statement: 'SFP', label: 'Due from related parties', reference: 8662392, lines: ['due_from_related_parties'] },
     { statement: 'SFP', label: 'Other current financial assets', reference: 5320289, lines: ['other_current_financial_assets'] },
     { statement: 'SFP', label: 'Cash and cash equivalents', reference: 7344711, lines: ['cash_and_bank'] },
-    { statement: 'SFP', label: 'Total assets', reference: 85012436, total: 'totalAssets', note: 'Difference 92,160 = 49,000 excluded subsidiary-investment ledger + 43,160 receivables difference.' },
+    { statement: 'SFP', label: 'Total assets', reference: 85012436, total: 'totalAssetsClassified', note: 'Classified lines only (the unclassified debit placeholder is excluded from this comparison). Difference 92,160 = 49,000 excluded subsidiary-investment ledger + 43,160 receivables difference.' },
     { statement: 'SFP', label: 'Share capital', reference: 300000, lines: ['share_capital'] },
     { statement: 'SFP', label: 'Statutory reserve', reference: 150000, lines: ['statutory_reserve'] },
     { statement: 'SFP', label: "Provision for employees' end of service benefits", reference: 3820456, lines: ['employee_end_of_service'] },
@@ -99,9 +124,10 @@ const REFERENCE_2024 = {
     { statement: 'SFP', label: 'Due to related parties', reference: 49000, lines: ['due_to_related_parties'], note: 'No mapped ledger carries 49,000 for this caption. The unresolved ledgers "Smart Option - SC" (24,990) and "Andrew - SC" (24,010) total exactly 49,000 (amount match only; names do not state the nature). Not classified; decision required.' },
     { statement: 'SFP', label: 'Provision for tax', reference: 1662826, lines: ['tax_payable'], note: 'Unresolved journal-created "Provision for corporate tax" (1,662,826) is excluded and equals this difference.' },
     { statement: 'PL', label: 'Revenue', reference: 193529582, lines: ['revenue'] },
-    { statement: 'PL', label: 'Contract costs', reference: -151281564, lines: ['contract_costs', 'contract_costs_employee'], note: 'Aggregate with administrative expenses: calculated 186,613,341 vs reference 186,862,060 (248,719 unexplained). The split differs by 1,258,427 because suggested mappings come from 2025 classifications while the reference groups 2024 costs differently (reference MMTB: cost of contracts 149,534,066). Unresolved cost ledgers also excluded. Account-level reference grouping (SCH sheet) not yet reconciled.' },
+    { statement: 'PL', label: 'Contract costs', reference: -151281564, lines: ['contract_costs', 'contract_costs_employee'], note: 'All differences are calculated minus reference. Combined with administrative expenses: calculated costs 186,613,341 vs reference 186,862,060 = +248,719 (calculated costs are lower; unexplained). This line is -1,258,427 (calculated costs higher) and administrative is +1,507,146 (calculated costs lower), so -1,258,427 + 1,507,146 = +248,719. The split differs because suggested mappings come from 2025 classifications while the reference groups 2024 costs differently (reference MMTB: cost of contracts 149,534,066). Unresolved cost ledgers also excluded. Account-level reference grouping (SCH sheet) not yet reconciled.' },
+    { statement: 'PL', label: 'Contract costs + administrative expenses (combined)', reference: -186862060, lines: ['contract_costs', 'contract_costs_employee', 'administrative_selling_expenses', 'employee_costs', 'directors_remuneration'], note: 'Calculated minus reference = +248,719 (calculated costs are lower than the reference). Unexplained: unresolved cost ledgers are excluded and the reference grouping at account level (SCH sheet) is not yet reconciled.' },
     { statement: 'PL', label: 'Other income', reference: 12275964, lines: ['other_income'], note: 'Unresolved "Royalty fee" (7,974,343) is excluded and equals this difference exactly. Not classified from its name.' },
-    { statement: 'PL', label: 'Administrative and selling expenses', reference: -35580496, lines: ['administrative_selling_expenses', 'employee_costs', 'directors_remuneration'], note: 'See contract costs: the 1,507,146 here is the opposite side of the 1,258,427 contract-cost difference plus the 248,719 aggregate residual. Unresolved ROU depreciation (848,256) and consultancy (1,107,847) are excluded. Unresolved; not a balancing input.' },
+    { statement: 'PL', label: 'Administrative and selling expenses', reference: -35580496, lines: ['administrative_selling_expenses', 'employee_costs', 'directors_remuneration'], note: 'Calculated minus reference = +1,507,146 (calculated costs lower): it offsets the -1,258,427 contract-cost difference (+1,258,427 reclassification) plus the +248,719 aggregate residual. Unresolved ROU depreciation (848,256) and consultancy (1,107,847) are excluded. Unresolved; not a balancing input.' },
     { statement: 'PL', label: 'Finance costs', reference: -647988, lines: ['finance_costs', 'finance_costs_lease'], note: 'Three unresolved interest ledgers (115,965 + 375,096 + 91,347 = 582,408) are excluded and equal this difference.' },
     { statement: 'PL', label: 'Tax expense', reference: -1662826, lines: ['tax_expense'] },
     { statement: 'PL', label: 'Profit for the year', reference: 16632672, total: 'profit', note: 'Excludes the unresolved income and expense ledgers in the exception panel (for example royalty fee, rebate received, interest, ROU depreciation, consultancy); the two documented AED 1 rounding differences are unresolved.' },

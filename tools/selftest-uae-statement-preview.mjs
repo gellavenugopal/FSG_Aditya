@@ -94,16 +94,20 @@ for (const line of preview.lineRows) {
 }
 const sectionOf = key => lineByKey.get(key).section
 const sum = predicate => [...independent].filter(([key]) => predicate(lineByKey.get(key))).reduce((acc, [, v]) => acc + v, 0)
-const assets = -sum(line => line.statement === 'SFP' && ['Non-current assets', 'Current assets'].includes(line.section))
+const debitPlaceholder = -[...review.rows].filter(row => row.balance < 0 && !(row.status === 'confirmed' ? row.lineKey : row.suggestedLineKey)).reduce((acc, row) => acc + row.balance, 0)
+const assets = debitPlaceholder - sum(line => line.statement === 'SFP' && ['Non-current assets', 'Current assets'].includes(line.section))
 const profit = sum(line => line.statement === 'PL')
-const equityLiab = sum(line => line.statement === 'SFP' && ['Equity', 'Liabilities'].includes(line.section)) + profit
+const creditPlaceholder = [...review.rows].filter(row => row.balance > 0 && !(row.status === 'confirmed' ? row.lineKey : row.suggestedLineKey)).reduce((acc, row) => acc + row.balance, 0)
+const equityLiab = creditPlaceholder + sum(line => line.statement === 'SFP' && ['Equity', 'Liabilities'].includes(line.section)) + profit
 check(near(preview.totals.totalAssets, assets), `total assets ${preview.totals.totalAssets} matches independent ${assets}`)
 check(near(preview.totals.totalEquityAndLiabilities, equityLiab), `total equity and liabilities ${preview.totals.totalEquityAndLiabilities} matches independent ${equityLiab}`)
 check(near(preview.totals.profit, profit), `profit ${preview.totals.profit} matches independent ${profit}`)
 check(near(preview.totals.difference, assets - equityLiab), `Balance Sheet difference ${preview.totals.difference} shown, not forced to zero`)
-check(near(preview.totals.difference, unresolvedNet - preview.tbNet), `difference equals unresolved net ${unresolvedNet} less TB net ${preview.tbNet}; profit counted in equity once`)
+check(near(preview.totals.difference, -preview.tbNet) && near(preview.tbNet, 0), 'balanced final TB gives a balanced draft Balance Sheet with all 17 unresolved accounts visible as placeholders')
+check(preview.unclassified.debit.count + preview.unclassified.credit.count === 17 && near(preview.unclassified.debit.amount - preview.unclassified.credit.amount, -unresolvedNet), 'debit and credit placeholders hold all 17 accounts and are kept separate')
 check(near(preview.totals.totalEquity - preview.totals.totalEquityBeforeProfit, profit), 'only the derived P&L profit was added to equity')
-check(preview.checks.every(item => item.passed), 'built-in omission/double-count/difference-explanation checks pass')
+check(preview.checks.filter(item => item.kind === 'arithmetic').every(item => item.passed) && preview.arithmeticReconciled, 'arithmetic reconciliation checks pass')
+check(preview.classification.complete === false, 'classification completeness is reported separately and is incomplete')
 check(sectionOf('revenue') === 'Profit or loss', 'sanity: revenue is a P&L line')
 
 const comparison = compareWithReference(preview)

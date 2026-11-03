@@ -202,6 +202,8 @@ export default function EngagementReportingPanel({
   trialBalanceRefresh = 0,
   activeSection = 'reports',
   activeTab = 'audit',
+  onOpenGrouping = () => {},
+  groupingFocus = null,
   onUnsavedChange = () => {},
   confirmUnsaved = async () => 'cancel',
   controllerRef = null,
@@ -1040,7 +1042,7 @@ export default function EngagementReportingPanel({
         {isIndiaNotesView
           ? <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-700">India Schedule III statements, schedules and annexures are produced in the combined PDF (Review and Export). An in-app statement preview is not available for this pack. Note narrative disclosures are edited below.</p>
           : isUaeDemo && finalId && ['position', 'profit'].includes(activeTab)
-            ? <UaePackStatementPreview engagement={engagement} trialBalanceId={finalId} view={activeTab} />
+            ? <UaePackStatementPreview engagement={engagement} trialBalanceId={finalId} view={activeTab} onOpenGrouping={onOpenGrouping} />
             : <UaeStatementPreview financialData={isUaeDemo ? financialData : null} activeTab={activeTab} disclosures={disclosures}
             editable={editable} busy={busy} onDisclosureChange={changeDisclosure} onSaveDisclosure={saveDisclosure} />}
       </div>}
@@ -1128,7 +1130,7 @@ export default function EngagementReportingPanel({
           </details>}
         </div>
 
-        {isMappingView && isUaeDemo && finalId && <UaePackMappingReview engagementId={engagement.id} trialBalanceId={finalId} />}
+        {isMappingView && isUaeDemo && finalId && <UaePackMappingReview engagementId={engagement.id} trialBalanceId={finalId} focus={groupingFocus} />}
         <div className={`rounded-lg border border-gray-200 p-4 ${isFinalTbView || isMappingView ? '' : 'hidden'}`}>
           <h4 className="font-semibold text-gray-900">{isMappingView ? 'Engagement statement mappings' : 'Final Trial Balance snapshot'}</h4>
           <p className="mt-1 text-xs text-gray-500">{isUaeDemo

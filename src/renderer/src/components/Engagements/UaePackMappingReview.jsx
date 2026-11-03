@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { effectiveLine } from '../../../../shared/uae-pack-statement-preview.mjs'
 
 const money = value => Number(value || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -24,7 +25,7 @@ function CoverageCard({ title, hint, value, tone }) {
   </div>
 }
 
-export default function UaePackMappingReview({ engagementId, trialBalanceId, canEdit = true }) {
+export default function UaePackMappingReview({ engagementId, trialBalanceId, canEdit = true, focus = null }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState(null)
@@ -44,6 +45,12 @@ export default function UaePackMappingReview({ engagementId, trialBalanceId, can
   }, [engagementId, trialBalanceId])
 
   useEffect(() => { load() }, [load])
+  // Opened from a red "Unclassified ..." statement line: show exactly its contributing accounts.
+  useEffect(() => {
+    if (!focus?.mode) return
+    setSearch('')
+    setFilter(focus.mode === 'debit' ? 'unclassified-debit' : focus.mode === 'credit' ? 'unclassified-credit' : 'unclassified')
+  }, [focus?.tick, focus?.mode])
 
   const lineLabel = useMemo(() => new Map((data?.pack?.lines || []).map(line => [line.key, line.label])), [data])
 
@@ -65,6 +72,12 @@ export default function UaePackMappingReview({ engagementId, trialBalanceId, can
     const needle = search.trim().toLowerCase()
     return (data?.rows || []).filter(row => {
       if (filter === 'open' && row.status === 'confirmed') return false
+      if (filter.startsWith('unclassified')) {
+        if (effectiveLine(row)) return false
+        if (filter === 'unclassified-debit' && !(row.balance < 0)) return false
+        if (filter === 'unclassified-credit' && !(row.balance > 0)) return false
+        return !needle || `${row.code} ${row.name}`.toLowerCase().includes(needle)
+      }
       if (filter !== 'open' && filter !== 'all' && row.status !== filter) return false
       return !needle || `${row.code} ${row.name}`.toLowerCase().includes(needle)
     })
@@ -100,6 +113,9 @@ export default function UaePackMappingReview({ engagementId, trialBalanceId, can
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
         <label>Show <select value={filter} onChange={event => setFilter(event.target.value)} className="rounded border border-gray-300 px-2 py-1">
           <option value="open">Needs review (not confirmed)</option>
+          <option value="unclassified">Unclassified (statement placeholders)</option>
+          <option value="unclassified-debit">Unclassified debit balances</option>
+          <option value="unclassified-credit">Unclassified credit balances</option>
           <option value="unresolved">Unresolved</option>
           <option value="conflict">Conflicts</option>
           <option value="suggested">Suggested</option>

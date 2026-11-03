@@ -78,6 +78,10 @@ The desktop reuses the India financial statement/notes builders and Electron PDF
 - The test suite covers a baseline-calibrated Sample 01 fixture, a simple trading LLC and one controlled IAS 16 revaluation-OCI scenario. The controlled treatment assumptions and unsupported adjacent cases are recorded in [DECISIONS.md](./DECISIONS.md).
 - The disclosure-total validator is callable by tests but is not connected to editable structured schedules in the UI. The fixture engagements have not been provisioned as separate persistent engagement records or run through the desktop after restart.
 
+### UAE draft-pack statement preview data flow
+
+`src/shared/uae-pack-statement-preview.mjs` (pure) builds the preview from the saved final TB and pack: mapped ledgers go to their lines; unresolved ledgers go to `unclassified.debit` (Assets) or `unclassified.credit` (Liabilities). Arithmetic checks and classification completeness are reported separately. `UaePackStatementPreview.jsx` renders the red placeholder rows; clicking one calls `onOpenGrouping`, which sets `groupingFocus` in `EngagementHub.jsx` and opens Trial Balance › Grouping (`UaePackMappingReview.jsx` filter). No service route, schema or persistence changed; nothing is written by the preview.
+
 ### Planned / unsupported
 
 New reporting frameworks and localization remain governed by [ROADMAP.md](./ROADMAP.md). General UAE IFRS reporting, full IAS 16 coverage, structured schedule editing, India Ind AS, US GAAP and currency translation are not implemented.

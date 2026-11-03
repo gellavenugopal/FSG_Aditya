@@ -28,18 +28,30 @@ function LineRow({ line, open, onToggle }) {
   </>
 }
 
-function Section({ title, lines, total, totalLabel, openKeys, toggle, derived }) {
+function PlaceholderRow({ kind, group, onOpen }) {
+  if (!group.count) return null
+  const label = kind === 'debit' ? 'Unclassified debit balances' : 'Unclassified credit balances'
+  return <tr className="border-t bg-red-50 text-red-800" data-testid={`unclassified-${kind}`}>
+    <td className="py-1.5 pr-2"><button type="button" className="text-left font-semibold underline" onClick={() => onOpen(kind)}>{label}</button>
+      <span className="ml-2 rounded bg-red-700 px-1.5 text-[11px] font-semibold text-white">Action required</span>
+      <span className="ml-2 text-[11px]">{group.count} account{group.count === 1 ? '' : 's'} · presentation placeholder only, nothing saved · opens Trial Balance, Grouping</span></td>
+    <td className="py-1.5 text-right font-semibold tabular-nums">{money(group.amount)}</td>
+  </tr>
+}
+
+function Section({ title, lines, total, totalLabel, openKeys, toggle, derived, placeholder }) {
   return <div className="mb-3">
     <div className="text-xs font-semibold uppercase tracking-wide text-gray-600">{title}</div>
     <table className="w-full text-sm"><tbody>
       {lines.map(line => <LineRow key={line.key} line={line} open={openKeys.has(line.key)} onToggle={() => toggle(line.key)} />)}
+      {placeholder}
       {derived && <tr className="border-t bg-indigo-50/50" data-testid="bs-derived-profit"><td className="py-1.5 pr-2">{derived.label} <span className="text-[11px] text-gray-600">(derived from the P&amp;L lines, not a ledger or a mapping)</span></td><td className="py-1.5 text-right tabular-nums">{money(derived.amount)}</td></tr>}
       {total !== undefined && <tr className="border-t-2 font-semibold"><td className="py-1.5">{totalLabel} <span className="text-[11px] font-normal text-amber-800">(provisional)</span></td><td className="py-1.5 text-right tabular-nums">{money(total)}</td></tr>}
     </tbody></table>
   </div>
 }
 
-export default function UaePackStatementPreview({ engagement, trialBalanceId, view }) {
+export default function UaePackStatementPreview({ engagement, trialBalanceId, view, onOpenGrouping = () => {} }) {
   const [review, setReview] = useState(null)
   const [error, setError] = useState('')
   const [openKeys, setOpenKeys] = useState(new Set())
@@ -72,7 +84,7 @@ export default function UaePackStatementPreview({ engagement, trialBalanceId, vi
   return <div data-testid="uae-pack-statement-preview" className="space-y-4">
     <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-3 text-sm text-amber-950">
       <div className="font-semibold">PROVISIONAL PREVIEW - not reviewed, not confirmed, not for issue</div>
-      <p className="mt-1 text-xs">Calculated from the saved final Trial Balance and the draft pack using {coverage.suggestedCount} suggested and {coverage.confirmedCount} confirmed ledger mappings. Suggestions are not saved or confirmed by this screen; a saved manual or accepted mapping always takes precedence. {coverage.unresolvedCount} unresolved accounts are excluded and shown below, so every total may be incomplete. No comparative figures are shown until a prior-year comparative is verified.</p>
+      <p className="mt-1 text-xs">Calculated from the saved final Trial Balance and the draft pack using {coverage.suggestedCount} suggested and {coverage.confirmedCount} confirmed ledger mappings. Suggestions are not saved or confirmed by this screen; a saved manual or accepted mapping always takes precedence. {coverage.unresolvedCount} unclassified accounts appear as red placeholders in the Balance Sheet (debits under assets, credits under liabilities) so every total includes every ledger once; they are not in any statement line and are not part of the P&amp;L, so profit may be incomplete. No comparative figures are shown until a prior-year comparative is verified.</p>
     </div>
     <dl className="grid gap-x-6 gap-y-1 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs sm:grid-cols-2 lg:grid-cols-3">
       <div><dt className="inline font-semibold">Engagement: </dt><dd className="inline">{engagement.name}{engagement.reference ? ` (${engagement.reference})` : ''}</dd></div>
@@ -89,16 +101,20 @@ export default function UaePackStatementPreview({ engagement, trialBalanceId, vi
     {!isPL && <section className="rounded-lg border border-gray-200 bg-white p-4" aria-label="Provisional statement of financial position">
       <h4 className="font-semibold text-gray-900">Statement of financial position - provisional, potentially incomplete</h4>
       <p className="mb-2 text-xs text-gray-500">AED, {periodText}. Select a line to inspect its ledgers.</p>
-      {sectionsOf('SFP').map(([title, lines]) => <Section key={title} title={title} lines={lines} openKeys={openKeys} toggle={toggle}
-        derived={title === 'Equity' ? { label: 'Profit / (loss) for the year (provisional)', amount: totals.profit } : undefined}
-        total={title === 'Non-current assets' ? totals.totalNonCurrent : title === 'Current assets' ? totals.totalCurrent : title === 'Equity' ? totals.totalEquity : totals.totalLiabilities}
-        totalLabel={`Total ${title.toLowerCase()}`} />)}
+      {sectionsOf('SFP').map(([title, lines]) => <React.Fragment key={title}>
+        <Section title={title} lines={lines} openKeys={openKeys} toggle={toggle}
+          derived={title === 'Equity' ? { label: 'Profit / (loss) for the year (provisional)', amount: totals.profit } : undefined}
+          placeholder={title === 'Liabilities' ? <PlaceholderRow kind="credit" group={preview.unclassified.credit} onOpen={onOpenGrouping} /> : undefined}
+          total={title === 'Non-current assets' ? totals.totalNonCurrent : title === 'Current assets' ? totals.totalCurrent : title === 'Equity' ? totals.totalEquity : totals.totalLiabilities}
+          totalLabel={`Total ${title.toLowerCase()}`} />
+        {title === 'Current assets' && <table className="mb-3 w-full text-sm"><tbody><PlaceholderRow kind="debit" group={preview.unclassified.debit} onOpen={onOpenGrouping} /></tbody></table>}
+      </React.Fragment>)}
       <table className="w-full text-sm"><tbody>
         <tr className="border-t-2 font-semibold"><td className="py-1">Total assets (provisional)</td><td className="py-1 text-right tabular-nums">{money(totals.totalAssets)}</td></tr>
         <tr className="font-semibold"><td className="py-1">Total equity and liabilities (provisional)</td><td className="py-1 text-right tabular-nums">{money(totals.totalEquityAndLiabilities)}</td></tr>
         <tr className={Math.abs(totals.difference) < 0.005 ? 'text-green-800' : 'font-semibold text-red-700'} data-testid="bs-difference"><td className="py-1">Balance Sheet difference (assets less equity and liabilities)</td><td className="py-1 text-right tabular-nums">{money(totals.difference)}</td></tr>
       </tbody></table>
-      <p className="mt-2 rounded bg-gray-50 p-2 text-xs text-gray-700">The source Trial Balance net is {money(preview.tbNet)}. The final TB is pre-closing: Retained earnings b/fwd holds only the opening balance, so the P&amp;L profit of {money(totals.profit)} is added to equity once (it is not in any ledger). The remaining difference equals the net of the {coverage.unresolvedCount} unresolved accounts ({money(coverage.unresolvedNet)}) that are excluded; this explains the difference but does not reconcile it. Nothing has been inserted to balance it.</p>
+      <p className="mt-2 rounded bg-gray-50 p-2 text-xs text-gray-700">Arithmetic: every non-zero ledger appears once, so the Balance Sheet difference equals minus the source Trial Balance net ({money(preview.tbNet)}) and is {preview.arithmeticReconciled ? 'zero for this balanced TB' : 'NOT explained - investigate'}. Treatment of current-year profit: {preview.closing.note} The profit of {money(totals.profit)} comes only from classified P&amp;L ledgers. Classification: {coverage.unresolvedCount} accounts are still unclassified and shown in red as placeholders (net {money(coverage.unresolvedNet)}); a balanced statement does not mean they are correctly classified. No suspense journal or assumed classification has been created.</p>
     </section>}
 
     {isPL && <section className="rounded-lg border border-gray-200 bg-white p-4" aria-label="Provisional statement of profit or loss">
@@ -110,15 +126,16 @@ export default function UaePackStatementPreview({ engagement, trialBalanceId, vi
     </section>}
 
     <section className="rounded-lg border border-red-300 bg-red-50 p-4" aria-label="Unresolved accounts" data-testid="unresolved-exceptions">
-      <h4 className="font-semibold text-red-900">Exceptions - {coverage.unresolvedCount} unresolved accounts excluded from both statements</h4>
-      <p className="mt-1 text-xs text-red-900">Signed net {money(coverage.unresolvedNet)} · Sum of absolute balances {money(coverage.unresolvedAbsolute)} of {money(coverage.totalAbsolute)} total ({coverage.unresolvedAbsolutePercent}% by absolute value). Not forced into any line.</p>
+      <h4 className="font-semibold text-red-900">Action required - {coverage.unresolvedCount} accounts awaiting classification</h4>
+      <p className="mt-1 text-xs text-red-900">Shown in the Balance Sheet as unclassified placeholders ({preview.unclassified.debit.count} debit, {money(preview.unclassified.debit.amount)}; {preview.unclassified.credit.count} credit, {money(preview.unclassified.credit.amount)}), not in the P&amp;L. Signed net {money(coverage.unresolvedNet)} · Sum of absolute balances {money(coverage.unresolvedAbsolute)} of {money(coverage.totalAbsolute)} total ({coverage.unresolvedAbsolutePercent}% by absolute value). Not forced into any line. <button type="button" className="font-semibold underline" onClick={() => onOpenGrouping('all')}>Open in Grouping</button></p>
       <table className="mt-2 w-full text-xs"><thead><tr className="text-left text-red-800"><th>Code</th><th>Ledger</th><th className="text-right">Balance (Cr +, Dr -)</th><th className="pl-3">Reason</th></tr></thead>
         <tbody>{exceptions.map(row => <tr key={row.id} className="border-t border-red-200"><td className="py-0.5 pr-2 font-mono">{row.code || '(no code)'}</td><td className="pr-2">{row.name}</td><td className="text-right tabular-nums">{money(row.balance)}</td><td className="pl-3">{row.issue || row.status}</td></tr>)}</tbody></table>
     </section>
 
     <section className="rounded-lg border border-gray-200 bg-white p-4" aria-label="Calculation checks">
-      <h4 className="font-semibold text-gray-900">Calculation checks (omitted / double-counted accounts)</h4>
-      <ul className="mt-1 space-y-1 text-xs">{preview.checks.map(check => <li key={check.label} className={check.passed ? 'text-green-800' : 'font-semibold text-red-700'}>{check.passed ? 'Passed' : 'FAILED'} - {check.label} <span className="text-gray-500">({check.detail})</span></li>)}</ul>
+      <h4 className="font-semibold text-gray-900">Calculation checks</h4>
+      <ul className="mt-1 space-y-1 text-xs">{preview.checks.map(check => <li key={check.label} className={check.passed ? 'text-green-800' : check.kind === 'classification' ? 'font-semibold text-red-700' : 'font-semibold text-red-700'}>{check.kind === 'classification' ? (check.passed ? 'Classification complete' : 'Action required') : (check.passed ? 'Arithmetic passed' : 'Arithmetic FAILED')} - {check.label} <span className="text-gray-500">({check.detail})</span></li>)}</ul>
+      <p className="mt-1 text-[11px] text-gray-500">Draft previews and draft exports are allowed with unresolved classifications; finalisation stays blocked until none remain.</p>
     </section>
 
     <section className="rounded-lg border border-indigo-200 bg-white p-4" aria-label="Reference validation evidence" data-testid="reference-validation">

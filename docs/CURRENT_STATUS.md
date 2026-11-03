@@ -4,11 +4,11 @@ Last updated: **2026-11-03 (Task 2 reconciliation checkpoint)**
 
 ## Authoritative current summary
 
-- **Branch / commits:** `redesign/unified-navigation-settings`, pushed to `origin` (no merge, no force-push; `main` untouched). Navigation + draft-pack implementation commit `2b66db6`, on top of `f72d4e7`. Task 2 changes (Balance Sheet reconciliation, Interior headings, evidence notes, docs) are committed after `2b66db6`; the exact SHA is recorded in the final handover for that commit.
+- **Branch / commits:** `redesign/unified-navigation-settings`, pushed to `origin` (no merge, no force-push; `main` untouched). Navigation + draft-pack implementation `2b66db6`; Task 2 reconciliation `b522a39`; the unclassified-placeholder follow-up is the next commit (SHA in the handover).
 - **Environment:** isolated UAT demo only (`fsg_engagement_demo` on 127.0.0.1:64023, profile `%USERPROFILE%\FSG-Aditya-engagement-demo\electron-user-data`). Live (`vera_financial`) is **Unverified**: no environment marker exists, nothing was run against it.
 - **Launch (verified):** `$env:FSG_DEMO_HOME = Join-Path $env:USERPROFILE 'FSG-Aditya-engagement-demo'; .\tools\engagement-demo.ps1 demo`.
 - **Shell:** one shell (Engagements and Settings; select, then Go; five sidebar sections). Details in the feature inventory below.
-- **Interior 2024 (isolated record, final TB v1, pack `AE_UAE_SEPARATE_FS` v0.1-draft):** provisional preview only. Balance Sheet difference is now **-1,033,563**, equal to the net of the 17 unresolved accounts; it is explained, not reconciled. 0 confirmed mappings, 285 suggested, 17 unresolved. Comparative: none verified. See "Task 2" below.
+- **Interior 2024 (isolated record, final TB v1, pack `AE_UAE_SEPARATE_FS` v0.1-draft):** provisional preview only. Every non-zero account appears once; the 17 unclassified accounts show as red "Action required" placeholders (9 debit 16,156,299 under Assets; 8 credit 15,122,736 under Liabilities) linking to Trial Balance › Grouping. The draft Balance Sheet difference is **0** (arithmetic only; classification is incomplete). 0 confirmed mappings, 285 suggested, 17 unresolved. Comparative: none verified. See "Task 2" and its follow-up below.
 - **Not complete:** statements are provisional; cash flow, equity movements, notes/schedules from the draft pack, exports for Interior, policies, stale-preview marking and grouping rule display are not built. A passing build is not evidence of completeness.
 - **Next bounded task:** obtain the user's decisions on the 17 unresolved accounts (questions below), save the agreed mappings through the existing review screen, then import/verify the 2023 comparative.
 - Sections below headed with a date are **historical checkpoints**; where they conflict with this summary, this summary and the Task 2 section win.
@@ -95,25 +95,31 @@ Physical 2880x1800 at 200% not tested (this machine is 1920x1080 at 1x). A build
 
 Old difference 8,455,893 = profit 9,489,456 (unclosed) + unresolved net -1,033,563. The remaining difference equals the excluded unresolved net exactly; it is an explanation, not a reconciliation. Nothing was inserted.
 
-**2. Evidence for the 17 unresolved accounts (none confirmed or saved; all need your decision)**
+**2. Decision table for the 17 unresolved accounts (superseded the earlier evidence list; none confirmed or saved)**
 
-Evidence is the reference workbook `Schedules & PL.xlsx` (MMTB revised 31-12-2024 column, BS/P&L sheets, JV 24). Amount equality is evidence of where the reference placed an amount, not proof of the account's nature.
+Conventions: "App balance" is the final-TB balance, **credit positive (Cr +) / debit negative (Dr -)**. Workbook cells are `Schedules & PL.xlsx` (`D:\Programs\FinancialStatements\AdityaTool\client-reference\UAESample1\`), where **debit is positive**. 2024 evidence is used: `TB 24` (GL net changes 2024, col C = the workbook's classification), `MMTB` (2024 JV column E and revised column G), `JV 24`, `BS` column G (31.12.2024) and `P&L` column H (2024). `Finanicals.pdf` page numbers locate captions only (the amounts are taken from workbook cells). **Evidence** = the workbook places that same named ledger in a caption; **Amount-only** = only an amount (or an aggregate difference) matches, so the nature is not proven.
 
-| Ledger | Balance (Cr +) | Evidence | Status |
-|---|---|---|---|
-| 4503 Share holders dividends | -12,911,017 | Equals reference MMTB "Shareholders' current account" 12,911,017; pack has no such line | Decision |
-| 4126 Short term loan - Beehive | 534,618 | Equals reference third-party loan 534,618; pack has no line | Decision / pack change |
-| 7650-20 / 7651-20 Hotel Shareholders (Andrew, Sean) | -177,229 / -480,542 | No reference amount matches | Decision |
-| Smart Option - SC / Andrew - SC | 24,990 / 24,010 | Together 49,000 = reference "Due to related parties" 49,000 (amount only) | Decision |
-| Investment in Subsidiary | -49,000 | Reference JV 24 and MMTB "Investment in subsidiary" 49,000 | Evidence supports; confirm |
-| Interest on lease liability / SH loan / third party | -115,965 / -375,096 / -91,347 | Sum 582,408 = finance-cost difference; MMTB finance-cost JV 115,965 | Evidence supports; confirm |
-| Depreciation ROU | -848,256 | MMTB depreciation JV 848,255 | Evidence supports; confirm |
-| Consultancy fees | -1,107,847 | MMTB legal and professional JV -1,107,847 | Decision (caption) |
-| Royalty fee | 7,974,343 | Equals other-income difference exactly | Decision (nature) |
-| Rebate received | 2,365,148 | No direct reference match | Decision |
-| Provision for corporate tax | 1,662,826 | Equals reference tax payable and tax expense 1,662,826 | Evidence supports; confirm |
-| Due to customers on contracts | 2,536,794 | Reference MMTB "Unearned revenue" 2,536,794 | Evidence supports; confirm |
-| TB round off | 7 | None | Decision |
+| # | Account (id) | App balance | Proposed classification | Supporting evidence (2024) | Kind | Decision required |
+|---|---|---|---|---|---|---|
+| 1 | 4126 SHORT TERM LOAN - BEEHIVE (735) | +534,618 (Cr) | New pack line "Loan from a third party" (Liabilities); not `borrowings` | `TB 24!C115` "LOAN FROM THIRD PARTY", `K115` -534,618; `BS!A49/G49` "Loan from a third party" 534,618; PDF p1, p15-16, p22 | Evidence | Approve a new pack line, or deliberately merge into `borrowings` (then Borrowings differs from the reference 763,114 by 534,618) |
+| 2 | 4503 SHARE HOLDERS DIVIDENDS (740) | -12,911,017 (Dr) | New pack line "Shareholders' current account" shown after total equity | `TB 24!C120` "SH CURRENT ACCOUNT", `K120` 12,911,017 (J120 5,234,404 is the 2024 journal); `MMTB!B32` and `BS!A34/G34` -12,911,017; `BS!A33:A36` places it between "Total shareholders' equity" and "Total shareholders' funds" 1,449,749; `SCH!K190` "Dividend (Note 14 & 28)"; PDF p1, p13, p21 | Evidence for the caption (ledger name says dividends) | Is this a shareholders' current account (debit, deducted from equity) or dividends declared? Confirm the presentation after total equity |
+| 3 | 7650-20 Hotel Shareholders - Andrew (824) | -177,229 (Dr) | `employee_costs` | `TB 24!C204` "EMPLOYEE COSTS", `K204` 177,229; `MMTB!B525`; also the 2025 reference classification | Evidence (workbook classification; the name suggests shareholders) | Confirm employee cost (not a shareholder or related-party balance) and its cost line |
+| 4 | 7651-20 Hotel Shareholders - Sean (825) | -480,542 (Dr) | `employee_costs` | `TB 24!C205` "EMPLOYEE COSTS", `K205` 480,542; `MMTB!B527` | Evidence (as above) | As above |
+| 5 | TB round off (946, no code) | +7 (Cr) | None proposed | `MMTB!B829` exists but holds -6/2, never 7; no caption | None | Treat as rounding (which line?) or leave unresolved with the two documented AED 1 differences |
+| 6 | Investment in Subsidiary (947, no code) | -49,000 (Dr) | `investment_in_subsidiary` | `MMTB!B14/E14/G14` 49,000; `BS!A11/G11` 49,000; `BS!I11` also 49,000 in 2023; PDF p6 | Evidence | Confirm |
+| 7 | Smart Option - SC (948, no code) | +24,990 (Cr) | `due_to_related_parties` | `MMTB!B233/E233` -24,990 (Dr+ so credit); with #8 totals 49,000 = `BS!A54/G54` "Due to related parties" (also 49,000 in 2023 `I54`); PDF p12 | Ledger listed in MMTB; link to the caption is **amount-only** | Confirm nature: payable to related parties (subsidiary investment?) |
+| 8 | Andrew - SC (949, no code) | +24,010 (Cr) | `due_to_related_parties` | `MMTB!B234/E234` -24,010; sum with #7 = 49,000 | As #7 | As #7 |
+| 9 | Interest on lease liability (950) | -115,965 (Dr) | `finance_costs_lease` | `MMTB!B777/E777` 115,965; `MMTB!E64` "Finance costs" 115,965; `TB 24!J332` | Evidence | Confirm |
+| 10 | Interest on SH loan (952) | -375,096 (Dr) | `finance_costs` | `TB 24!J333` 375,096; `JV 24!C47` "Interest on loan from RP" 375,096; `MMTB!B778` | Evidence | Confirm |
+| 11 | Interest on third party (953) | -91,347 (Dr) | `finance_costs` | `TB 24!J334`; `JV 24!C48` "Interest on loan from TP" 91,347; `MMTB!B779`. #9 to #11 total 582,408 = the Finance-costs difference; `P&L!A31/H31` | Evidence | Confirm |
+| 12 | Depreciation ROU (951) | -848,256 (Dr) | `administrative_selling_expenses` | `MMTB!B770/E770` 848,256; `MMTB!E63` "Depreciation" 848,255 (the AED 1 difference); `P&L!H20` | Evidence for the caption "Depreciation"; the cost line is **amount-only** | Which cost line holds depreciation (administrative expenses vs contract costs)? The AED 1 stays unresolved |
+| 13 | Consultancy fees (958) | -1,107,847 (Dr) | `administrative_selling_expenses` | `MMTB!B428/E428` 1,107,847; `MMTB!B54/E54` "Legal and professional" -1,107,847; `TB 24!J307` (account 9200-10 Professional Fees - Dubai, class "LEGAL AND PROFESSIONAL") | Evidence for the 2024 JV caption | Confirm "Legal and professional" is administrative (not contract cost) |
+| 14 | Rebate received (954) | +2,365,148 (Cr) | Deduction within costs (contract or administrative), **not** other income | `MMTB!B460/E460` -2,365,148; `TB 24!J331`; `JV 24!C53` "Rebate received". The reference Other income (`P&L!H18` 12,275,964) differs from the calculation by exactly the royalty fee, so the rebate is not in it; the cost aggregate reconciles only if the rebate reduces costs (see reconciliation) | **Amount-only (aggregate)** | Confirm that the rebate reduces costs and which cost line |
+| 15 | Royalty fee (955) | +7,974,343 (Cr) | `other_income` | `MMTB!B461/E461` -7,974,343; `TB 24!J22` reverses Unbilled Revenue 7,974,343 (`A22` 2051); Other income difference equals 7,974,343 exactly (`P&L!H18`); PDF p15 | **Amount-only (aggregate)** | Confirm it is other income (not revenue) |
+| 16 | Provision for corporate tax (956) | +1,662,826 (Cr) | `tax_payable` | `BS!A55/G55` "Provision for tax" 1,662,826; `P&L!H36` tax expense -1,662,826 (already agrees); `MMTB!E70` total 1,662,826, `G65`, `TB 24!K324` Corporation Tax - Dubai | Evidence for the caption; the ledger nature is name plus amount | Confirm |
+| 17 | Due to customers on contracts (957) | +2,536,794 (Cr) | `contract_liabilities` | `MMTB!B310/E310` -2,536,794; `MMTB!B36/E36` "Unearned revenue" -2,536,794; the reference Trade-and-other-payables difference includes exactly this amount (PDF p14, p19, p23) | Evidence | Confirm `contract_liabilities`, or trade payables to match the reference presentation |
+
+**Reconciliation of the cost aggregate if the proposals are confirmed** (calculated minus reference, costs negative): the combined contract plus administrative difference is **+248,719**. Moving the unresolved cost ledgers into costs: Hotel Shareholders 657,771 + Depreciation ROU 848,256 + Consultancy 1,107,847 = 2,613,874 of cost; less the rebate 2,365,148 = 248,726; less the TB round off 7 = **248,719**. This equals the residual to the AED, which supports (but does not prove) decisions #3-#5, #12-#14. The cost split between contract costs and administrative expenses (-1,258,427 / +1,507,146) still needs account-level work against `SCH`.
 
 **3. Mapping visibility:** confirmed, suggested and unresolved remain distinct in the preview and the mapping review. The mapping review (accept, manual correction, mapped accounts) is rendered by `EngagementReportingPanel.jsx` for the **Trial Balance › Grouping** subsection (`EngagementHub.jsx` maps `grouping` to the mapping view), so it is accessible there; unchanged in this task.
 
@@ -127,11 +133,11 @@ Evidence is the reference workbook `Schedules & PL.xlsx` (MMTB revised 31-12-202
 | Trade and other payables | 63,404,877 | 65,984,831 | -2,579,954 | 2,536,794 unresolved (due to customers) + 43,160 |
 | Due to related parties | 0 | 49,000 | -49,000 | Possibly the two "- SC" ledgers (amount match only) |
 | Provision for tax | 0 | 1,662,826 | -1,662,826 | Unresolved provision ledger |
-| Contract costs | -152,539,991 | -151,281,564 | -1,258,427 | Classification split; account-level grouping not reconciled |
-| Administrative and selling | -34,073,350 | -35,580,496 | 1,507,146 | Opposite side of the split; aggregate of both has an unexplained 248,719 |
+| Contract costs | -152,539,991 | -151,281,564 | -1,258,427 | Calculated costs higher; classification split, account-level grouping not reconciled |
+| Administrative and selling | -34,073,350 | -35,580,496 | 1,507,146 | Calculated minus reference is +1,507,146 (calculated costs lower), the opposite sign to contract costs. Combined with contract costs: -1,258,427 + 1,507,146 = **+248,719**, explained by the unresolved cost ledgers (see decision table) |
 | Other income | 4,301,621 | 12,275,964 | -7,974,343 | Unresolved royalty fee |
 | Finance costs | -65,580 | -647,988 | 582,408 | Three unresolved interest ledgers |
-| Profit for the year | 9,489,456 | 16,632,672 | -7,143,216 | Excluded unresolved income and expense ledgers plus the cost-split residual |
+| Contract plus administrative (combined) | -186,613,341 | -186,862,060 | +248,719 | Calculated costs lower; equals unresolved cost ledgers (2,613,874) less rebate (2,365,148) less round off (7) |`r`n| Profit for the year | 9,489,456 | 16,632,672 | -7,143,216 | Other income -7,974,343 + finance costs +582,408 + combined costs +248,719 = -7,143,216 (all differences are calculated minus reference) |
 | Due from related parties, PPE, ROU asset, other financial assets, cash, share capital, statutory reserve, end-of-service, lease liabilities, borrowings, loans from related parties, revenue, tax expense | agree | agree | 0 | |
 
 The two documented AED 1 rounding differences are retained unresolved. Reference values are validation evidence only.
@@ -141,12 +147,32 @@ The two documented AED 1 rounding differences are retained unresolved. Reference
 **Questions for the user (accounting judgment)**
 
 1. 4503 "Share holders dividends" (12,911,017 Dr): shareholders' current account (and equity or liability?) or dividends declared?
-2. Hotel Shareholders (Andrew, Sean) and the two "- SC" ledgers: related-party receivables, payables, or part of the shareholders' current account? Is the 49,000 pair the payable for the subsidiary investment?
+2. The two "- SC" ledgers: related-party payables? (Hotel Shareholders are classified EMPLOYEE COSTS in the 2024 workbook.) Is the 49,000 pair the payable for the subsidiary investment?
 3. Add pack lines for the third-party loan (Beehive 534,618) and a shareholders' current account?
 4. Royalty fee (7,974,343 Cr) and rebate received (2,365,148 Cr): other income, or a reduction of contract costs?
 5. Consultancy fees: administrative/professional, or contract cost? Depreciation ROU and the lease interest: confirm as depreciation and finance cost?
 6. Confirm the evidence-supported items (subsidiary investment, tax provision, due to customers/unearned revenue) as saved mappings?
 7. TB round off (7) and the two AED 1 differences: treatment?
+
+## Task 2 follow-up: unclassified placeholders and profit-to-equity logic (2026-11-03)
+
+**Checkpoint record**
+
+- Source branch: `redesign/unified-navigation-settings`, on top of `b522a39`. Implementation commit: see the handover for the commit that contains this section.
+- Features changed (status):
+  - **Statement generation simplified** (`src/shared/uae-pack-statement-preview.mjs`): every non-zero final-TB account appears exactly once, in its mapped line or in a placeholder. Unclassified **debit** balances sit under Assets ("Unclassified debit balances") and **credit** balances under Liabilities ("Unclassified credit balances"); the two totals are separate. Placeholders are presentation only: no suspense journal, no ledger change, no saved assumption. Working, verified on Interior.
+  - **Red "Action required" lines** with account counts in the Balance Sheet; clicking one opens **Trial Balance › Grouping** with the matching filter (unclassified debit / credit / all) via `EngagementHub.jsx` → `EngagementReportingPanel.jsx` → `UaePackMappingReview.jsx`. Working, verified (9 debit, 8 credit; the filter shows 9).
+  - **Classifying an account** (confirmed mapping) removes it from the placeholder and includes it in its line on the next load; profit and equity are recalculated from the classified P&L ledgers only. Verified with synthetic ledgers (offline test), not by saving a mapping on Interior (Interior is preserved).
+  - **Arithmetic reconciliation and classification completeness are reported separately.** Arithmetic: each ledger once; placed plus unclassified equals the source TB net; the source TB net is zero; the difference equals minus the source TB net. Classification: complete only when no unclassified account remains.
+  - **Profit-to-equity rule:** profit is derived from classified P&L ledgers in the TB and added to equity once. The application establishes the treatment from the data: if classified P&L ledgers carry balances the TB is **pre-closing** (retained earnings excludes the year's profit) and profit is added; if none do, the TB is **closed or its P&L ledgers are unclassified** and nothing is added. A TB that has both P&L balances and profit already in retained earnings cannot balance, so the "source TB net is zero" check fails and the preview reports an arithmetic failure instead of silently double counting. Interior is pre-closing (189 classified P&L ledgers); this is detected, not assumed.
+  - **Reference comparison** now compares classified lines only (Total assets excludes the placeholder) and adds a combined contract-plus-administrative row. Sign convention: calculated minus reference throughout.
+  - Draft previews are always available with warnings. **Draft exports** for this pack are not built (no Interior export exists). **Finalisation blocking** for unresolved classifications is **not wired**: finalisation is not offered for this draft pack at all, so there is nothing yet to block; the rule is a requirement for the later export/finalisation task.
+- Interior result (isolated, unchanged data): total assets 101,076,575 (includes unclassified debits 16,156,299); total equity 7,217,550 (profit 9,489,456 added once); total liabilities 93,859,025 (includes unclassified credits 15,122,736); total equity and liabilities 101,076,575; **Balance Sheet difference 0**. A zero difference reflects arithmetic only; 17 accounts (net -1,033,563, 5.21% by absolute value) are unclassified and the figures remain provisional.
+- Schema changes: none. No data written to Interior.
+- Checks run: `node tools/selftest-uae-statement-logic.mjs` (new, offline, synthetic: 15 passed; pre-closing, closed, double-count flagged, placeholders, classification preserving the balance); `node tools/selftest-uae-statement-preview.mjs` against Interior (91 passed); `npm run build` exit 0; screenshots inspected (equity section, placeholders, totals/difference, Grouping click-through). **Not run:** `engagement:test`, `isolation:test`, India regressions (no service or India code changed), physical 200% display, saving a mapping on Interior.
+- Known visual issue (pre-existing): the sticky engagement header overlaps scrolled content in screenshots taken mid-scroll. The Grouping page also still shows the older "Engagement statement mappings" block (zero saved UAE mappings) below the pack review; the two should be consolidated.
+- Environment/launch: isolated UAT demo (command in the authoritative summary). Live remains Unverified.
+- Next bounded task: apply the user's decisions on the 17 accounts (table above), add the agreed pack lines (third-party loan, shareholders' current account) as a new pack version, then verify the 2023 comparative. Do not start the comparative before the decisions.
 
 **Remaining blockers / next bounded task:** your decisions above; saving agreed mappings; verifying and selecting the 2023 comparative; account-level contract-cost/administrative reconciliation using the SCH sheet. Screenshots of the equity section were not captured (the viewport capture shows the heading and warnings only).
 
