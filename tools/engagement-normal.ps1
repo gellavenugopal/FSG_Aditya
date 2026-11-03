@@ -14,7 +14,8 @@
 param(
   [string]$BackupFolder = 'D:\Programs\FinancialStatements\AdityaTool\FSG-normal-backups',
   [int]$MaxBackupAgeHours = 24,
-  [switch]$CheckOnly
+  [switch]$CheckOnly,
+  [int]$DebugPort = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,5 +56,11 @@ Write-Host 'Mode    : normal firm profile; startup data rewrites OFF; environmen
 if ($CheckOnly) { Write-Host 'CheckOnly: all pre-launch checks passed; nothing was started.'; return }
 
 $env:FSG_STARTUP_DATA_REWRITES = 'off'
+$electronArguments = @()
+if ($DebugPort -ne 0) {
+  if ($DebugPort -lt 1024 -or $DebugPort -gt 65535 -or $DebugPort -in 5432, 5173, 9339) { throw 'DebugPort must be an unused loopback port from 1024 to 65535 (not 5432, 5173 or the UAT port 9339).' }
+  $electronArguments = @('--', "--remote-debugging-port=$DebugPort", '--remote-debugging-address=127.0.0.1')
+  Write-Host "Debug   : DevTools on 127.0.0.1:$DebugPort for this session only (grants local control of the signed-in session; close the app when finished)"
+}
 Set-Location $repositoryRoot
-npm run dev
+npm run dev @electronArguments

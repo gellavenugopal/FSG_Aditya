@@ -109,7 +109,8 @@ const childEnvironment = {
   FSG_DEV_LAUNCHER_VERSION: String(launcherVersion),
   FSG_DEV_PACKAGE_VERSION: packageVersion,
 }
-child = spawn(process.execPath, ['--require', outputGuardPreload, electronViteCli, 'dev'], {
+const electronArguments = process.argv.slice(2)
+child = spawn(process.execPath, ['--require', outputGuardPreload, electronViteCli, 'dev', ...(electronArguments.length ? ['--', ...electronArguments] : [])], {
   cwd: repositoryRoot,
   env: childEnvironment,
   stdio: ['inherit', 'pipe', 'pipe'],

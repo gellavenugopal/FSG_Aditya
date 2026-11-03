@@ -2,7 +2,9 @@
 // that Firm Settings uses (authenticated service operations). Usage:
 //   $env:FSG_TEST_TARGET_FILE = "$env:USERPROFILE\FSG-Aditya-engagement-demo\target.json"
 //   node tools/populate-kreston-demo-masters.mjs inspect | apply | verify
-// Requires the isolated desktop (.\tools\engagement-demo.ps1 demo) on DevTools port 9339. Never targets the normal profile.
+// Requires the isolated desktop (.\tools\engagement-demo.ps1 demo) on DevTools port 9339.
+// Normal mode: set FSG_NORMAL_DEBUG_PORT (launcher: .\tools\engagement-normal.ps1 -DebugPort 9340) instead of the target file;
+// the user signs in themselves and this script never reads or types credentials.
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -12,11 +14,17 @@ import { validateDemoUserCredentials } from './engagement-demo-auth-config.mjs'
 
 const phase = process.argv[2]
 assert.ok(['inspect', 'apply', 'verify'].includes(phase), 'phase must be inspect, apply or verify')
-assert.ok(process.env.FSG_TEST_TARGET_FILE, 'FSG_TEST_TARGET_FILE must point at the isolated demo target.json')
-const demoHome = path.dirname(process.env.FSG_TEST_TARGET_FILE)
-const credentials = JSON.parse(fs.readFileSync(path.join(demoHome, 'credentials.json'), 'utf8'))
-validateDemoUserCredentials(credentials.testUsers)
-const administrator = credentials.testUsers.administrator
+const normalPort = Number(process.env.FSG_NORMAL_DEBUG_PORT || 0)
+if (normalPort) {
+  assert.ok(!process.env.FSG_TEST_TARGET_FILE, 'Normal mode must not be combined with the UAT target file.')
+  assert.ok(Number.isInteger(normalPort) && normalPort >= 1024 && normalPort <= 65535 && normalPort !== 9339, 'FSG_NORMAL_DEBUG_PORT must be the normal launcher debug port, not the UAT port 9339')
+} else {
+  assert.ok(process.env.FSG_TEST_TARGET_FILE, 'FSG_TEST_TARGET_FILE must point at the isolated demo target.json')
+}
+const demoHome = normalPort ? null : path.dirname(process.env.FSG_TEST_TARGET_FILE)
+const credentials = normalPort ? null : JSON.parse(fs.readFileSync(path.join(demoHome, 'credentials.json'), 'utf8'))
+if (credentials) validateDemoUserCredentials(credentials.testUsers)
+const administrator = credentials?.testUsers.administrator
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 const SITE = 'https://www.krestonmenon.com/'
@@ -43,7 +51,7 @@ const STYLE = {
   pageSize: 'A4', pageOrientation: 'portrait', pageMarginMm: 15,
 }
 
-const targets = await new Promise((resolve, reject) => http.get('http://127.0.0.1:9339/json/list', response => {
+const targets = await new Promise((resolve, reject) => http.get(`http://127.0.0.1:${normalPort || 9339}/json/list`, response => {
   const chunks = []
   response.on('data', chunk => chunks.push(chunk))
   response.on('end', () => resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))))
@@ -74,6 +82,15 @@ async function evaluate(expression) {
 const api = (method, argument) => evaluate(`window.api[${JSON.stringify(method)}](${JSON.stringify(argument)})`)
 
 async function signIn() {
+  if (normalPort) {
+    // The user signs in; credentials are never read or typed by this script.
+    for (let attempt = 0; attempt < 3000; attempt++) {
+      const status = await api('engagementAuthStatus', null)
+      if (status?.user) return
+      await sleep(200)
+    }
+    throw new Error('Sign in to the normal application, then run this phase again.')
+  }
   if ((await api('engagementAuthStatus', null))?.user) return
   for (let attempt = 0; attempt < 50 && !(await evaluate(`!!document.querySelector('input[type="email"],input[autocomplete="username"],input[type="text"]')`)); attempt++) await sleep(200)
   await evaluate(`(() => {
@@ -97,6 +114,10 @@ const isKreston = firm => /kreston/i.test(firm.firm_name || '') || /krestonmenon
 
 await signIn()
 const before = await api('getEngagementFirmSettings', null)
+if (normalPort) {
+  const names = before.professionalFirms.map(f => f.firm_name)
+  console.log('NORMAL TARGET firms:', JSON.stringify(names))
+}
 console.log('EXISTING', JSON.stringify(summary(before), null, 1))
 console.log('REPORT STYLES', JSON.stringify((await api('listFirmReportStyles', null)).map(s => ({ id: s.id, version: s.version, name: s.name }))))
 if (phase === 'inspect') { socket.close(); process.exit(0) }

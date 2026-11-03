@@ -25,6 +25,8 @@ From a clean terminal (no `FSG_TEST_*`, `FSG_DEMO_*` or `ENGAGEMENT_SERVICE_*` v
 .\tools\engagement-normal.ps1
 ```
 
+`.\tools\engagement-normal.ps1 -DebugPort 9340` additionally opens DevTools on `127.0.0.1:9340` for that session only (loopback, not 5432/5173/9339). It is passed as a Chromium switch through `tools/dev-launcher.mjs`, which now forwards its arguments to Electron; the app's own debug-port guard for non-test mode is unchanged. A debug port lets local processes control the signed-in session, so use it only for an authorised task (for example `FSG_NORMAL_DEBUG_PORT=9340 node tools/populate-kreston-demo-masters.mjs inspect|apply|verify` after you sign in yourself) and close the app afterwards.
+
 `.\tools\engagement-normal.ps1 -CheckOnly` runs the checks without starting anything. The backup checks run before the running-window check, so they can be exercised while a session is open. The script refuses to start when those variables are inherited, when any FSG window (UAT or normal) is already running, or when `D:\Programs\FinancialStatements\AdityaTool\FSG-normal-backups` has no non-empty, `pg_restore`-listable `vera_financial-*.dump` newer than 24 hours. It sets `FSG_STARTUP_DATA_REWRITES=off`, then runs `npm run dev` against `%APPDATA%\fsg-bharat`. It never reads or prints the stored password and does not create an environment marker, so the badge stays **Unverified**. Create a fresh backup (`pg_dump -Fc`, run by the user or with their authorisation) before any launch that will change the live schema. Close UAT normally first (`.\tools\engagement-demo.ps1 demo` uses DevTools port 9339 and Vite port 5173).
 
 ## Persistent isolated demo
