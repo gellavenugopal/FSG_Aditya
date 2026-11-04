@@ -70,6 +70,31 @@ if (serviceOnlyMode) engagementClientOptions.serviceOnlyMode = true
 // address) the client, Financial Year, Trial Balance and tab it was opened from - see App.jsx (POPOUT).
 const closeConfirmed = new WeakSet()
 const closePending = new Map()
+const CLOSE_ACK_TIMEOUT_MS = Math.max(1000, Number(process.env.FSG_CLOSE_ACK_TIMEOUT_MS) || 5000)
+
+function clearPendingClose(win) {
+  const state = closePending.get(win)
+  if (state) { clearTimeout(state.timer); closePending.delete(win) }
+}
+
+// The renderer did not acknowledge the close request (busy or hung). Unsaved work cannot be inspected from here, so the
+// user decides; the safe choice is the default and the window stays open until they choose.
+async function askNativeCloseDecision(win, state) {
+  if (win.isDestroyed() || closePending.get(win) !== state || state.acked || state.nativeOpen) return
+  state.nativeOpen = true
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning',
+    title: 'FSG Bharat',
+    message: 'The window is not responding to the close request.',
+    detail: 'It may contain unsaved changes that cannot be checked right now. Keep the window open and wait, or close it and lose any unsaved changes.',
+    buttons: ['Keep window open', 'Close without saving'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true
+  })
+  if (win.isDestroyed()) return
+  if (response === 1) { closeConfirmed.add(win); clearPendingClose(win); win.close() } else clearPendingClose(win)
+}
 
 async function createWindow(popoutPayload = null, fromWindow = null) {
   let pos = {}
@@ -97,16 +122,20 @@ async function createWindow(popoutPayload = null, fromWindow = null) {
   if (!popoutPayload) mainWindow = win
   appWindows.add(win)
   win.on('closed', () => appWindows.delete(win))
-  // Alt+F4, the Close button and Alt+X all arrive here. The renderer runs its unsaved-change guard and
-  // calls app:confirm-close; if it never acknowledges (for example while loading), the window closes.
+  // Alt+F4, the Close button and Alt+X all arrive here. The window never closes on its own: only an explicit renderer
+  // confirmation (app:confirm-close) or an explicit native "Close without saving" choice closes it. The timer below only
+  // detects a renderer that did not even acknowledge the request; it then asks the user natively and keeps the window open.
   win.on('close', event => {
-    if (closeConfirmed.has(win) || win.webContents.isDestroyed() || win.webContents.isLoading()) return
+    if (closeConfirmed.has(win) || win.webContents.isDestroyed() || win.webContents.isCrashed()) return
     event.preventDefault()
     if (closePending.has(win)) return
-    const timer = setTimeout(() => { closePending.delete(win); if (!win.isDestroyed()) { closeConfirmed.add(win); win.close() } }, 1500)
-    closePending.set(win, timer)
+    const state = { acked: false, timer: null, nativeOpen: false }
+    state.timer = setTimeout(() => askNativeCloseDecision(win, state), CLOSE_ACK_TIMEOUT_MS)
+    closePending.set(win, state)
     win.webContents.send('app:close-requested')
   })
+  win.webContents.on('did-start-loading', () => clearPendingClose(win))
+  win.on('closed', () => clearPendingClose(win))
 
   // Always reset zoom to 1.0 so Ctrl+- from a previous session doesn't persist
   win.webContents.on('did-finish-load', () => {
@@ -215,16 +244,23 @@ app.whenReady().then(async () => {
   // The running exe's own version (package.json at build time), shown beside
   // the app name so it's obvious which build a server or client PC is on.
   ipcMain.handle('app:getVersion', () => app.getVersion())
-  ipcMain.handle('app:quit', () => app.quit())
+  // Exit never bypasses the unsaved-change guard: ask every window to close; the app quits when the last one has closed.
+  ipcMain.handle('app:quit', () => { for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.close(); return true })
   ipcMain.handle('app:request-close', e => { BrowserWindow.fromWebContents(e.sender)?.close(); return true })
   ipcMain.handle('app:close-ack', e => {
     const win = BrowserWindow.fromWebContents(e.sender)
-    if (win && closePending.has(win)) { clearTimeout(closePending.get(win)); closePending.delete(win) }
+    const state = win && closePending.get(win)
+    if (state) { state.acked = true; clearTimeout(state.timer) }
+    return true
+  })
+  ipcMain.handle('app:cancel-close', e => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (win) clearPendingClose(win)
     return true
   })
   ipcMain.handle('app:confirm-close', e => {
     const win = BrowserWindow.fromWebContents(e.sender)
-    if (win && !win.isDestroyed()) { closeConfirmed.add(win); win.close() }
+    if (win && !win.isDestroyed()) { closeConfirmed.add(win); clearPendingClose(win); win.close() }
     return true
   })
 
@@ -267,8 +303,11 @@ app.whenReady().then(async () => {
   })
 })
 
-app.on('before-quit', (event) => {
-  flushDB()
+app.on('before-quit', () => { flushDB() })
+
+// The local engagement service stops only once every window has really closed. A window that keeps itself open (unsaved
+// work) aborts the quit, so the service must still be running then.
+app.on('will-quit', (event) => {
   if (!localEngagementService || closingLocalEngagementService) return
   event.preventDefault()
   closingLocalEngagementService = true

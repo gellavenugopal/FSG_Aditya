@@ -103,7 +103,8 @@ The user directed that the current redesign run against the existing normal firm
 - **Supersedes:** the earlier rule that unresolved accounts were excluded from both statements and shown only in an exceptions panel (the panel remains).
 - **Status:** Implemented and verified on Interior (difference 0, 17 accounts visible). The finalisation gate for the draft pack is not yet wired.
 
-- **2026-11-04 - Guarded close and keyboard shortcuts.** Alt+X, Alt+F4 and the window Close button share one main-process `close` handler that defers to the renderer's unsaved-change guard (fallback close after 1.5 s without acknowledgement). Alt+E keeps an open engagement; section shortcuts need one. Supersedes the earlier "keyboard navigation pending" note.
+- **2026-11-04 - Guarded close and keyboard shortcuts.** Alt+X, Alt+F4 and the window Close button share one main-process `close` handler that defers to the renderer's unsaved-change guard. Alt+E keeps an open engagement; section shortcuts need one. Supersedes the earlier "keyboard navigation pending" note.
+- **2026-11-04 - The window never closes on a timer (supersedes the 1.5 s fallback close).** A close request is answered only by the user: Discard/clean confirms, Cancel keeps the window. A renderer that does not acknowledge within 5 s triggers a native "Keep window open / Close without saving" decision (default Keep); no path closes automatically. `app:quit` (legacy Alt+X handler, sign-in Exit) goes through the same guarded close, and the local engagement service stops in `will-quit`, after all windows have closed.
 - **2026-11-04 - Export logos.** The saved SVG stays the source of truth; Word and Excel derive a transparent PNG at export time. No schema change. The Interior separate-FS draft exports carry no logo until a firm-branding decision is made for them.
 
 ## Engineering proposals and operational choices

@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld('api', {
   quitApp:           ()       => ipcRenderer.invoke('app:quit'),
   requestClose:      ()       => ipcRenderer.invoke('app:request-close'),
   confirmClose:      ()       => ipcRenderer.invoke('app:confirm-close'),
+  cancelClose:       ()       => ipcRenderer.invoke('app:cancel-close'),
   onCloseRequested:  (cb)     => { const h = () => { ipcRenderer.invoke('app:close-ack'); cb() }; ipcRenderer.on('app:close-requested', h); return () => ipcRenderer.removeListener('app:close-requested', h) },
   onDataChanged:     (cb)      => { const h = (_e, info) => cb(info); ipcRenderer.on('data:changed', h); return () => ipcRenderer.removeListener('data:changed', h) },
   // Settings / DB connection

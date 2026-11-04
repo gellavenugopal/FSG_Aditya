@@ -1204,10 +1204,15 @@ export default function App() {
   useEffect(() => {
     if (!window.api?.onCloseRequested) return undefined
     return window.api.onCloseRequested(async () => {
-      const proceed = leaveGuardRef.current
-        ? await leaveGuardRef.current('Closing the application closes the open engagement and its working screens.')
-        : true
-      if (proceed) window.api.confirmClose()
+      try {
+        const proceed = leaveGuardRef.current
+          ? await leaveGuardRef.current('Closing the application closes the open engagement and its working screens.')
+          : true
+        if (proceed) await window.api.confirmClose()
+        else await window.api.cancelClose()
+      } catch {
+        await window.api.cancelClose()
+      }
     })
   }, [])
   const signOut = async () => {
