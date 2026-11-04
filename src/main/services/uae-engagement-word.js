@@ -21,6 +21,7 @@ const {
   WidthType,
 } = createRequire(import.meta.url)('docx')
 import { DEFAULT_REPORT_STYLE, validateReportStyle } from './branding-domain.mjs'
+import { rasterizeSvgLogo } from './brand-logo.js'
 
 const TABLE_WIDTH = 9000
 const TABLE_COLUMNS = [5400, 1800, 1800]
@@ -296,7 +297,7 @@ export async function buildUaeEngagementWordDocument(source = {}) {
   const identity = signing.identitySnapshot || {}
   const branding = identity.branding || {}
   const reportStyle = validateReportStyle(output.report_style_snapshot?.settings || DEFAULT_REPORT_STYLE)
-  const logo = imageBuffer(branding)
+  const logo = imageBuffer(await rasterizeSvgLogo(branding))
   const periodEnd = safeText(engagement.periodEnd || financials.periods?.current)
   const comparativeEnd = safeText(source.comparativeTrialBalance?.dateTill || financials.periods?.comparative)
   const currentYear = /^(\d{4})/.exec(periodEnd)?.[1] || ''

@@ -68,6 +68,9 @@ if (serviceOnlyMode) engagementClientOptions.serviceOnlyMode = true
 
 // More than one window: every window is the whole app, on the same database. A window opened with "New window" is told (in the page
 // address) the client, Financial Year, Trial Balance and tab it was opened from - see App.jsx (POPOUT).
+const closeConfirmed = new WeakSet()
+const closePending = new Map()
+
 async function createWindow(popoutPayload = null, fromWindow = null) {
   let pos = {}
   if (fromWindow && !fromWindow.isDestroyed()) {
@@ -94,6 +97,16 @@ async function createWindow(popoutPayload = null, fromWindow = null) {
   if (!popoutPayload) mainWindow = win
   appWindows.add(win)
   win.on('closed', () => appWindows.delete(win))
+  // Alt+F4, the Close button and Alt+X all arrive here. The renderer runs its unsaved-change guard and
+  // calls app:confirm-close; if it never acknowledges (for example while loading), the window closes.
+  win.on('close', event => {
+    if (closeConfirmed.has(win) || win.webContents.isDestroyed() || win.webContents.isLoading()) return
+    event.preventDefault()
+    if (closePending.has(win)) return
+    const timer = setTimeout(() => { closePending.delete(win); if (!win.isDestroyed()) { closeConfirmed.add(win); win.close() } }, 1500)
+    closePending.set(win, timer)
+    win.webContents.send('app:close-requested')
+  })
 
   // Always reset zoom to 1.0 so Ctrl+- from a previous session doesn't persist
   win.webContents.on('did-finish-load', () => {
@@ -203,6 +216,17 @@ app.whenReady().then(async () => {
   // the app name so it's obvious which build a server or client PC is on.
   ipcMain.handle('app:getVersion', () => app.getVersion())
   ipcMain.handle('app:quit', () => app.quit())
+  ipcMain.handle('app:request-close', e => { BrowserWindow.fromWebContents(e.sender)?.close(); return true })
+  ipcMain.handle('app:close-ack', e => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (win && closePending.has(win)) { clearTimeout(closePending.get(win)); closePending.delete(win) }
+    return true
+  })
+  ipcMain.handle('app:confirm-close', e => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (win && !win.isDestroyed()) { closeConfirmed.add(win); win.close() }
+    return true
+  })
 
   // "New window": another window of the app, opened where this one is (client, Financial Year, Trial Balance, tab)
   ipcMain.handle('window:openNew', async (e, payload) => {

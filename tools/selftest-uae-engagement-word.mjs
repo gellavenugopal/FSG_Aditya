@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import JSZip from 'jszip'
+import { SYNTHETIC_ASPECT, SYNTHETIC_SVG_BASE64, pngInfo, ratioWithin } from './brand-logo-fixture.mjs'
 import { calculateUaeReportDataHash } from '../src/main/services/uae-report-data-hash.mjs'
 import { buildUaeDemoFinancials } from '../src/renderer/src/components/Engagements/uaeDemoReporting.js'
 import { buildUaeEngagementWordDocument } from '../src/main/services/uae-engagement-word.js'
@@ -133,3 +135,21 @@ await assert.rejects(
 )
 
 console.log('UAE editable Word export checks passed for baseline and non-zero OCI fixtures.')
+
+{
+  const logoSource = sourceFor(fixtures[0], 7)
+  logoSource.reportOutput.signing_details.identitySnapshot = {
+    branding: { name: 'Synthetic Kreston-proportion logo', logoMimeType: 'image/svg+xml', logoBase64: SYNTHETIC_SVG_BASE64 },
+  }
+  const zip = await JSZip.loadAsync(await buildUaeEngagementWordDocument(logoSource))
+  const media = Object.keys(zip.files).filter(name => /^word\/media\/.+\.png$/.test(name))
+  assert.equal(media.length, 1, 'SVG logo is embedded as one derived PNG')
+  const info = pngInfo(await zip.file(media[0]).async('nodebuffer'))
+  assert.ok(ratioWithin(info.width / info.height, SYNTHETIC_ASPECT), 'derived PNG keeps the SVG proportions')
+  assert.equal(info.colorType, 6, 'derived PNG has an alpha channel')
+  assert.equal(info.cornerAlpha, 0, 'derived PNG background is transparent')
+  const xml = await zip.file('word/document.xml').async('string')
+  const extent = /<wp:extent cx="(\d+)" cy="(\d+)"/.exec(xml)
+  assert.ok(extent && ratioWithin(Number(extent[1]) / Number(extent[2]), SYNTHETIC_ASPECT), 'Word picture extent keeps the logo proportions')
+  console.log(`Word logo: SVG derived to ${info.width}x${info.height} transparent PNG; extent ratio ${(extent[1] / extent[2]).toFixed(3)} (expected ${SYNTHETIC_ASPECT.toFixed(3)}).`)
+}

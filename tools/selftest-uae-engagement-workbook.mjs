@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import ExcelJS from 'exceljs'
+import JSZip from 'jszip'
+import { SYNTHETIC_ASPECT, SYNTHETIC_SVG_BASE64, pngInfo, ratioWithin } from './brand-logo-fixture.mjs'
 import {
   buildUaeDemoComparativeMappings,
   buildUaeDemoFinancials,
@@ -222,5 +224,28 @@ for (const sheet of workbook.worksheets) {
 const mismatchedSource = { ...source, reportOutput: { ...source.reportOutput, financial_data_sha256: '0'.repeat(64) } }
 await assert.rejects(() => buildUaeEngagementWorkbook(mismatchedSource), /data hash does not match/,
   'an edited source cannot be presented as the saved PDF revision')
+
+{
+  const logoSource = {
+    ...source,
+    reportOutput: {
+      ...source.reportOutput,
+      signing_details: {
+        ...source.reportOutput.signing_details,
+        identitySnapshot: { branding: { name: 'Synthetic Kreston-proportion logo', logoMimeType: 'image/svg+xml', logoBase64: SYNTHETIC_SVG_BASE64 } },
+      },
+    },
+  }
+  const zip = await JSZip.loadAsync(await buildUaeEngagementWorkbook(logoSource))
+  const media = Object.keys(zip.files).filter(name => /^xl\/media\/.+\.png$/.test(name))
+  assert.equal(media.length, 1, 'SVG logo is embedded as one derived PNG')
+  const info = pngInfo(await zip.file(media[0]).async('nodebuffer'))
+  assert.ok(ratioWithin(info.width / info.height, SYNTHETIC_ASPECT), 'derived PNG keeps the SVG proportions')
+  assert.equal(info.cornerAlpha, 0, 'derived PNG background is transparent')
+  const drawing = await zip.file(Object.keys(zip.files).find(name => /^xl\/drawings\/drawing\d+\.xml$/.test(name))).async('string')
+  const extent = /<xdr:ext cx="(\d+)" cy="(\d+)"/.exec(drawing)
+  assert.ok(extent && ratioWithin(Number(extent[1]) / Number(extent[2]), SYNTHETIC_ASPECT), 'Excel picture extent keeps the logo proportions')
+  console.log(`Excel logo: derived ${info.width}x${info.height} transparent PNG; extent ratio ${(extent[1] / extent[2]).toFixed(3)} (expected ${SYNTHETIC_ASPECT.toFixed(3)}).`)
+}
 
 console.log(`UAE workbook self-test passed: ${expectedSheets.length} visible sheets, formulas, source-hash guard, and shared totals (assets ${statements.getCell('B8').value.result}; profit ${statements.getCell('B27').value.result}).`)

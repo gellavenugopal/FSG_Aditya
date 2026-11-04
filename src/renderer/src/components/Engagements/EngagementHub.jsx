@@ -51,6 +51,45 @@ const ENGAGEMENT_DETAIL_TABS = [
   ['finalisation', 'Finalise engagement', 'review', 'finalisation'],
 ]
 const DETAILS_SECTION = { id: 'details', label: 'Engagement details', tabs: ENGAGEMENT_DETAIL_TABS }
+
+// Alt+<letter> shortcuts. Each letter appears once so a key combination can only trigger one action.
+const SECTION_KEYS = { 'trial-balance': 'T', financials: 'F', notes: 'N', policies: 'A', presentation: 'P' }
+const SHORTCUT_BY_CODE = { KeyT: 'trial-balance', KeyF: 'financials', KeyN: 'notes', KeyA: 'policies', KeyP: 'presentation' }
+const SHORTCUT_REFERENCE = [
+  ['Alt+T', 'Trial Balance (open engagement)'], ['Alt+F', 'Financials (open engagement)'], ['Alt+N', 'Notes (open engagement)'],
+  ['Alt+A', 'Accounting Policies (open engagement)'], ['Alt+P', 'Presentation (open engagement)'],
+  ['Alt+S', 'Settings'], ['Alt+E', 'Engagements'], ['Alt+X', 'Exit (asks first if there are unsaved changes)'],
+  ['Tab / Shift+Tab', 'Move forward / backward through controls'], ['Enter / Space', 'Activate the focused tab or button'],
+  ['↑ / ↓ then Enter', 'Engagements list: select a row, then Go'], ['F1 / Esc', 'Open / close this reference'],
+]
+
+function Mnemonic({ label, letter }) {
+  const index = letter ? label.toLowerCase().indexOf(letter.toLowerCase()) : -1
+  if (index < 0) return label
+  return <>{label.slice(0, index)}<u className="underline decoration-2 underline-offset-2">{label[index]}</u>{label.slice(index + 1)}</>
+}
+
+function ShortcutHelp({ onClose }) {
+  const closeRef = React.useRef(null)
+  useEffect(() => {
+    const previous = document.activeElement
+    closeRef.current?.focus()
+    return () => { if (previous && previous.focus) previous.focus() }
+  }, [])
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="shortcut-title" className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="shortcut-title" className="text-base font-semibold text-gray-900">Keyboard shortcuts</h2>
+          <button ref={closeRef} type="button" onClick={onClose} className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50">Close (Esc)</button>
+        </div>
+        <dl className="mt-3 divide-y divide-gray-100 text-sm">
+          {SHORTCUT_REFERENCE.map(([keys, action]) => <div key={keys} className="flex justify-between gap-4 py-1.5"><dt className="font-mono text-xs font-semibold text-gray-900">{keys}</dt><dd className="text-right text-gray-600">{action}</dd></div>)}
+        </dl>
+      </div>
+    </div>
+  )
+}
 const INDIA_STATEMENT_NOTE = 'India statements are produced in the combined reporting pack. Individual statement previews are not available in the protected India workflow yet; nothing is implied as generated here.'
 const sectionsForEngagement = engagement => ENGAGEMENT_SECTIONS.map(section => section.id === 'financials' && engagement
   && engagement.reporting_pack_id !== 'AE_UAE_DEMO' && !String(engagement.reporting_pack_id || '').startsWith('AE_UAE')
@@ -324,7 +363,14 @@ function EngagementList({ user, onCreate, onOpen, serviceOnlyMode = false }) {
                   <tbody className="divide-y divide-gray-100">
                     {visible.map(row => (
                       <tr key={row.id} aria-selected={pickedId === row.id} tabIndex={0} className={`cursor-pointer hover:bg-blue-50/40 ${pickedId === row.id ? 'bg-blue-50' : ''}`}
-                        onClick={() => setPickedId(row.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setPickedId(row.id) } }}>
+                        onClick={() => setPickedId(row.id)} onKeyDown={event => {
+                          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                            event.preventDefault()
+                            const sibling = event.key === 'ArrowDown' ? event.currentTarget.nextElementSibling : event.currentTarget.previousElementSibling
+                            if (sibling) { sibling.focus(); setPickedId(Number(sibling.dataset.engagementId) || sibling.dataset.engagementId) }
+                          } else if (event.key === 'Enter') { event.preventDefault(); setPickedId(row.id); onOpen(row.id) }
+                          else if (event.key === ' ') { event.preventDefault(); setPickedId(row.id) }
+                        }} data-engagement-id={row.id}>
                         <td className="px-4 py-3"><span className="block font-semibold text-gray-900">{row.client_name}</span><span className="text-xs text-gray-500">{row.name}</span></td>
                         <td className="px-4 py-3 font-mono text-xs text-gray-600">{row.reference}</td>
                         <td className="px-4 py-3 text-gray-700">{row.period_start && row.period_end ? formatPeriodRange(row.period_start, row.period_end) : 'Not set'}</td>
@@ -822,7 +868,7 @@ function Summary({ label, value }) {
   return <div><p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</p><p className="mt-1 text-sm font-medium text-gray-900">{value}</p></div>
 }
 
-function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false, confirmUnsaved, controllerRef, onDirtyChange }) {
+function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false, confirmUnsaved, controllerRef, onDirtyChange, shortcutRef = null }) {
   const [data, setData] = useState(null)
   const [trialBalanceRefresh, setTrialBalanceRefresh] = useState(0)
   const [options, setOptions] = useState({ users: [] })
@@ -879,6 +925,11 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false,
     setNavTab(section.tabs[0][0])
   }
   const selectTab = tabId => setNavTab(tabId)
+  useEffect(() => {
+    if (!shortcutRef) return undefined
+    shortcutRef.current = selectSection
+    return () => { shortcutRef.current = null }
+  })
   const guardedLeave = async (reason, proceed) => {
     const controller = controllerRef?.current
     if (controller && !await controller.resolve(reason)) return
@@ -922,11 +973,13 @@ function EngagementOverview({ user, id, onBack, onEdit, serviceOnlyMode = false,
             <nav aria-label="Engagement sections" className="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-2 lg:sticky lg:top-[64px] lg:h-fit lg:flex-col lg:overflow-visible">
               {sections.map(section => (
                 <button key={section.id} type="button" aria-current={navSection === section.id ? 'page' : undefined}
+                  aria-label={section.label} aria-keyshortcuts={SECTION_KEYS[section.id] ? `Alt+${SECTION_KEYS[section.id]}` : undefined}
+                  title={SECTION_KEYS[section.id] ? `${section.label} (Alt+${SECTION_KEYS[section.id]})` : section.label}
                   onClick={() => selectSection(section.id)}
                   className={`shrink-0 rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition-colors ${navSection === section.id
                     ? 'bg-[var(--color-primary)] text-white shadow-sm'
                     : 'text-gray-700 hover:bg-gray-100'}`}>
-                  {section.label}
+                  <Mnemonic label={section.label} letter={SECTION_KEYS[section.id]} />
                 </button>
               ))}
             </nav>
@@ -1269,6 +1322,41 @@ export default function EngagementHub({ user, initialView = 'engagements', servi
   const onEngagementDirtyChange = useCallback(() => {}, [])
   const confirmUnsaved = useCallback(request => new Promise(resolve => setDialog({ request, resolve })), [])
   const decide = decision => { dialog?.resolve(decision); setDialog(null) }
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [notice, setNotice] = useState('')
+  const shortcutRef = React.useRef(null)
+  const screenType = screen.type
+
+  useEffect(() => {
+    if (!notice) return undefined
+    const timer = setTimeout(() => setNotice(''), 4000)
+    return () => clearTimeout(timer)
+  }, [notice])
+
+  useEffect(() => {
+    const onKeyDown = event => {
+      if (event.key === 'F1' && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault()
+        if (!dialog) setHelpOpen(open => !open)
+        return
+      }
+      if (event.key === 'Escape' && helpOpen) { event.preventDefault(); setHelpOpen(false); return }
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.repeat || dialog) return
+      const code = event.code
+      if (code === 'KeyX') { event.preventDefault(); window.api?.requestClose?.(); return }
+      if (helpOpen) return
+      if (code === 'KeyS') { event.preventDefault(); setSettingsVisited(true); setSection('settings'); return }
+      if (code === 'KeyE') { event.preventDefault(); setSection('engagements'); return }
+      const target = SHORTCUT_BY_CODE[code]
+      if (!target) return
+      event.preventDefault()
+      if (screenType !== 'overview' || !shortcutRef.current) { setNotice('Open an engagement first: select a row, then press Go.'); return }
+      setSection('engagements')
+      shortcutRef.current(target)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [dialog, helpOpen, screenType])
 
   useEffect(() => {
     if (!leaveGuardRef) return undefined
@@ -1302,13 +1390,20 @@ export default function EngagementHub({ user, initialView = 'engagements', servi
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-gray-50">
-      <nav aria-label="Firm workspace" className="sticky top-0 z-30 flex shrink-0 items-center gap-1 border-b border-gray-200 bg-white px-4 py-2 shadow-sm">
+      <nav aria-label="Firm workspace" className="sticky top-0 z-30 flex h-[52px] shrink-0 items-center gap-1 border-b border-gray-200 bg-white px-4 shadow-sm">
         <button type="button" aria-current={section === 'engagements' ? 'page' : undefined}
+          aria-label="Engagements" aria-keyshortcuts="Alt+E" title="Engagements (Alt+E)"
           onClick={() => setSection('engagements')}
-          className={`rounded-lg px-3 py-2 text-sm font-semibold ${section === 'engagements' ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50'}`}>Engagements</button>
+          className={`rounded-lg px-3 py-2 text-sm font-semibold ${section === 'engagements' ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50'}`}><Mnemonic label="Engagements" letter="E" /></button>
         <button type="button" aria-current={section === 'settings' ? 'page' : undefined}
+          aria-label="Settings" aria-keyshortcuts="Alt+S" title="Settings (Alt+S)"
           onClick={() => openSettings()}
-          className={`rounded-lg px-3 py-2 text-sm font-semibold ${section === 'settings' ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50'}`}>Settings</button>
+          className={`rounded-lg px-3 py-2 text-sm font-semibold ${section === 'settings' ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50'}`}><Mnemonic label="Settings" letter="S" /></button>
+        <span role="status" aria-live="polite" className="ml-3 truncate text-xs font-medium text-amber-800">{notice}</span>
+        <button type="button" aria-label="Keyboard shortcuts" aria-keyshortcuts="F1" title="Keyboard shortcuts (F1)" onClick={() => setHelpOpen(true)}
+          className="ml-auto rounded-lg px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">Shortcuts (F1)</button>
+        <button type="button" aria-label="Exit" aria-keyshortcuts="Alt+X" title="Exit (Alt+X)" onClick={() => window.api?.requestClose?.()}
+          className="rounded-lg px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"><Mnemonic label="Exit" letter="X" /></button>
       </nav>
       <main className="min-h-0 flex-1">
         {settingsVisited && <div className={section === 'settings' ? '' : 'hidden'}>
@@ -1344,6 +1439,7 @@ export default function EngagementHub({ user, initialView = 'engagements', servi
             serviceOnlyMode={serviceOnlyMode}
             confirmUnsaved={confirmUnsaved}
             controllerRef={controllerRef}
+            shortcutRef={shortcutRef}
             onDirtyChange={onEngagementDirtyChange}
             onBack={() => setScreen({ type: 'list' })}
             onEdit={data => setScreen({ type: 'edit', initialEngagement: data })}
@@ -1351,6 +1447,7 @@ export default function EngagementHub({ user, initialView = 'engagements', servi
         </div>
       </main>
       {dialog && <UnsavedChangesDialog request={dialog.request} onDecision={decide} />}
+      {helpOpen && !dialog && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
     </div>
   )
 }

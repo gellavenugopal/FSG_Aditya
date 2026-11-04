@@ -1201,6 +1201,15 @@ export default function App() {
   }, [firmAppearance])
 
   const leaveGuardRef = React.useRef(null)
+  useEffect(() => {
+    if (!window.api?.onCloseRequested) return undefined
+    return window.api.onCloseRequested(async () => {
+      const proceed = leaveGuardRef.current
+        ? await leaveGuardRef.current('Closing the application closes the open engagement and its working screens.')
+        : true
+      if (proceed) window.api.confirmClose()
+    })
+  }, [])
   const signOut = async () => {
     if (leaveGuardRef.current && !await leaveGuardRef.current('Signing out closes the open engagement and its working screens.')) return
     setSigningOut(true)

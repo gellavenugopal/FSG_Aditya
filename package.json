@@ -19,6 +19,7 @@
     "dist:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
+    "@resvg/resvg-wasm": "^2.6.2",
     "@tiptap/extension-table": "^2.27.2",
     "@tiptap/extension-table-cell": "^2.27.2",
     "@tiptap/extension-table-header": "^2.27.2",

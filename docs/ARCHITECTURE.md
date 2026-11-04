@@ -91,6 +91,10 @@ New reporting frameworks and localization remain governed by [ROADMAP.md](./ROAD
 - Draft UAE separate-FS outputs: `src/shared/uae-draft-report-model.mjs` builds one model from the engagement's final-TB version and pack mapping state; `src/main/services/uae-draft-report.js` renders Word and Excel from it; the desktop renders the PDF. The trusted service stores each revision in `engagement_draft_report_revisions` (additive table, 4 routes in `src/server/engagement-server.js`, proxied by `engagement-client.js`, handled in `src/main/ipc/engagements.js`/`engagement-reporting.js`, UI in `UaeDraftRevisions.jsx`). Finalisation paths check unresolved classifications and pack status.
 - Legacy startup: `src/main/index.js` calls `runLegacyStartupSetup` (`src/main/db/startup.js`) inside the startup lock. `schema.js` gates data-rewriting statements on `FSG_STARTUP_DATA_REWRITES` (`rewriteQuery`) and runs once-only migrations with `runOnceMigration` (claim and changes in one transaction). `tools/engagement-normal.ps1` is the normal launcher; it sets the variable to `off`.
 
+## Window close and keyboard path
+
+`EngagementHub` owns the Alt shortcuts (window `keydown`) and the F1 reference; section shortcuts reach `EngagementOverview` through `shortcutRef`. Close requests flow `win.on('close')` (src/main/index.js) → `app:close-requested` → `App.jsx` `leaveGuardRef` → `app:confirm-close`; `app:request-close` (Alt+X, Exit button) simply calls `win.close()`. Preload exposes `requestClose`, `confirmClose`, `onCloseRequested`. Export logos: `src/main/services/brand-logo.js` rasterises SVG for the Word/Excel builders.
+
 ## Known legacy database/IPC bypasses
 
 Legacy financial modules still access PostgreSQL directly and are not engagement-authorized. Important examples include:

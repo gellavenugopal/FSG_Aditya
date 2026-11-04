@@ -6,6 +6,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Keyboard focus: an amber ring with a white gap, deliberately unlike the filled selected-section style. */
+button:focus-visible, [role="tab"]:focus-visible, tr[tabindex]:focus-visible, a:focus-visible,
+select:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible {
+  outline: 3px solid #f59e0b;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
 /* ── Default theme (Blue) ─────────────────────────────────────────────────── */
 :root, [data-theme="blue"] {
   --color-primary:       #1e40af;

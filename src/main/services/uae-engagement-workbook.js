@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import { calculateUaeReportDataHash } from './uae-report-data-hash.mjs'
 import { DEFAULT_REPORT_STYLE, validateReportStyle } from './branding-domain.mjs'
+import { pngDimensions, rasterizeSvgLogo } from './brand-logo.js'
 
 const DEBIT_NATURED = new Set([
   'cash', 'trade_receivables', 'inventory', 'property_plant_equipment',
@@ -686,14 +687,18 @@ export async function buildUaeEngagementWorkbook(source) {
       ? `&L${style.footerText.slice(0, 100)}&RPage &P of &N`
       : '&L&D&CPage &P of &N&RConfidential'
   }
-  const identity = source.reportOutput.signing_details?.identitySnapshot?.branding
+  const identity = await rasterizeSvgLogo(source.reportOutput.signing_details?.identitySnapshot?.branding)
   if (identity?.logoBase64 && ['image/png', 'image/jpeg'].includes(identity.logoMimeType)) {
     const logoBuffer = Buffer.from(identity.logoBase64, 'base64')
     if (logoBuffer.length > 750 * 1024) throw new Error('The saved report logo exceeds the workbook cache limit.')
     const imageId = workbook.addImage({ buffer: logoBuffer, extension: identity.logoMimeType === 'image/png' ? 'png' : 'jpeg' })
+    const dimensions = identity.logoMimeType === 'image/png' ? pngDimensions(logoBuffer) : null
+    const width = Math.min(340, style.logoWidthMm * 3.78)
+    // PNG proportions are preserved; JPEG keeps the previous fixed height because its dimensions are not parsed here.
+    const height = dimensions ? Math.min(110, Math.round(width * dimensions.height / dimensions.width)) : 110
     workbook.worksheets[0].addImage(imageId, {
       tl: { col: style.logoPlacement === 'top-left' ? 2 : style.logoPlacement === 'top-right' ? 3 : 2, row: 0 },
-      ext: { width: Math.min(340, style.logoWidthMm * 3.78), height: 110 },
+      ext: { width: dimensions ? Math.round(height * dimensions.width / dimensions.height) : width, height },
     })
   }
   return workbook.xlsx.writeBuffer()
